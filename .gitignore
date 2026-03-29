@@ -1,0 +1,13 @@
+# Monorepo local: solo subimos el panel admin (resto ignorado)
+/eVetaShop/
+/eVetaPortal/
+/eVetaDelivery/
+/tienda-onlineSJ-main/
+
+# Notas locales / investigación (no forman parte de la app)
+/walkthrough.md
+
+# Raíz del workspace
+.DS_Store
+Thumbs.db
+*.log
