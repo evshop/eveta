@@ -858,9 +858,32 @@ class _ProductsScreenState extends State<ProductsScreen> {
                     final p = _products[index];
                     final catLine = _productListCategorySubtitle(p);
                     final thumbUrl = _firstProductImageUrl(p);
+                    final active = p['is_active'] == true;
                     return ListTile(
                       leading: _ProductListThumbnail(imageUrl: thumbUrl),
-                      title: Text(p['name']?.toString() ?? 'Sin nombre'),
+                      title: Row(
+                        children: [
+                          Expanded(child: Text(p['name']?.toString() ?? 'Sin nombre')),
+                          if (!active)
+                            Container(
+                              margin: const EdgeInsets.only(left: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.shade50,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.orange.shade200),
+                              ),
+                              child: Text(
+                                'Inactivo',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.orange.shade800,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                       subtitle: Text(
                         '$catLine | Bs ${p['price']} | Stock: ${p['stock']}',
                       ),
