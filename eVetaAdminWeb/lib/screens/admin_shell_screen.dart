@@ -20,7 +20,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
     'Dashboard',
     'Promociones',
     'Categorías',
-    'Productos',
+    'Subir productos',
     'Tiendas',
     'Pedidos',
   ];
@@ -96,7 +96,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
                     NavigationRailDestination(
                       icon: Icon(Icons.shopping_basket_outlined),
                       selectedIcon: Icon(Icons.shopping_basket_rounded),
-                      label: Text('Productos'),
+                      label: Text('Subir'),
                     ),
                     NavigationRailDestination(
                       icon: Icon(Icons.storefront_outlined),
