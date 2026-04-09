@@ -1,0 +1,7 @@
+﻿Found 2 connected devices:
+  23100RN82L (mobile) ÔÇó Z99D5LSSIBZTRSDQ ÔÇó android-arm64 ÔÇó Android 16 (API 36)
+  Windows (desktop)   ÔÇó windows          ÔÇó windows-x64   ÔÇó Microsoft Windows [Versi┬ón 10.0.19045.2965]
+
+Run "flutter emulators" to list and start any available device emulators.
+
+If you expected another device to be detected, please run "flutter doctor" to diagnose potential issues. You may also try increasing the time to wait for connected devices with the "--device-timeout" flag. Visit https://flutter.dev/setup/ for troubleshooting tips.

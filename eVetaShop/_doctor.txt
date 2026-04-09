@@ -1,0 +1,37 @@
+﻿[ÔêÜ] Flutter (Channel stable, 3.41.4, on Microsoft Windows [Versi┬ón 10.0.19045.2965], locale es-BO) [1.249ms]
+    ÔÇó Flutter version 3.41.4 on channel stable at C:\src\flutter
+    ÔÇó Upstream repository https://github.com/flutter/flutter.git
+    ÔÇó Framework revision ff37bef603 (2 weeks ago), 2026-03-03 16:03:22 -0800
+    ÔÇó Engine revision e4b8dca3f1
+    ÔÇó Dart version 3.11.1
+    ÔÇó DevTools version 2.54.1
+    ÔÇó Feature flags: enable-web, enable-linux-desktop, enable-macos-desktop, enable-windows-desktop, enable-android, enable-ios, cli-animations, enable-native-assets, omit-legacy-version-file, enable-lldb-debugging, enable-uiscene-migration
+
+[ÔêÜ] Windows Version (10 Pro Education N 64 bits, 22H2, 2009) [40,4s]
+
+[ÔêÜ] Android toolchain - develop for Android devices (Android SDK version 36.1.0) [33,7s]
+    ÔÇó Android SDK at C:\Users\samulx\AppData\Local\Android\sdk
+    ÔÇó Emulator version unknown
+    ÔÇó Platform android-36.1, build-tools 36.1.0
+    ÔÇó Java binary at: C:\Program Files\Android\Android Studio\jbr\bin\java
+      This is the JDK bundled with the latest Android Studio installation on this machine.
+      To manually set the JDK path, use: `flutter config --jdk-dir="path/to/jdk"`.
+    ÔÇó Java version OpenJDK Runtime Environment (build 21.0.9+-14787801-b1163.94)
+    ÔÇó All Android licenses accepted.
+
+[X] Chrome - develop for the web (Cannot find Chrome executable at .\Google\Chrome\Application\chrome.exe) [37ms]
+    ! Cannot find Chrome. Try setting CHROME_EXECUTABLE to a Chrome executable.
+
+[X] Visual Studio - develop Windows apps [33ms]
+    X Visual Studio not installed; this is necessary to develop Windows apps.
+      Download at https://visualstudio.microsoft.com/downloads/.
+      Please install the "Desktop development with C++" workload, including all of its default components
+
+[ÔêÜ] Connected device (2 available) [4,4s]
+    ÔÇó 23100RN82L (mobile) ÔÇó Z99D5LSSIBZTRSDQ ÔÇó android-arm64 ÔÇó Android 16 (API 36)
+    ÔÇó Windows (desktop)   ÔÇó windows          ÔÇó windows-x64   ÔÇó Microsoft Windows [Versi┬ón 10.0.19045.2965]
+
+[ÔêÜ] Network resources [4,5s]
+    ÔÇó All expected network resources are available.
+
+! Doctor found issues in 2 categories.
