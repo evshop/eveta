@@ -1,8 +1,6 @@
-# Monorepo local: solo subimos el panel admin (resto ignorado)
-/eVetaShop/
-/eVetaPortal/
-/eVetaDelivery/
+# Monorepo local: carpetas que NO se suben
 /tienda-onlineSJ-main/
+/supabase
 
 # Notas locales / investigación (no forman parte de la app)
 /walkthrough.md
