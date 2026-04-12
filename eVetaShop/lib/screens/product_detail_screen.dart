@@ -14,6 +14,7 @@ import 'package:eveta/common_widget/product_card_skeleton.dart';
 import 'package:eveta/utils/cart_animation_helper.dart';
 import 'package:eveta/common_widget/bottom_nav_bar_widget.dart';
 import 'package:eveta/screens/seller_store_screen.dart';
+import 'package:eveta/theme/eveta_shop_theme.dart';
 
 class ProductDetailScreen extends StatefulWidget {
   const ProductDetailScreen({super.key, required this.productId, this.onClose, this.onTagTap, this.onRelatedProductTap});
@@ -28,6 +29,11 @@ class ProductDetailScreen extends StatefulWidget {
 }
 
 class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerProviderStateMixin {
+  /// Fondo de pantalla detalle en oscuro: #1C1C1E (iOS) en lugar de negro puro.
+  Color _detailCanvasColor(ColorScheme scheme) {
+    return scheme.brightness == Brightness.dark ? EvetaShopColors.darkCard : scheme.surface;
+  }
+
   int _selectedImageIndex = 0;
   int _quantity = 1;
   late Future<Map<String, dynamic>?> _productFuture;
@@ -360,7 +366,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
 
     final scaffoldScheme = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: scaffoldScheme.surface,
+      backgroundColor: _detailCanvasColor(scaffoldScheme),
       body: FutureBuilder<Map<String, dynamic>?>(
         future: _productFuture,
         builder: (context, snapshot) {
@@ -395,8 +401,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
     final scheme = Theme.of(context).colorScheme;
     final dark = scheme.brightness == Brightness.dark;
     final base = dark ? scheme.surfaceContainerHighest : Colors.grey[300]!;
-    final hi = dark ? scheme.surface : Colors.grey[100]!;
-    final block = scheme.surface;
+    final hi = dark ? scheme.surfaceBright : Colors.grey[100]!;
+    final block = _detailCanvasColor(scheme);
     return Shimmer.fromColors(
       baseColor: base,
       highlightColor: hi,
@@ -479,6 +485,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
     if (tags.isEmpty) tags.addAll(['Producto', 'eVeta']);
 
     final scheme = Theme.of(context).colorScheme;
+    final canvas = _detailCanvasColor(scheme);
     final barVariant = scheme.brightness == Brightness.dark
         ? EvetaCircularBackVariant.onDarkBackground
         : EvetaCircularBackVariant.onLightBackground;
@@ -519,13 +526,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
                     builder: (context, constraints) {
                       final t = _appBarGlassT;
                       if (t < 0.02) {
-                        return ColoredBox(color: scheme.surface);
+                        return ColoredBox(color: canvas);
                       }
                       final sigma = (11 * t).clamp(0.5, 11.0);
                       return BackdropFilter(
                         filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
                         child: Container(
-                          color: scheme.surface.withValues(alpha: 0.58 + 0.22 * t),
+                          color: canvas.withValues(alpha: 0.58 + 0.22 * t),
                         ),
                       );
                     },
@@ -581,7 +588,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
                   children: [
                     _buildImageCarousel(imageUrls, hasDiscount, discountPercent, scale),
                     if (imageUrls.length > 1) ...[
-                      Container(height: 12 * scale, color: scheme.surface),
+                      Container(height: 12 * scale, color: canvas),
                       _buildThumbnailCarousel(imageUrls, scale),
                     ],
                     _buildPriceSection(name, price, unit, originalPrice, hasDiscount, rating, reviewCount, stock, isOutOfStock, scale, product),
@@ -601,8 +608,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
 
   Widget _buildImageCarousel(List<String> imageUrls, bool hasDiscount, int discountPercent, double scale) {
     final scheme = Theme.of(context).colorScheme;
+    final canvas = _detailCanvasColor(scheme);
     return Container(
-      color: scheme.surface,
+      color: canvas,
       child: Column(
         children: [
           GestureDetector(
@@ -704,9 +712,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
 
   Widget _buildThumbnailCarousel(List<String> imageUrls, double scale) {
     final scheme = Theme.of(context).colorScheme;
+    final canvas = _detailCanvasColor(scheme);
     return Container(
       height: 72 * scale,
-      color: scheme.surface,
+      color: canvas,
       padding: EdgeInsets.only(bottom: 12 * scale),
       child: ListView.builder(
         controller: _thumbnailController,
@@ -753,8 +762,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
   }
 
   Widget _buildSquareImageContainer(String imageUrl) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
-      color: Theme.of(context).colorScheme.surface,
+      color: _detailCanvasColor(scheme),
       child: Center(
         child: AspectRatio(
           aspectRatio: 1,
@@ -825,8 +835,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
     Map<String, dynamic> product,
   ) {
     final scheme = Theme.of(context).colorScheme;
+    final canvas = _detailCanvasColor(scheme);
     return Container(
-      color: scheme.surface,
+      color: canvas,
       padding: EdgeInsets.all(20 * scale),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -960,10 +971,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
     final specBlocks = _specRowsForProduct(product);
     final hasSpecs = specBlocks.rows.isNotEmpty;
     final scheme = Theme.of(context).colorScheme;
+    final canvas = _detailCanvasColor(scheme);
 
     return Container(
       width: double.infinity,
-      color: scheme.surface,
+      color: canvas,
       padding: EdgeInsets.all(20 * scale),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1078,9 +1090,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
     required double scale,
   }) {
     final scheme = Theme.of(context).colorScheme;
+    final canvas = _detailCanvasColor(scheme);
     return Container(
       width: double.infinity,
-      color: scheme.surface,
+      color: canvas,
       child: Column(
         children: [
           Padding(
@@ -1127,11 +1140,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
       future: _relatedProductsFuture,
       builder: (context, snapshot) {
         final scheme = Theme.of(context).colorScheme;
+        final canvas = _detailCanvasColor(scheme);
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Container(
             margin: EdgeInsets.only(top: 16 * scale),
             padding: EdgeInsets.all(16 * scale),
-            color: scheme.surface,
+            color: canvas,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1161,7 +1175,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
         return Container(
           margin: EdgeInsets.only(top: 16 * scale),
           padding: EdgeInsets.all(16 * scale),
-          color: scheme.surface,
+          color: canvas,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1211,12 +1225,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
 
   Widget _buildBottomBar(bool isOutOfStock, Map<String, dynamic> product, double scale) {
     final scheme = Theme.of(context).colorScheme;
+    final canvas = _detailCanvasColor(scheme);
     final onPrimary = scheme.onPrimary;
     final primary = scheme.primary;
     return Container(
       padding: EdgeInsets.fromLTRB(16 * scale, 12 * scale, 16 * scale, MediaQuery.of(context).padding.bottom + 12 * scale),
       decoration: BoxDecoration(
-        color: scheme.surface,
+        color: canvas,
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 20, offset: const Offset(0, -4))],
       ),
       child: Row(

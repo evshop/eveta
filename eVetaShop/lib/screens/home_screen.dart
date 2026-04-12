@@ -4,9 +4,9 @@ import 'dart:ui' show lerpDouble;
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:eveta/common_widget/grid_tiles_products.dart';
 import 'package:eveta/common_widget/product_card_skeleton.dart';
 import 'package:eveta/common_widget/promo_carousel_widget.dart';
-import 'package:eveta/common_widget/grid_tiles_products.dart';
 import 'package:eveta/screens/add_location_screen.dart';
 import 'package:eveta/screens/category_products_screen.dart';
 import 'package:eveta/screens/search_screen.dart';
@@ -17,7 +17,7 @@ import 'package:eveta/ui/shop/eveta_promo_banner.dart';
 import 'package:eveta/ui/shop/eveta_search_bar.dart';
 import 'package:eveta/ui/shop/eveta_section_header.dart';
 import 'package:eveta/ui/shop/premium/brand_card.dart';
-import 'package:eveta/ui/shop/premium/horizontal_product_list.dart';
+import 'package:eveta/ui/shop/premium/horizontal_new_arrivals_list.dart';
 import 'package:eveta/ui/shop/sticky_category_header.dart';
 import 'package:eveta/utils/catalog_cache_service.dart';
 import 'package:eveta/utils/supabase_service.dart';
@@ -159,43 +159,53 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  /// Iconos del saludo compactos: fondo tonal circular (no píldora ovalada).
+  ButtonStyle _homeHeaderCircleIconStyle() {
+    return IconButton.styleFrom(
+      shape: const CircleBorder(),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+      minimumSize: const Size(44, 44),
+      fixedSize: const Size(44, 44),
+      padding: EdgeInsets.zero,
+    );
+  }
+
   Widget _buildHomeStickyHeader(BuildContext context, double t) {
     final scheme = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-    final pt = MediaQuery.paddingOf(context).top;
     final firstName = _resolveUserFirstName();
     final expandedOpacity = (1.0 - t).clamp(0.0, 1.0);
     final compactOpacity = t.clamp(0.0, 1.0);
     final searchPhase = Curves.easeInOutCubic.transform((t / 0.42).clamp(0.0, 1.0));
     final belowPt = (lerpDouble(236, 56, t) ?? (236 - 180 * t));
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SizedBox(height: pt),
-        SizedBox(
-          height: belowPt,
-          width: double.infinity,
-          child: ClipRect(
-            clipBehavior: Clip.hardEdge,
-            child: Stack(
-              clipBehavior: Clip.hardEdge,
-              fit: StackFit.expand,
-              children: [
-                Positioned.fill(
-                  child: Align(
-                    alignment: Alignment.topCenter,
-                    child: Opacity(
-                      opacity: expandedOpacity,
-                      child: IgnorePointer(
-                        ignoring: t > 0.58,
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(EvetaShopDimens.spaceLg, 6, EvetaShopDimens.spaceLg, 0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
+    return SizedBox(
+      height: belowPt,
+      width: double.infinity,
+      child: ClipRect(
+        clipBehavior: Clip.hardEdge,
+        child: Stack(
+          clipBehavior: Clip.hardEdge,
+          fit: StackFit.expand,
+          children: [
+            Positioned.fill(
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: Opacity(
+                  opacity: expandedOpacity,
+                  child: IgnorePointer(
+                    ignoring: t > 0.58,
+                    child: SingleChildScrollView(
+                      physics: const NeverScrollableScrollPhysics(),
+                      clipBehavior: Clip.hardEdge,
+                      primary: false,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(EvetaShopDimens.spaceLg, 6, EvetaShopDimens.spaceLg, 0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
                               Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -219,11 +229,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                     ),
                                   ),
                                   IconButton.filledTonal(
+                                    style: _homeHeaderCircleIconStyle(),
                                     onPressed: widget.onOpenWishlist,
                                     icon: const Icon(Icons.favorite_outline_rounded, size: 22),
                                   ),
-                                  const SizedBox(width: 2),
+                                  const SizedBox(width: 6),
                                   IconButton.filledTonal(
+                                    style: _homeHeaderCircleIconStyle(),
                                     onPressed: widget.onOpenCart,
                                     icon: const Icon(Icons.shopping_bag_outlined, size: 22),
                                   ),
@@ -283,61 +295,51 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
                   ),
                 ),
-                Positioned.fill(
-                  child: Align(
-                    alignment: Alignment.topCenter,
-                    child: Opacity(
-                      opacity: compactOpacity,
-                      child: IgnorePointer(
-                        ignoring: t < 0.4,
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(EvetaShopDimens.spaceLg, 4, EvetaShopDimens.spaceSm, 6),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  'Hola, $firstName',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.35),
-                                ),
-                              ),
-                              IconButton.filledTonal(
-                                onPressed: () => _openSearch(context),
-                                style: IconButton.styleFrom(
-                                  visualDensity: VisualDensity.compact,
-                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                ),
-                                icon: const Icon(Icons.search_rounded, size: 22),
-                              ),
-                              IconButton.filledTonal(
-                                onPressed: widget.onOpenWishlist,
-                                style: IconButton.styleFrom(
-                                  visualDensity: VisualDensity.compact,
-                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                ),
-                                icon: const Icon(Icons.favorite_outline_rounded, size: 22),
-                              ),
-                              IconButton.filledTonal(
-                                onPressed: widget.onOpenCart,
-                                style: IconButton.styleFrom(
-                                  visualDensity: VisualDensity.compact,
-                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                ),
-                                icon: const Icon(Icons.shopping_bag_outlined, size: 22),
-                              ),
-                            ],
+              ),
+            Positioned.fill(
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: Opacity(
+                  opacity: compactOpacity,
+                  child: IgnorePointer(
+                    ignoring: t < 0.4,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(EvetaShopDimens.spaceLg, 4, EvetaShopDimens.spaceSm, 6),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Hola, $firstName',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.35),
+                            ),
                           ),
-                        ),
+                          IconButton.filledTonal(
+                            style: _homeHeaderCircleIconStyle(),
+                            onPressed: () => _openSearch(context),
+                            icon: const Icon(Icons.search_rounded, size: 22),
+                          ),
+                          IconButton.filledTonal(
+                            style: _homeHeaderCircleIconStyle(),
+                            onPressed: widget.onOpenWishlist,
+                            icon: const Icon(Icons.favorite_outline_rounded, size: 22),
+                          ),
+                          IconButton.filledTonal(
+                            style: _homeHeaderCircleIconStyle(),
+                            onPressed: widget.onOpenCart,
+                            icon: const Icon(Icons.shopping_bag_outlined, size: 22),
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
@@ -364,13 +366,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
                 return CustomScrollView(
                   controller: _homeScrollController,
-                  physics: const AlwaysScrollableScrollPhysics(),
+                  cacheExtent: 280,
+                  physics: const AlwaysScrollableScrollPhysics(parent: ClampingScrollPhysics()),
                   slivers: [
                     SliverPersistentHeader(
                       pinned: true,
                       delegate: StickyCategoryHeader(
-                        minHeight: MediaQuery.paddingOf(context).top + 236,
-                        maxHeight: MediaQuery.paddingOf(context).top + 236,
+                        minHeight: 236,
+                        maxHeight: 236,
                         backgroundColor: scheme.surface,
                         borderColor: scheme.outline.withValues(alpha: 0.25),
                         builder: (ctx, _) => _HeaderSkeleton(loading: true),
@@ -422,13 +425,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
               return CustomScrollView(
                 controller: _homeScrollController,
-                physics: const AlwaysScrollableScrollPhysics(),
+                cacheExtent: 280,
+                physics: const AlwaysScrollableScrollPhysics(parent: ClampingScrollPhysics()),
                 slivers: [
                   SliverPersistentHeader(
                     pinned: true,
                     delegate: StickyCategoryHeader(
-                      minHeight: MediaQuery.paddingOf(context).top + 56,
-                      maxHeight: MediaQuery.paddingOf(context).top + 236,
+                      minHeight: 56,
+                      maxHeight: 236,
                       backgroundColor: scheme.surface,
                       borderColor: scheme.outline.withValues(alpha: 0.28),
                       builder: (ctx, progress) => _buildHomeStickyHeader(
@@ -465,7 +469,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               return EvetaCategoryChip(
                                 label: name,
                                 selected: false,
-                                icon: Icons.category_rounded,
                                 onTap: () {
                                   Navigator.push(
                                     context,
@@ -493,7 +496,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                     ),
                     SliverToBoxAdapter(
-                      child: HorizontalProductList(
+                      child: HorizontalNewArrivalsList(
                         products: products,
                         maxItems: 12,
                         onProductTap: widget.onProductTap,
@@ -556,9 +559,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                     ),
                     SliverToBoxAdapter(
-                      child: HorizontalProductList(
+                      child: HorizontalNewArrivalsList(
                         products: recommended,
                         maxItems: 10,
+                        showNewBadge: false,
                         onProductTap: widget.onProductTap,
                       ),
                     ),
@@ -590,6 +594,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 name: name,
                                 imageUrl: url.isNotEmpty ? url : null,
                                 width: 96,
+                                cardHeight: 118,
                                 onTap: () {
                                   if (sellerId == null || sellerId.isEmpty) return;
                                   Navigator.push<void>(
@@ -626,7 +631,6 @@ class _HeaderSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final pt = MediaQuery.paddingOf(context).top;
     final dark = scheme.brightness == Brightness.dark;
     final base = dark ? scheme.surfaceContainerHigh : scheme.surfaceContainerHighest;
     final hi = dark ? scheme.surfaceContainerHighest : scheme.surfaceContainerHigh;
@@ -688,12 +692,6 @@ class _HeaderSkeleton extends StatelessWidget {
           : blocks(),
     );
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SizedBox(height: pt),
-        inner,
-      ],
-    );
+    return inner;
   }
 }

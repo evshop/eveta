@@ -91,7 +91,7 @@ class _EvetaProductCardModernState extends State<EvetaProductCardModern> {
                 fit: BoxFit.cover,
                 memCacheWidth: 200,
               )
-            : Icon(Icons.shopping_bag_outlined, color: Theme.of(context).colorScheme.primary),
+            : Icon(Icons.shopping_cart_outlined, color: Theme.of(context).colorScheme.primary),
       ),
     );
 
@@ -291,7 +291,7 @@ class _EvetaProductCardModernState extends State<EvetaProductCardModern> {
                               child: Padding(
                                 padding: const EdgeInsets.all(8),
                                 child: Icon(
-                                  Icons.shopping_bag_outlined,
+                                  Icons.shopping_cart_outlined,
                                   size: 20,
                                   color: scheme.onPrimary,
                                 ),

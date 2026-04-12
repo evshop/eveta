@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:eveta/auth/auth_error_messages.dart';
 import 'package:eveta/auth/auth_routes.dart';
 import 'package:eveta/auth/auth_validators.dart';
 import 'package:eveta/auth/widgets/auth_animated_email_phone_field.dart';
@@ -118,16 +119,7 @@ class _LoginScreenState extends State<LoginScreen> {
         await AuthService.signInWithEmail(email: email, password: password);
       }
     } catch (e) {
-      final raw = e.toString();
-      setState(() {
-        if (raw.contains('invalid login credentials')) {
-          _errorMessage = 'Correo/teléfono o contraseña incorrectos.';
-        } else {
-          _errorMessage = raw
-              .replaceFirst('AuthException(message: ', '')
-              .replaceAll(')', '');
-        }
-      });
+      setState(() => _errorMessage = friendlyAuthError(e));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -141,11 +133,11 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       await AuthService.signInWithGoogle();
       if (mounted) setState(() => _isLoading = false);
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = 'No se pudo iniciar con Google. Intenta de nuevo.';
+          _errorMessage = friendlyAuthError(e);
         });
       }
     }
@@ -297,7 +289,7 @@ class _TermsRow extends StatelessWidget {
             style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w600, decoration: TextDecoration.underline),
             recognizer: TapGestureRecognizer()
               ..onTap = () {
-                Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const TermsScreen()));
+                Navigator.push(context, evetaAuthFadeRoute(const TermsScreen()));
               },
           ),
           const TextSpan(text: ' y la '),
@@ -306,7 +298,7 @@ class _TermsRow extends StatelessWidget {
             style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w600, decoration: TextDecoration.underline),
             recognizer: TapGestureRecognizer()
               ..onTap = () {
-                Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const PrivacyScreen()));
+                Navigator.push(context, evetaAuthFadeRoute(const PrivacyScreen()));
               },
           ),
           const TextSpan(text: '.'),

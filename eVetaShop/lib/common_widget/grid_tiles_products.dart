@@ -82,7 +82,7 @@ class _GridTilesProductsState extends State<GridTilesProducts> {
                 fit: BoxFit.cover,
                 memCacheWidth: 200,
               )
-            : const Icon(Icons.shopping_cart, color: Color(0xFF09CB6B)),
+            : const Icon(Icons.shopping_cart_outlined, color: Color(0xFF09CB6B)),
       ),
     );
 

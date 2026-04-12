@@ -5,8 +5,9 @@ import 'package:flutter/services.dart';
 abstract final class EvetaAuthTheme {
   static const Color lightBg = Color(0xFFF5F5F5);
   static const Color lightInput = Color(0xFFEAEAEA);
-  static const Color darkBg = Color(0xFF0D0D0D);
-  static const Color darkInput = Color(0xFF1C1C1E);
+  static const Color darkBg = Color(0xFF000000);
+  static const Color darkInput = Color(0xFF2C2C2E);
+  static const Color darkCard = Color(0xFF1C1C1E);
 
   static ThemeData light() {
     const onSurface = Color(0xFF0A0A0A);
@@ -89,14 +90,14 @@ abstract final class EvetaAuthTheme {
       scaffoldBackgroundColor: darkBg,
       splashFactory: InkSparkle.splashFactory,
       colorScheme: const ColorScheme.dark(
-        surface: darkInput,
+        surface: darkCard,
         onSurface: onSurface,
         primary: Colors.white,
         onPrimary: Color(0xFF0A0A0A),
         secondary: Color(0xFFE0E0E0),
         onSecondary: Color(0xFF0A0A0A),
         error: Color(0xFFFF6B6B),
-        outline: Color(0xFF3A3A3C),
+        outline: Color(0xFF48484A),
       ),
       appBarTheme: const AppBarTheme(
         elevation: 0,

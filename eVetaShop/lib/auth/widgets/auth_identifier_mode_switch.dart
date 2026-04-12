@@ -28,7 +28,12 @@ class AuthIdentifierModeSwitch extends StatelessWidget {
           child: IconButton(
             tooltip: 'Intercambiar correo y teléfono',
             onPressed: () => onChanged(!phoneMode),
-            icon: Icon(Icons.swap_horiz_rounded, size: 30, color: scheme.primary),
+            icon: AnimatedRotation(
+              turns: phoneMode ? 0.5 : 0,
+              duration: const Duration(milliseconds: 360),
+              curve: Curves.easeOutCubic,
+              child: Icon(Icons.swap_horiz_rounded, size: 30, color: scheme.primary),
+            ),
           ),
         ),
         _ModeLabel(
@@ -62,15 +67,27 @@ class _ModeLabel extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
-        child: Padding(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          child: Text(
-            label,
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                width: selected ? 2.5 : 0,
+                color: selected ? scheme.primary : Colors.transparent,
+              ),
+            ),
+          ),
+          child: AnimatedDefaultTextStyle(
+            duration: const Duration(milliseconds: 280),
+            curve: Curves.easeOutCubic,
             style: TextStyle(
               fontSize: 15,
               fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
               color: selected ? scheme.primary : scheme.onSurface.withValues(alpha: 0.45),
             ),
+            child: Text(label),
           ),
         ),
       ),

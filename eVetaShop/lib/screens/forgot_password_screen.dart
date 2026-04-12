@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:eveta/auth/auth_routes.dart';
 import 'package:eveta/auth/auth_validators.dart';
 import 'package:eveta/auth/widgets/auth_animated_email_phone_field.dart';
 import 'package:eveta/auth/widgets/auth_identifier_mode_switch.dart';
@@ -55,8 +56,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         if (!mounted) return;
         await Navigator.push<void>(
           context,
-          MaterialPageRoute(
-            builder: (_) => VerifyCodeScreen(
+          evetaAuthFadeRoute(
+            VerifyCodeScreen(
               mode: VerifyMode.recoveryPhone,
               emailOrPhone: phone,
               isPhone: true,

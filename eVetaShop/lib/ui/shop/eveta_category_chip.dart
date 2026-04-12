@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:eveta/theme/eveta_shop_theme.dart';
 
+/// Borde cápsula tipo iOS (lista ajustes / segmentos).
+Color evetaIosCapsuleBorder(BuildContext context) {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  return isDark ? const Color(0xFF48484A) : const Color(0xFFC6C6C8);
+}
+
 class EvetaCategoryChip extends StatelessWidget {
   const EvetaCategoryChip({
     super.key,
@@ -25,11 +31,12 @@ class EvetaCategoryChip extends StatelessWidget {
       horizontalPadding: EvetaShopDimens.spaceLg,
       verticalPadding: 10,
       fontSize: 13,
+      borderRadius: 100,
     );
   }
 }
 
-/// Chips de subcategoría: misma lógica visual, alineados a la izquierda en el padre; tamaño ligeramente compacto.
+/// Subcategorías: misma cápsula iOS que [EvetaCategoryChip], más compacta.
 class SubcategoryChip extends StatelessWidget {
   const SubcategoryChip({
     super.key,
@@ -48,11 +55,10 @@ class SubcategoryChip extends StatelessWidget {
       label: label,
       selected: selected,
       onTap: onTap,
-      horizontalPadding: 10,
-      verticalPadding: 4,
+      horizontalPadding: 12,
+      verticalPadding: 6,
       fontSize: 11.5,
-      borderRadius: EvetaShopDimens.radiusMd,
-      selectedShadowBlur: 6,
+      borderRadius: 100,
     );
   }
 }
@@ -66,8 +72,7 @@ class _CategoryChipBase extends StatelessWidget {
     required this.horizontalPadding,
     required this.verticalPadding,
     required this.fontSize,
-    this.borderRadius = EvetaShopDimens.radiusXl,
-    this.selectedShadowBlur = 10,
+    required this.borderRadius,
   });
 
   final String label;
@@ -78,60 +83,50 @@ class _CategoryChipBase extends StatelessWidget {
   final double verticalPadding;
   final double fontSize;
   final double borderRadius;
-  final double selectedShadowBlur;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final idleBg = scheme.brightness == Brightness.light ? scheme.surfaceContainerHigh : scheme.surfaceContainerHigh;
     final r = BorderRadius.circular(borderRadius);
+    final iosBorder = evetaIosCapsuleBorder(context);
+    final borderColor = selected ? scheme.primary : iosBorder;
+    final textColor = selected ? scheme.primary : scheme.onSurface;
+    final weight = selected ? FontWeight.w700 : FontWeight.w500;
 
     return Padding(
       padding: const EdgeInsets.only(right: EvetaShopDimens.spaceSm),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOutCubic,
-        decoration: BoxDecoration(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
           borderRadius: r,
-          color: selected ? scheme.primary : idleBg,
-          border: Border.all(
-            color: selected ? scheme.primary.withValues(alpha: 0.35) : scheme.outline.withValues(alpha: 0.4),
-            width: 1,
-          ),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: scheme.primary.withValues(alpha: 0.14),
-                    blurRadius: selectedShadowBlur,
-                    offset: const Offset(0, 3),
-                  ),
-                ]
-              : null,
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: r,
+          splashColor: scheme.primary.withValues(alpha: 0.12),
+          highlightColor: scheme.onSurface.withValues(alpha: 0.05),
+          child: Ink(
+            decoration: BoxDecoration(
+              color: Colors.transparent,
+              borderRadius: r,
+              border: Border.all(
+                color: borderColor,
+                width: selected ? 1.5 : 1,
+              ),
+            ),
             child: Padding(
               padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: verticalPadding),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (icon != null) ...[
-                    Icon(
-                      icon,
-                      size: 18,
-                      color: selected ? scheme.onPrimary : scheme.onSurfaceVariant,
-                    ),
+                    Icon(icon, size: 18, color: textColor),
                     const SizedBox(width: 6),
                   ],
                   Text(
                     label,
                     style: TextStyle(
                       fontSize: fontSize,
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                      color: selected ? scheme.onPrimary : scheme.onSurfaceVariant,
+                      fontWeight: weight,
+                      color: textColor,
+                      letterSpacing: -0.2,
                     ),
                   ),
                 ],

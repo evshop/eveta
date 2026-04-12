@@ -18,6 +18,11 @@ class BottomNavBarWidget extends StatefulWidget {
   // Key global para el icono de carrito para la animación
   static final GlobalKey cartKey = GlobalKey();
 
+  /// Altura del contenedor de la barra (indicador + fila + safe area). Útil cuando el `Scaffold` usa [extendBody].
+  static double totalHeight(BuildContext context) {
+    return 65.0 + MediaQuery.paddingOf(context).bottom;
+  }
+
   @override
   State<BottomNavBarWidget> createState() => _BottomNavBarWidgetState();
 }

@@ -14,10 +14,13 @@ abstract final class EvetaShopColors {
   static const Color lightText = Color(0xFF111827);
   static const Color lightTextMuted = Color(0xFF6B7280);
 
-  static const Color darkScaffold = Color(0xFF111318);
-  static const Color darkCard = Color(0xFF1A1D24);
-  static const Color darkCardElevated = Color(0xFF1C2028);
-  static const Color darkBorder = Color(0xFF2A2F3A);
+  /// Oscuro tipo iOS: base #1C1C1E (no negro puro en pantalla). Negro solo en [surfaceDim] / sombras.
+  static const Color darkScaffold = Color(0xFF000000);
+  static const Color darkCard = Color(0xFF1C1C1E);
+  static const Color darkCardElevated = Color(0xFF2C2C2E);
+  /// Entre base y tarjeta elevada (listas, bloques).
+  static const Color darkSurfaceContainer = Color(0xFF202024);
+  static const Color darkBorder = Color(0xFF3A3A3C);
   static const Color darkText = Color(0xFFF5F5F5);
   static const Color darkTextMuted = Color(0xFFA6AAB4);
 }
@@ -103,7 +106,7 @@ abstract final class EvetaShopTheme {
       primaryContainer: const Color(0xFF14532D),
       onPrimaryContainer: const Color(0xFFBBF7D0),
       secondary: EvetaShopColors.darkTextMuted,
-      onSecondary: EvetaShopColors.darkScaffold,
+      onSecondary: EvetaShopColors.darkCard,
       secondaryContainer: EvetaShopColors.darkCardElevated,
       onSecondaryContainer: EvetaShopColors.darkText,
       tertiary: const Color(0xFFFDBA74),
@@ -112,23 +115,23 @@ abstract final class EvetaShopTheme {
       onTertiaryContainer: const Color(0xFFFFEDD5),
       error: const Color(0xFFF87171),
       onError: const Color(0xFF450A0A),
-      surface: EvetaShopColors.darkScaffold,
+      surface: EvetaShopColors.darkCard,
       onSurface: EvetaShopColors.darkText,
       onSurfaceVariant: EvetaShopColors.darkTextMuted,
       outline: EvetaShopColors.darkBorder,
-      outlineVariant: const Color(0xFF232830),
+      outlineVariant: const Color(0xFF2C2C32),
       shadow: Colors.black,
       scrim: Colors.black,
       inverseSurface: const Color(0xFFE5E7EB),
       onInverseSurface: const Color(0xFF111318),
       inversePrimary: brand,
       surfaceTint: Colors.transparent,
-      surfaceContainerHighest: EvetaShopColors.darkCardElevated,
-      surfaceContainerHigh: EvetaShopColors.darkCard,
-      surfaceContainer: const Color(0xFF151820),
-      surfaceContainerLow: const Color(0xFF12151C),
-      surfaceBright: const Color(0xFF2A3038),
-      surfaceDim: const Color(0xFF0F1115),
+      surfaceContainerHighest: const Color(0xFF323236),
+      surfaceContainerHigh: EvetaShopColors.darkCardElevated,
+      surfaceContainer: EvetaShopColors.darkSurfaceContainer,
+      surfaceContainerLow: const Color(0xFF18181C),
+      surfaceBright: const Color(0xFF3A3A3E),
+      surfaceDim: EvetaShopColors.darkScaffold,
     );
 
     return _base(scheme, Brightness.dark);

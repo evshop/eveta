@@ -62,6 +62,9 @@ class AuthTextField extends StatelessWidget {
         labelText: label,
         hintText: hint,
         prefixText: prefixText,
+        isDense: false,
+        // Espacio extra arriba para la etiqueta flotante (evita recorte al enfocar).
+        contentPadding: const EdgeInsets.fromLTRB(4, 20, 16, 18),
         prefixStyle: TextStyle(
           color: scheme.onSurface.withValues(alpha: 0.85),
           fontWeight: FontWeight.w700,

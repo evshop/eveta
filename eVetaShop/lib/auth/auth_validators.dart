@@ -28,8 +28,24 @@ abstract final class AuthValidators {
     if (value == null || value.trim().isEmpty) {
       return 'Ingresa tu correo electrónico';
     }
-    if (!isEmail(value)) {
-      return 'Correo no válido';
+    final t = value.trim();
+    if (!t.contains('@')) {
+      return 'Falta el @ en el correo (ej. nombre@gmail.com)';
+    }
+    final at = t.indexOf('@');
+    final local = t.substring(0, at);
+    final domain = t.substring(at + 1);
+    if (local.isEmpty) {
+      return 'Escribe tu nombre o alias antes del @';
+    }
+    if (domain.isEmpty) {
+      return 'Completa el dominio después del @ (ej. gmail.com)';
+    }
+    if (!domain.contains('.')) {
+      return 'Falta la extensión del dominio (.com, .bo, .net, etc.)';
+    }
+    if (!isEmail(t)) {
+      return 'Correo no válido. Revisa puntos, espacios o caracteres raros.';
     }
     return null;
   }
