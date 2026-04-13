@@ -6,11 +6,8 @@ class AdminPanelScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6F7),
       appBar: AppBar(
-        title: const Text('Panel Admin', style: TextStyle(color: Colors.black)),
-        backgroundColor: Colors.white,
-        elevation: 0,
+        title: const Text('Panel Admin'),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -59,6 +56,7 @@ class _AdminItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -66,15 +64,15 @@ class _AdminItem extends StatelessWidget {
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         leading: CircleAvatar(
           radius: 22,
-          backgroundColor: const Color(0xFF09CB6B).withValues(alpha: 0.15),
-          child: Icon(icon, color: const Color(0xFF09CB6B)),
+          backgroundColor: scheme.primary.withValues(alpha: 0.15),
+          child: Icon(icon, color: scheme.primary),
         ),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 4),
           child: Text(subtitle),
         ),
-        trailing: const Icon(Icons.chevron_right),
+        trailing: Icon(Icons.chevron_right_rounded, color: scheme.outline),
         onTap: () {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Próximo módulo: $title')),

@@ -64,14 +64,14 @@ class BrandCard extends StatelessWidget {
         );
       }
       return Padding(
-        padding: const EdgeInsets.fromLTRB(EvetaShopDimens.spaceSm, 10, EvetaShopDimens.spaceSm, 10),
+        padding: const EdgeInsets.fromLTRB(EvetaShopDimens.spaceSm, 6, EvetaShopDimens.spaceSm, 6),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.max,
           children: [
             Expanded(
               child: Center(child: avatar),
             ),
-            const SizedBox(height: 4),
             title,
           ],
         ),
@@ -83,6 +83,7 @@ class BrandCard extends StatelessWidget {
       child: Material(
         color: scheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(EvetaShopDimens.radiusLg),
+        clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(EvetaShopDimens.radiusLg),

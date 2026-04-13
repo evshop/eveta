@@ -5,7 +5,7 @@ import 'package:eveta/screens/search_screen.dart';
 import 'package:eveta/utils/catalog_cache_service.dart';
 import 'package:eveta/theme/eveta_shop_theme.dart';
 import 'package:eveta/ui/shop/eveta_category_chip.dart';
-import 'package:eveta/ui/shop/eveta_product_card_compact.dart';
+import 'package:eveta/ui/shop/premium/eveta_new_arrival_card.dart';
 import 'package:eveta/ui/shop/eveta_search_bar.dart';
 import 'package:eveta/ui/shop/eveta_section_header.dart';
 import 'package:eveta/ui/shop/sticky_category_header.dart';
@@ -366,7 +366,7 @@ class CategoriesScreenState extends State<CategoriesScreen> {
           onAction: () => _openCategoryAll(category),
         ),
         SizedBox(
-          height: 272,
+          height: EvetaNewArrivalCard.gridMainAxisExtent + 22,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: EvetaShopDimens.spaceLg),
@@ -386,9 +386,11 @@ class CategoriesScreenState extends State<CategoriesScreen> {
               final p = products[index];
               return Padding(
                 padding: const EdgeInsets.only(right: EvetaShopDimens.spaceMd),
-                child: EvetaProductCardCompact(
-                  width: 156,
+                child: EvetaNewArrivalCard(
+                  width: 158,
                   product: p,
+                  showNewBadge: false,
+                  adaptProductImageFraming: true,
                   onTap: widget.onProductTap != null ? () => widget.onProductTap!(p['id'].toString()) : null,
                 ),
               );

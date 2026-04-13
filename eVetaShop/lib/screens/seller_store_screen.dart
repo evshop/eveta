@@ -1,12 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:eveta/common_widget/bottom_nav_bar_widget.dart';
-import 'package:eveta/common_widget/grid_tiles_products.dart';
 import 'package:eveta/common_widget/eveta_cached_image.dart';
+import 'package:eveta/ui/shop/premium/eveta_new_arrival_card.dart';
 import 'package:eveta/utils/cloudinary_image_url.dart';
 import 'package:eveta/utils/supabase_service.dart';
 import 'package:eveta/screens/product_detail_screen.dart';
 import 'package:eveta/screens/search_screen.dart';
+
+SystemUiOverlayStyle _storeUiOverlay(ColorScheme scheme) {
+  final isDark = scheme.brightness == Brightness.dark;
+  return SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+    statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+    systemNavigationBarColor: scheme.surface,
+    systemNavigationBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+  );
+}
 
 class SellerStoreScreen extends StatefulWidget {
   const SellerStoreScreen({super.key, required this.sellerId});
@@ -23,35 +34,26 @@ class _SellerStoreScreenState extends State<SellerStoreScreen> {
   String _query = '';
   String? _selectedProductId;
 
-  /// Iconos oscuros sobre fondo claro (la barra del sistema ya no queda “blanco sobre blanco”).
-  static const SystemUiOverlayStyle _storeStatusStyle = SystemUiOverlayStyle(
-    statusBarColor: Color(0xE6F2F3F5),
-    statusBarIconBrightness: Brightness.dark,
-    statusBarBrightness: Brightness.light,
-    systemNavigationBarColor: Color(0xFFF5F6F7),
-    systemNavigationBarIconBrightness: Brightness.dark,
-  );
-
-  static const SystemUiOverlayStyle _shellStatusStyle = SystemUiOverlayStyle(
-    statusBarColor: Color(0xFF09CB6B),
-    statusBarIconBrightness: Brightness.light,
-    statusBarBrightness: Brightness.dark,
-    systemNavigationBarColor: Color(0xFFFFFFFF),
-    systemNavigationBarIconBrightness: Brightness.dark,
-  );
-
   @override
   void initState() {
     super.initState();
     _storeFuture = _load();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      SystemChrome.setSystemUIOverlayStyle(_storeStatusStyle);
+      if (!mounted) return;
+      SystemChrome.setSystemUIOverlayStyle(_storeUiOverlay(Theme.of(context).colorScheme));
     });
   }
 
   @override
   void dispose() {
-    SystemChrome.setSystemUIOverlayStyle(_shellStatusStyle);
+    final plat = WidgetsBinding.instance.platformDispatcher.platformBrightness;
+    final isDark = plat == Brightness.dark;
+    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+      statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+      statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+      systemNavigationBarColor: isDark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      systemNavigationBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+    ));
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -88,13 +90,15 @@ class _SellerStoreScreenState extends State<SellerStoreScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final screenW = MediaQuery.of(context).size.width;
     final scale = screenW / 375;
+    final gridCellW = (screenW - 12 * scale * 2 - 10) / 2;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: _storeStatusStyle,
+      value: _storeUiOverlay(scheme),
       child: Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: scheme.surface,
         bottomNavigationBar: BottomNavBarWidget(
           currentIndex: 0,
           useCartFlyTargetKey: false,
@@ -103,16 +107,21 @@ class _SellerStoreScreenState extends State<SellerStoreScreen> {
           },
         ),
         body: SafeArea(
-        child: FutureBuilder<_StoreScreenData>(
-          future: _storeFuture,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            final data = snapshot.data;
-            if (data == null || data.shop == null) {
-              return const Center(child: Text('No se pudo cargar la tienda.'));
-            }
+          child: FutureBuilder<_StoreScreenData>(
+            future: _storeFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return Center(child: CircularProgressIndicator(color: scheme.primary));
+              }
+              final data = snapshot.data;
+              if (data == null || data.shop == null) {
+                return Center(
+                  child: Text(
+                    'No se pudo cargar la tienda.',
+                    style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 15),
+                  ),
+                );
+              }
 
             final shop = data.shop!;
             final shopName = shop['shop_name']?.toString().trim().isNotEmpty == true
@@ -127,10 +136,11 @@ class _SellerStoreScreenState extends State<SellerStoreScreen> {
               clipBehavior: Clip.none,
               children: [
                 RefreshIndicator(
+                  color: scheme.primary,
                   onRefresh: _refreshStore,
                   child: CustomScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  slivers: [
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    slivers: [
                     SliverToBoxAdapter(
                       child: _StoreScrollHeader(
                         bannerUrl: bannerUrl,
@@ -150,46 +160,26 @@ class _SellerStoreScreenState extends State<SellerStoreScreen> {
                                   _query.trim().isEmpty
                                       ? 'Aún no hay productos en esta tienda'
                                       : 'No hay resultados en esta tienda',
-                                  style: TextStyle(color: Colors.grey.shade700, fontSize: 14 * scale),
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 14 * scale),
                                 ),
                               ),
                             )
                           : SliverGrid(
-                              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                                 crossAxisCount: 2,
                                 crossAxisSpacing: 10,
                                 mainAxisSpacing: 10,
-                                childAspectRatio: 0.65,
+                                mainAxisExtent: EvetaNewArrivalCard.gridMainAxisExtent,
                               ),
                               delegate: SliverChildBuilderDelegate(
                                 (context, index) {
                                   final p = filteredProducts[index];
-                                  final images = p['images'];
-                                  String imageUrl = 'https://via.placeholder.com/150';
-                                  if (images != null) {
-                                    if (images is List && images.isNotEmpty) {
-                                      imageUrl = images.first.toString();
-                                    } else if (images is String && images.toString().isNotEmpty) {
-                                      imageUrl = images.toString();
-                                    }
-                                  }
-
-                                  final price = p['price']?.toString();
-                                  final originalPrice = p['original_price']?.toString();
                                   final productId = p['id'].toString();
-
-                                  return GridTilesProducts(
-                                    name: p['name']?.toString() ?? 'Sin nombre',
-                                    imageUrl: imageUrl,
-                                    slug: productId,
-                                    price: price,
-                                    originalPrice: originalPrice,
-                                    discount: null,
-                                    isBestSeller: p['is_featured'] == true,
-                                    stock: p['stock'] ?? 1,
-                                    rating: (p['rating'] ?? 0).toDouble(),
-                                    reviewCount: p['review_count'] ?? 0,
-                                    isTwoLineMode: true,
+                                  return EvetaNewArrivalCard(
+                                    width: gridCellW,
+                                    product: p,
+                                    showNewBadge: false,
                                     onTap: () => _showProductDetail(productId),
                                   );
                                 },
@@ -199,7 +189,7 @@ class _SellerStoreScreenState extends State<SellerStoreScreen> {
                     ),
                     SliverToBoxAdapter(child: SizedBox(height: 24 * scale)),
                   ],
-                ),
+                  ),
                 ),
                 Positioned(
                   left: 0,
@@ -237,8 +227,8 @@ class _SellerStoreScreenState extends State<SellerStoreScreen> {
                     top: 0,
                     bottom: 0,
                     child: Container(
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerHighest,
                         borderRadius: BorderRadius.zero,
                       ),
                       child: ClipRRect(
@@ -262,9 +252,9 @@ class _SellerStoreScreenState extends State<SellerStoreScreen> {
                 ],
               ],
             );
-          },
+            },
+          ),
         ),
-      ),
       ),
     );
   }
@@ -316,16 +306,17 @@ class _StoreSearchField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       height: 34 * scale,
       padding: const EdgeInsets.all(1.5),
       decoration: BoxDecoration(
-        color: const Color(0xFF09CB6B),
+        color: scheme.primary,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: scheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(999),
         ),
         child: TextField(
@@ -335,16 +326,16 @@ class _StoreSearchField extends StatelessWidget {
           textAlignVertical: TextAlignVertical.center,
           style: TextStyle(
             fontSize: 13.5 * scale,
-            color: const Color(0xFF1A1A1A),
+            color: scheme.onSurface,
             fontWeight: FontWeight.w500,
           ),
           decoration: InputDecoration(
             hintText: 'Buscar en esta tienda',
-            hintStyle: TextStyle(color: Colors.grey.shade600, fontSize: 13 * scale),
+            hintStyle: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13 * scale),
             prefixIcon: Align(
               widthFactor: 1,
               heightFactor: 1,
-              child: Icon(Icons.search, color: Colors.grey.shade700, size: 16),
+              child: Icon(Icons.search, color: scheme.onSurfaceVariant, size: 16),
             ),
             prefixIconConstraints: BoxConstraints(
               minWidth: 34 * scale,
@@ -378,8 +369,10 @@ class _StoreScrollHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final bannerH = 196.0 * scale;
     final headerH = 304.0 * scale;
+    final surface = scheme.surface;
 
     return SizedBox(
       height: headerH,
@@ -398,14 +391,14 @@ class _StoreScrollHeader extends StatelessWidget {
                     fit: BoxFit.cover,
                     memCacheWidth: 1280,
                   )
-                : ColoredBox(color: Colors.grey.shade200),
+                : ColoredBox(color: scheme.surfaceContainerHigh),
           ),
           Positioned(
             left: 0,
             right: 0,
             top: bannerH,
             bottom: 0,
-            child: const ColoredBox(color: Color(0xFFFFFFFF)),
+            child: ColoredBox(color: surface),
           ),
           Positioned(
             left: 0,
@@ -421,9 +414,9 @@ class _StoreScrollHeader extends StatelessWidget {
                     colors: [
                       Colors.transparent,
                       Colors.transparent,
-                      Colors.white.withValues(alpha: 0.22),
-                      Colors.white.withValues(alpha: 0.72),
-                      const Color(0xFFFFFFFF),
+                      surface.withValues(alpha: 0.12),
+                      surface.withValues(alpha: 0.55),
+                      surface,
                     ],
                     stops: const [0.0, 0.38, 0.62, 0.88, 1.0],
                   ),
@@ -445,8 +438,8 @@ class _StoreScrollHeader extends StatelessWidget {
                     padding: const EdgeInsets.all(2),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.white,
-                      border: Border.all(color: const Color(0xFF09CB6B), width: 2),
+                      color: scheme.surfaceContainerHighest,
+                      border: Border.all(color: scheme.primary, width: 2),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withValues(alpha: 0.12),
@@ -469,11 +462,11 @@ class _StoreScrollHeader extends StatelessWidget {
                     width: 62 * scale,
                     height: 62 * scale,
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: scheme.surfaceContainerHighest,
                       shape: BoxShape.circle,
-                      border: Border.all(color: const Color(0xFF09CB6B), width: 2),
+                      border: Border.all(color: scheme.primary, width: 2),
                     ),
-                    child: const Icon(Icons.storefront_outlined, color: Colors.grey),
+                    child: Icon(Icons.storefront_outlined, color: scheme.onSurfaceVariant),
                   ),
                 SizedBox(width: 12 * scale),
                 Expanded(
@@ -486,7 +479,7 @@ class _StoreScrollHeader extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 18 * scale,
                           fontWeight: FontWeight.w700,
-                          color: const Color(0xFF1A1A1A),
+                          color: scheme.onSurface,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -499,7 +492,7 @@ class _StoreScrollHeader extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 12 * scale,
-                            color: Colors.grey.shade700,
+                            color: scheme.onSurfaceVariant,
                             fontWeight: FontWeight.w500,
                           ),
                         ),

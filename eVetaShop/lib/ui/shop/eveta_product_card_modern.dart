@@ -117,68 +117,55 @@ class _EvetaProductCardModernState extends State<EvetaProductCardModern> {
     final imgHeight = widget.compact ? 104.0 : 138.0;
 
     final isLight = scheme.brightness == Brightness.light;
+    final r = EvetaShopDimens.radiusLg;
+    final rr = BorderRadius.circular(r);
+    final borderColor = scheme.outline.withValues(alpha: isLight ? 0.2 : 0.32);
 
     return Material(
       color: scheme.surfaceBright,
-      elevation: 0,
-      borderRadius: BorderRadius.circular(EvetaShopDimens.radiusLg),
+      elevation: isLight ? 1.5 : 4,
+      shadowColor: Colors.black.withValues(alpha: isLight ? 0.06 : 0.32),
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: rr,
+        side: BorderSide(color: borderColor, width: 1),
+      ),
       clipBehavior: Clip.antiAlias,
-      shadowColor: Colors.transparent,
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(EvetaShopDimens.radiusLg),
-          border: Border.all(color: scheme.outline.withValues(alpha: isLight ? 0.2 : 0.32)),
-          boxShadow: isLight
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : EvetaShopDimens.cardShadowDark(context),
-        ),
-        child: Material(
-          color: scheme.surfaceBright,
-          borderRadius: BorderRadius.circular(EvetaShopDimens.radiusLg),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: widget.onTap,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(EvetaShopDimens.radiusLg)),
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      SizedBox(
-                        key: _imageKey,
-                        height: imgHeight,
-                        width: double.infinity,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: scheme.surfaceContainerHigh,
-                            border: Border(
-                              bottom: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.85)),
-                            ),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-                            child: url.isNotEmpty
-                                ? EvetaCachedImage(
-                                    imageUrl: url,
-                                    delivery: EvetaImageDelivery.card,
-                                    fit: BoxFit.contain,
-                                    memCacheWidth: 400,
-                                  )
-                                : Center(
-                                    child: Icon(Icons.image_outlined, color: scheme.onSurfaceVariant, size: 40),
-                                  ),
-                          ),
+        child: InkWell(
+          onTap: widget.onTap,
+          borderRadius: rr,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                key: _imageKey,
+                height: imgHeight,
+                width: double.infinity,
+                child: Stack(
+                  clipBehavior: Clip.hardEdge,
+                  children: [
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerHigh,
+                        border: Border(
+                          bottom: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.85)),
                         ),
                       ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                        child: url.isNotEmpty
+                            ? EvetaCachedImage(
+                                imageUrl: url,
+                                delivery: EvetaImageDelivery.card,
+                                fit: BoxFit.contain,
+                                memCacheWidth: 400,
+                              )
+                            : Center(
+                                child: Icon(Icons.image_outlined, color: scheme.onSurfaceVariant, size: 40),
+                              ),
+                      ),
+                    ),
                       if (featured)
                         Positioned(
                           left: 8,
@@ -232,10 +219,10 @@ class _EvetaProductCardModernState extends State<EvetaProductCardModern> {
                           ),
                         ),
                       ),
-                    ],
-                  ),
+                  ],
                 ),
-                Padding(
+              ),
+              Padding(
                   padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -285,6 +272,7 @@ class _EvetaProductCardModernState extends State<EvetaProductCardModern> {
                           Material(
                             color: scheme.primary,
                             borderRadius: BorderRadius.circular(EvetaShopDimens.radiusMd),
+                            clipBehavior: Clip.antiAlias,
                             child: InkWell(
                               onTap: stock > 0 ? () => _addToCart(context) : null,
                               borderRadius: BorderRadius.circular(EvetaShopDimens.radiusMd),
@@ -306,8 +294,6 @@ class _EvetaProductCardModernState extends State<EvetaProductCardModern> {
               ],
             ),
           ),
-        ),
-      ),
     );
   }
 }

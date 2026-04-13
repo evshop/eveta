@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:eveta_delivery/screens/delivery_login_screen.dart';
 import 'package:eveta_delivery/screens/delivery_shell_screen.dart';
+import 'package:eveta_delivery/theme/delivery_app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,12 +22,9 @@ class EvetaDeliveryApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'eVeta Delivery',
+      title: 'eDelivery',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF09CB6B)),
-        useMaterial3: true,
-      ),
+      theme: deliveryAppTheme(),
       home: const _AuthGate(),
     );
   }

@@ -236,7 +236,7 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
   }
 
   /// Espacio inferior del listado para no quedar tapado por el panel fijo (cupón + resumen + CTA + entrega).
-  static const double _checkoutPanelScrollPadding = 380;
+  static const double _checkoutPanelScrollPadding = 330;
 
   /// [MyHomePage] usa `extendBody: true`; el cuerpo llega detrás de la barra — inset igual a [BottomNavBarWidget].
   double _bottomBarInset(BuildContext context) {
@@ -387,25 +387,30 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
     final hasDropoff = _distanceKm != null;
     final sheetBg = scheme.surfaceContainerHighest;
 
+    final topR = BorderRadius.vertical(top: Radius.circular(EvetaShopDimens.radiusLg + 4));
+    final navH = _bottomBarInset(context);
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
+    // Unos px menos de reserva: el bloque baja y alinea mejor con la línea de la barra inferior.
+    final bottomSpacer = (navH - 14).clamp(safeBottom, navH);
     return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(EvetaShopDimens.radiusXl + 8)),
-      child: Material(
-        color: sheetBg,
-        elevation: 16,
-        shadowColor: Colors.black.withValues(alpha: isDark ? 0.5 : 0.12),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: sheetBg,
-            border: Border(
-              top: BorderSide(color: scheme.outline.withValues(alpha: isDark ? 0.55 : 0.4)),
-            ),
+      borderRadius: topR,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: sheetBg,
+          border: Border(
+            top: BorderSide(color: scheme.outline.withValues(alpha: isDark ? 0.5 : 0.38)),
           ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(EvetaShopDimens.spaceLg, 10, EvetaShopDimens.spaceLg, EvetaShopDimens.spaceLg),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(EvetaShopDimens.spaceLg, 6, EvetaShopDimens.spaceLg, 10),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
                 Center(
                   child: Container(
                     width: 40,
@@ -416,7 +421,7 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: EvetaShopDimens.spaceMd),
+                const SizedBox(height: EvetaShopDimens.spaceSm),
                 Text(
                   'Resumen del pedido',
                   style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.2),
@@ -508,9 +513,9 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: EvetaShopDimens.spaceLg),
+                const SizedBox(height: EvetaShopDimens.spaceMd),
                 SizedBox(
-                  height: 52,
+                  height: 50,
                   width: double.infinity,
                   child: FilledButton(
                     onPressed: _checkoutBusy ? null : _onCheckout,
@@ -533,9 +538,11 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
                           ),
                   ),
                 ),
-              ],
+                ],
+              ),
             ),
-          ),
+            SizedBox(height: bottomSpacer),
+          ],
         ),
       ),
     );
@@ -643,7 +650,7 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
                   Positioned(
                     left: 0,
                     right: 0,
-                    bottom: _bottomBarInset(context),
+                    bottom: 0,
                     child: _buildCheckoutPanel(context),
                   ),
               ],

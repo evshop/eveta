@@ -1,6 +1,8 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 
+import 'package:eveta/search/product_search_models.dart';
+
 class SupabaseService {
   static final SupabaseClient client = Supabase.instance.client;
 
@@ -30,10 +32,30 @@ class SupabaseService {
           .select()
           .eq('is_active', true)
           .eq('category_id', categoryId)
-          .limit(20);
+          .order('created_at', ascending: false)
+          .limit(100);
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
       debugPrint('Error al obtener productos por categoría: $e');
+      return [];
+    }
+  }
+
+  /// Productos cuya `category_id` está en [categoryIds] (p. ej. padre + subcategorías).
+  static Future<List<Map<String, dynamic>>> getProductsByCategoryIds(List<String> categoryIds) async {
+    final ids = categoryIds.map((e) => e.trim()).where((e) => e.isNotEmpty).toSet().toList();
+    if (ids.isEmpty) return [];
+    try {
+      final response = await client
+          .from('products')
+          .select()
+          .eq('is_active', true)
+          .inFilter('category_id', ids)
+          .order('created_at', ascending: false)
+          .limit(200);
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error al obtener productos por categorías: $e');
       return [];
     }
   }
@@ -144,6 +166,144 @@ class SupabaseService {
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
       debugPrint('Error en búsqueda: $e');
+      return [];
+    }
+  }
+
+  /// Precio máximo entre productos activos (para tope del slider de búsqueda).
+  static Future<double?> getMaxActiveProductPrice() async {
+    try {
+      final row = await client
+          .from('products')
+          .select('price')
+          .eq('is_active', true)
+          .order('price', ascending: false)
+          .limit(1)
+          .maybeSingle();
+      if (row == null) return null;
+      final p = row['price'];
+      if (p is num) return p.toDouble();
+      return double.tryParse(p?.toString() ?? '');
+    } catch (e) {
+      debugPrint('Error al obtener precio máximo: $e');
+      return null;
+    }
+  }
+
+  /// Productos que comparten al menos un tag con [tags] (Postgres array overlap).
+  static Future<List<Map<String, dynamic>>> getProductsOverlappingTags(
+    List<String> tags, {
+    required String excludeProductId,
+    int limit = 40,
+  }) async {
+    final clean = tags.map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    if (clean.isEmpty) return [];
+    try {
+      final response = await client
+          .from('products')
+          .select(
+            'id, name, price, original_price, images, stock, rating, review_count, is_featured, tags, categories(name)',
+          )
+          .eq('is_active', true)
+          .neq('id', excludeProductId)
+          .overlaps('tags', clean)
+          .limit(limit);
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('getProductsOverlappingTags: $e — reintento con un tag');
+      try {
+        final t = _escapeIlike(clean.first);
+        final response = await client
+            .from('products')
+            .select(
+              'id, name, price, original_price, images, stock, rating, review_count, is_featured, tags, categories(name)',
+            )
+            .eq('is_active', true)
+            .neq('id', excludeProductId)
+            .or('tags.cs.{$t}')
+            .limit(limit);
+        return List<Map<String, dynamic>>.from(response);
+      } catch (e2) {
+        debugPrint('getProductsOverlappingTags fallback: $e2');
+        return [];
+      }
+    }
+  }
+
+  /// Palabra suelta en el nombre (para relacionados por similitud).
+  static Future<List<Map<String, dynamic>>> searchProductsByNameWord(
+    String word, {
+    required String excludeProductId,
+    int limit = 15,
+  }) async {
+    final w = word.trim();
+    if (w.length < 2) return [];
+    try {
+      final q = _escapeIlike(w);
+      final response = await client
+          .from('products')
+          .select(
+            'id, name, price, original_price, images, stock, rating, review_count, is_featured, tags, categories(name)',
+          )
+          .eq('is_active', true)
+          .neq('id', excludeProductId)
+          .ilike('name', '%$q%')
+          .limit(limit);
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('searchProductsByNameWord: $e');
+      return [];
+    }
+  }
+
+  /// Búsqueda con filtros (texto opcional si [query] tiene ≥2 caracteres).
+  static Future<List<Map<String, dynamic>>> searchProductsAdvanced({
+    required String query,
+    List<String>? categoryIds,
+    double minPrice = 0,
+    required double maxPrice,
+    required double priceFilterCeiling,
+    ProductSearchSort sort = ProductSearchSort.recent,
+  }) async {
+    try {
+      dynamic qb = client
+          .from('products')
+          .select('id, name, price, stock, images, category_id, created_at, categories(name)')
+          .eq('is_active', true);
+
+      final trimmed = query.trim();
+      if (trimmed.length >= 2) {
+        final q = _escapeIlike(trimmed);
+        qb = qb.or('name.ilike.%$q%,tags.cs.{$trimmed}');
+      }
+
+      if (categoryIds != null && categoryIds.isNotEmpty) {
+        qb = qb.inFilter('category_id', categoryIds);
+      }
+      if (minPrice > 0) {
+        qb = qb.gte('price', minPrice);
+      }
+      if (maxPrice < priceFilterCeiling - 0.01) {
+        qb = qb.lte('price', maxPrice);
+      }
+
+      switch (sort) {
+        case ProductSearchSort.recent:
+          qb = qb.order('created_at', ascending: false);
+          break;
+        case ProductSearchSort.priceAsc:
+          qb = qb.order('price', ascending: true);
+          break;
+        case ProductSearchSort.priceDesc:
+          qb = qb.order('price', ascending: false);
+          break;
+      }
+
+      qb = qb.limit(100);
+      final response = await qb;
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('Error en búsqueda avanzada: $e');
       return [];
     }
   }

@@ -3,6 +3,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../services/cloudinary_service.dart';
+import '../widgets/portal/portal_haptics.dart';
+import '../widgets/portal/portal_section_header.dart';
+import '../widgets/portal/portal_tokens.dart';
+import '../widgets/product_form_images_grid.dart';
 
 class ProductFormScreen extends StatefulWidget {
   final Map<String, dynamic>? product; // If null, it's a new product. If provided, we're editing.
@@ -43,6 +47,9 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   // Igual que el panel admin (sin "manojo").
   final List<String> _units = ['unidad', 'kg', 'g', 'litro', 'ml'];
 
+  /// Espacio extra al hacer scroll al foco (AppBar + teclado / bottom sheet).
+  static const EdgeInsets _fieldScrollPadding = EdgeInsets.fromLTRB(0, 100, 0, 200);
+
   @override
   void initState() {
     super.initState();
@@ -57,8 +64,9 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
       _descController.text = p['description'] ?? '';
       _priceController.text = (p['price'] ?? '').toString();
       _stockController.text = (p['stock'] ?? '').toString();
-      _unit = p['unit'] ?? 'unidad';
-      _categoryId = p['category_id'];
+      _unit = (p['unit'] ?? 'unidad').toString();
+      final cid = p['category_id']?.toString();
+      _categoryId = (cid == null || cid.isEmpty) ? null : cid;
       _isActive = p['is_active'] ?? true;
       _isFeatured = p['is_featured'] ?? false;
       
@@ -87,29 +95,45 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
           .from('categories')
           .select('id, name, parent_id, spec_template_enabled, spec_field_labels, spec_group_title')
           .order('name');
+
+      // Un solo setState: evita un frame intermedio sin padre/subcategoría resueltos.
       setState(() {
         _categories = data;
+
+        if (_categoryId != null && _categoryId!.isNotEmpty) {
+          final selected = data.firstWhere(
+            (c) => c['id']?.toString() == _categoryId,
+            orElse: () => <String, dynamic>{},
+          );
+          if (selected.isNotEmpty) {
+            final pid = selected['parent_id']?.toString();
+            if (pid != null && pid.isNotEmpty) {
+              _parentCategoryId = pid;
+            } else {
+              _parentCategoryId = selected['id']?.toString();
+            }
+          }
+        }
       });
 
-      // Si estás editando, ya tenemos category_id; reconstruye specs.
-      if (_categoryId != null) {
-        // Detecta el parent para mostrar el 2do dropdown.
-        final selected = data.firstWhere(
-          (c) => c['id']?.toString() == _categoryId,
-          orElse: () => <String, dynamic>{},
-        );
-        final pid = selected['parent_id']?.toString();
-        _parentCategoryId = pid != null && pid.isNotEmpty ? pid : null;
-        _rebuildSpecControllersForCategory(_categoryId);
+      if (_categoryId != null && _categoryId!.isNotEmpty) {
+        _rebuildSpecControllersForCategory(_resolvedCategoryId);
       }
     } catch (e) {
       debugPrint('Error loading categories: $e');
     }
   }
 
+  bool _isRootCategoryRow(Map<dynamic, dynamic> c) {
+    final p = c['parent_id'];
+    if (p == null) return true;
+    final s = p.toString();
+    return s.isEmpty;
+  }
+
   List<Map<String, dynamic>> _parentCategories() {
     return _categories
-        .where((c) => c['parent_id'] == null || (c['parent_id']?.toString().isEmpty ?? true))
+        .where((c) => _isRootCategoryRow(c as Map))
         .map((c) => Map<String, dynamic>.from(c as Map))
         .toList();
   }
@@ -119,6 +143,36 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
         .where((c) => c['parent_id']?.toString() == parentId)
         .map((c) => Map<String, dynamic>.from(c as Map))
         .toList();
+  }
+
+  /// Categoría guardada en DB: subcategoría si se eligió; si no, la padre (válido aunque existan subs).
+  String? get _resolvedCategoryId {
+    final pid = _parentCategoryId;
+    if (pid == null) return _categoryId;
+    final subs = _subCategoriesForParent(pid);
+    if (subs.isEmpty) return pid;
+    return _categoryId ?? pid;
+  }
+
+  /// Valor válido para el dropdown de subcategoría (evita `value` que no está en `items`).
+  String? get _subCategoryDropdownValue {
+    final pid = _parentCategoryId;
+    if (pid == null || _categoryId == null) return null;
+    final ids = _subCategoriesForParent(pid).map((c) => c['id']?.toString()).whereType<String>().toSet();
+    return ids.contains(_categoryId) ? _categoryId : null;
+  }
+
+  InputDecoration _inputDec(
+    BuildContext context,
+    String label, {
+    String? prefixText,
+    bool alignLabelWithHint = false,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      prefixText: prefixText,
+      alignLabelWithHint: alignLabelWithHint,
+    ).applyDefaults(Theme.of(context).inputDecorationTheme);
   }
 
   Map<String, String> _parseSpecsJson(dynamic raw) {
@@ -208,7 +262,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
       showDragHandle: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
       builder: (sheetCtx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -304,8 +358,9 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
 
   Future<void> _saveProduct() async {
     if (!_formKey.currentState!.validate()) return;
-    
-    if (_categoryId == null) {
+
+    final categoryId = _resolvedCategoryId;
+    if (categoryId == null || categoryId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Por favor, selecciona una categoría.')),
       );
@@ -334,7 +389,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
 
       final productData = {
         'seller_id': user.id,
-        'category_id': _categoryId,
+        'category_id': categoryId,
         'name': _nameController.text.trim(),
         'description': _descController.text.trim(),
         'price': double.parse(_priceController.text),
@@ -391,273 +446,75 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.product != null;
+    final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(isEditing ? 'Editar producto' : 'Subir producto', style: const TextStyle(color: Colors.black)),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black),
+        title: Text(isEditing ? 'Editar producto' : 'Subir producto'),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // --- IMÁGENES ---
-              const Text('Imágenes del producto (Hasta 10)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              const SizedBox(height: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (_images.isEmpty)
-                    const Text('Aún no agregaste fotos.')
-                  else
-                    SizedBox(
-                      height: 112,
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          // Queremos ~5 visibles en la hilera, con 10px de separación.
-                          final gap = 10.0;
-                          final w = constraints.maxWidth;
-                          final itemW = ((w - gap * 4) / 5).clamp(56.0, 96.0);
+      // El Scaffold aplica el inset del teclado al cuerpo; evita Padding(viewInsets) aquí,
+      // que reconstruía todo el formulario (imágenes, reorder, etc.) en cada frame del teclado.
+      resizeToAvoidBottomInset: true,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(PortalTokens.space2),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const PortalSectionHeader(
+                  title: 'Fotos del producto',
+                  subtitle: 'Hasta 10 imágenes · arrastra para reordenar · marca la portada',
+                ),
+                RepaintBoundary(
+                  child: ProductFormImagesGrid(
+                    images: _images,
+                    coverUrl: _coverUrl,
+                    isUploading: _isUploading,
+                    onReorder: _reorderImage,
+                    onRemove: _removeImage,
+                    onMakeCover: _makeCover,
+                    onAddTap: _pickAndUploadImage,
+                  ),
+                ),
+                const SizedBox(height: PortalTokens.space3),
 
-                          return ReorderableListView(
-                            scrollDirection: Axis.horizontal,
-                            physics: const ClampingScrollPhysics(),
-                            onReorder: _reorderImage,
-                            buildDefaultDragHandles: false,
-                            padding: const EdgeInsets.symmetric(vertical: 6),
-                            // Sin esto, Flutter envuelve el preview al arrastrar en un Material cuadrado (se ve blanco en las esquinas).
-                            proxyDecorator: (Widget child, int index, Animation<double> animation) {
-                              return AnimatedBuilder(
-                                animation: animation,
-                                builder: (context, _) {
-                                  final t = Curves.easeInOut.transform(animation.value);
-                                  return Transform.scale(
-                                    scale: 1.0 + 0.02 * t,
-                                    child: Material(
-                                      color: Colors.transparent,
-                                      shadowColor: Colors.black26,
-                                      elevation: 6 * t,
-                                      borderRadius: BorderRadius.circular(10),
-                                      clipBehavior: Clip.antiAlias,
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(10),
-                                        child: child,
-                                      ),
-                                    ),
-                                  );
-                                },
-                              );
-                            },
-                            children: [
-                              for (int idx = 0; idx < _images.length; idx++)
-                                Padding(
-                                  key: ValueKey(_images[idx]),
-                                  padding: EdgeInsets.only(right: idx == _images.length - 1 ? 0 : gap),
-                                  child: SizedBox(
-                                    width: itemW,
-                                    height: 100,
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(10),
-                                      child: Stack(
-                                        clipBehavior: Clip.hardEdge,
-                                        children: [
-                                          Positioned.fill(
-                                            child: Container(
-                                              decoration: BoxDecoration(
-                                                borderRadius: BorderRadius.circular(10),
-                                                border: Border.all(
-                                                  color: (_images[idx] == _coverUrl)
-                                                      ? const Color(0xFF09CB6B)
-                                                      : Colors.grey.shade400,
-                                                  width: (_images[idx] == _coverUrl) ? 2.5 : 1,
-                                                ),
-                                                color: Colors.grey.shade100,
-                                              ),
-                                              padding: const EdgeInsets.all(2),
-                                              child: ClipRRect(
-                                                borderRadius: BorderRadius.circular(7),
-                                                child: Image.network(
-                                                  _images[idx],
-                                                  width: double.infinity,
-                                                  height: double.infinity,
-                                                  fit: BoxFit.cover,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                          if (_images[idx] == _coverUrl)
-                                            Positioned(
-                                              left: 2,
-                                              bottom: 2,
-                                              right: 2,
-                                              child: Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.black.withValues(alpha: 0.7),
-                                                  borderRadius: BorderRadius.circular(4),
-                                                ),
-                                                child: const Row(
-                                                  children: [
-                                                    Icon(Icons.star, size: 12, color: Colors.amber),
-                                                    SizedBox(width: 3),
-                                                    Expanded(
-                                                      child: Text(
-                                                        'Se verá en el producto',
-                                                        maxLines: 2,
-                                                        overflow: TextOverflow.ellipsis,
-                                                        style: TextStyle(
-                                                          color: Colors.white,
-                                                          fontSize: 8,
-                                                          fontWeight: FontWeight.w600,
-                                                          height: 1.05,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            )
-                                          else
-                                            Positioned(
-                                              left: 2,
-                                              bottom: 2,
-                                              child: Material(
-                                                color: Colors.transparent,
-                                                child: InkWell(
-                                                  borderRadius: BorderRadius.circular(4),
-                                                  onTap: () => _makeCover(idx),
-                                                  child: Tooltip(
-                                                    message: 'Esta será la imagen en la tarjeta (se guarda como primera)',
-                                                    child: Container(
-                                                      padding: const EdgeInsets.all(3),
-                                                      decoration: BoxDecoration(
-                                                        color: Colors.black.withValues(alpha: 0.55),
-                                                        borderRadius: BorderRadius.circular(4),
-                                                      ),
-                                                      child: const Icon(
-                                                        Icons.star_outline,
-                                                        size: 16,
-                                                        color: Colors.white,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          Positioned(
-                                            right: 2,
-                                            top: 2,
-                                            child: Material(
-                                              color: Colors.transparent,
-                                              child: IconButton(
-                                                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                                                padding: EdgeInsets.zero,
-                                                tooltip: 'Quitar foto',
-                                                onPressed: _isUploading ? null : () => _removeImage(idx),
-                                                icon: Container(
-                                                  padding: const EdgeInsets.all(2),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.black.withValues(alpha: 0.45),
-                                                    shape: BoxShape.circle,
-                                                  ),
-                                                  child: const Icon(Icons.close, size: 14, color: Colors.white),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                          // Handle para reordenar (así el swipe horizontal vuelve a hacer scroll).
-                                          Positioned(
-                                            right: 4,
-                                            bottom: 4,
-                                            child: ReorderableDragStartListener(
-                                              index: idx,
-                                              child: Container(
-                                                padding: const EdgeInsets.all(3),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.black.withValues(alpha: 0.45),
-                                                  borderRadius: BorderRadius.circular(6),
-                                                ),
-                                                child: const Icon(
-                                                  Icons.drag_handle,
-                                                  size: 16,
-                                                  color: Colors.white,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                  if (_images.length < 10) ...[
-                    const SizedBox(height: 12),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: GestureDetector(
-                        onTap: _isUploading ? null : _pickAndUploadImage,
-                        child: Container(
-                          width: 80,
-                          height: 80,
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade100,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.grey.shade300, style: BorderStyle.solid),
-                          ),
-                          child: _isUploading
-                              ? const Center(
-                                  child: SizedBox(
-                                    width: 24,
-                                    height: 24,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Color(0xFF09CB6B),
-                                    ),
-                                  ),
-                                )
-                              : const Icon(Icons.add_photo_alternate, color: Colors.grey, size: 32),
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              // --- CAMPOS DE TEXTO ---
-              TextFormField(
+                const PortalSectionHeader(
+                  title: 'Información',
+                  subtitle: 'Nombre y descripción que verán los compradores',
+                ),
+                TextFormField(
                 controller: _nameController,
-                decoration: const InputDecoration(labelText: 'Nombre del producto', border: OutlineInputBorder()),
+                scrollPadding: _fieldScrollPadding,
+                decoration: _inputDec(context, 'Nombre del producto'),
                 validator: (val) => val == null || val.isEmpty ? 'Requerido' : null,
               ),
               const SizedBox(height: 16),
               
               TextFormField(
                 controller: _descController,
-                decoration: const InputDecoration(labelText: 'Descripción', border: OutlineInputBorder()),
+                scrollPadding: _fieldScrollPadding,
+                decoration: _inputDec(context, 'Descripción', alignLabelWithHint: true),
                 keyboardType: TextInputType.multiline,
-                maxLines: 8,
+                maxLines: 6,
                 minLines: 3,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: PortalTokens.space3),
 
+              const PortalSectionHeader(
+                title: 'Precio e inventario',
+                subtitle: 'Unidad de venta y existencias',
+              ),
               Row(
                 children: [
                   Expanded(
                     child: TextFormField(
                       controller: _priceController,
+                      scrollPadding: _fieldScrollPadding,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(labelText: 'Precio (Bs)', border: OutlineInputBorder(), prefixText: 'Bs '),
+                      decoration: _inputDec(context, 'Precio (Bs)', prefixText: 'Bs '),
                       validator: (val) => val == null || val.isEmpty ? 'Requerido' : null,
                     ),
                   ),
@@ -665,29 +522,33 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                   Expanded(
                     child: TextFormField(
                       controller: _stockController,
+                      scrollPadding: _fieldScrollPadding,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Stock', border: OutlineInputBorder()),
+                      decoration: _inputDec(context, 'Stock'),
                       validator: (val) => val == null || val.isEmpty ? 'Requerido' : null,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: PortalTokens.space2),
 
               DropdownButtonFormField<String>(
+                key: ValueKey<String>('unit_$_unit'),
                 initialValue: _unit,
-                decoration: const InputDecoration(labelText: 'Unidad de venta', border: OutlineInputBorder()),
+                decoration: _inputDec(context, 'Unidad de venta'),
                 items: _units.map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
                 onChanged: (val) => setState(() => _unit = val!),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: PortalTokens.space3),
 
+              const PortalSectionHeader(
+                title: 'Categoría',
+                subtitle: 'Clasifica tu producto para que sea fácil de encontrar',
+              ),
               DropdownButtonFormField<String>(
+                key: ValueKey<String?>('parent_$_parentCategoryId'),
                 initialValue: _parentCategoryId,
-                decoration: const InputDecoration(
-                  labelText: 'Categoría',
-                  border: OutlineInputBorder(),
-                ),
+                decoration: _inputDec(context, 'Categoría'),
                 items: _parentCategories().map((c) {
                   final id = c['id']?.toString();
                   return DropdownMenuItem<String>(
@@ -703,7 +564,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                     // Si no tiene subcategorías, usamos la categoría padre como categoría del producto.
                     _categoryId = children.isEmpty ? val : null;
                   });
-                  _rebuildSpecControllersForCategory(_categoryId);
+                  _rebuildSpecControllersForCategory(_resolvedCategoryId);
                 },
                 hint: const Text('Seleccionar categoría'),
               ),
@@ -711,11 +572,9 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
               if (_parentCategoryId != null && _subCategoriesForParent(_parentCategoryId!).isNotEmpty) ...[
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  initialValue: _categoryId,
-                  decoration: const InputDecoration(
-                    labelText: 'Subcategoría',
-                    border: OutlineInputBorder(),
-                  ),
+                  key: ValueKey<String?>('sub_${_parentCategoryId}_$_categoryId'),
+                  initialValue: _subCategoryDropdownValue,
+                  decoration: _inputDec(context, 'Subcategoría'),
                   items: _subCategoriesForParent(_parentCategoryId!)
                       .map((c) => DropdownMenuItem<String>(
                             value: c['id']?.toString(),
@@ -731,83 +590,91 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                 ),
               ],
 
-              const SizedBox(height: 24),
+              const SizedBox(height: PortalTokens.space3),
 
-              // --- SPECS DINAMICAS ---
               if (_currentSpecLabels.isNotEmpty) ...[
-                Text(
-                  _currentSpecGroupTitle.isNotEmpty ? _currentSpecGroupTitle : 'Especificaciones',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                PortalSectionHeader(
+                  title: _currentSpecGroupTitle.isNotEmpty ? _currentSpecGroupTitle : 'Especificaciones',
+                  subtitle: 'Campos sugeridos para esta categoría',
                 ),
-                const SizedBox(height: 12),
                 ..._currentSpecLabels.map((label) {
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: TextField(
                       controller: _specControllers[label],
-                      decoration: InputDecoration(
-                        labelText: label,
-                        border: const OutlineInputBorder(),
-                      ),
+                      scrollPadding: _fieldScrollPadding,
+                      decoration: _inputDec(context, label, alignLabelWithHint: true),
                       keyboardType: TextInputType.multiline,
                       textInputAction: TextInputAction.newline,
                       minLines: 2,
-                      maxLines: 8,
+                      maxLines: 6,
                     ),
                   );
                 }),
-                const SizedBox(height: 8),
+                const SizedBox(height: PortalTokens.space1),
               ],
 
-              // --- HASHTAGS ---
+              const PortalSectionHeader(
+                title: 'Hashtags',
+                subtitle: 'Palabras clave separadas por coma o espacio',
+              ),
               TextField(
                 controller: _tagsController,
-                decoration: const InputDecoration(
-                  labelText: 'Hashtags',
+                scrollPadding: _fieldScrollPadding,
+                decoration: _inputDec(context, 'Hashtags', alignLabelWithHint: true).copyWith(
                   hintText: 'Ej. samsung amoled 5g (separa por coma o espacio)',
-                  border: OutlineInputBorder(),
                 ),
                 keyboardType: TextInputType.multiline,
                 maxLines: 3,
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: PortalTokens.space3),
 
-              // --- SWITCHES ---
+              const PortalSectionHeader(
+                title: 'Visibilidad',
+                subtitle: 'Controla cómo aparece en el marketplace',
+              ),
               SwitchListTile(
                 title: const Text('Producto Activo'),
                 subtitle: const Text('Visible en el mercado'),
-                activeThumbColor: const Color(0xFF09CB6B),
+                activeThumbColor: scheme.primary,
                 value: _isActive,
                 onChanged: (val) => setState(() => _isActive = val),
               ),
               SwitchListTile(
                 title: const Text('Destacado'),
                 subtitle: const Text('Aparece en la sección de destacados'),
-                activeThumbColor: const Color(0xFF09CB6B),
+                activeThumbColor: scheme.primary,
                 value: _isFeatured,
                 onChanged: (val) => setState(() => _isFeatured = val),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: PortalTokens.space3),
 
-              // --- BOTONES ---
               SizedBox(
                 width: double.infinity,
-                height: 50,
+                height: 54,
                 child: ElevatedButton(
-                  onPressed: _isLoading ? null : _saveProduct,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF09CB6B),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: _isLoading 
-                    ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : Text(isEditing ? 'Guardar Cambios' : 'Crear Producto', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  onPressed: _isLoading
+                      ? null
+                      : () {
+                          portalHapticMedium();
+                          _saveProduct();
+                        },
+                  child: _isLoading
+                      ? SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(color: scheme.onPrimary, strokeWidth: 2),
+                        )
+                      : Text(
+                          isEditing ? 'Guardar Cambios' : 'Crear Producto',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
                 ),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: PortalTokens.space3),
             ],
+            ),
           ),
         ),
       ),

@@ -25,8 +25,8 @@ class HorizontalNewArrivalsList extends StatelessWidget {
     if (n == 0) return const SizedBox.shrink();
 
     const gap = EvetaShopDimens.spaceMd;
-    // Altura: imagen 132 + bloque texto/precio (~120) + margen listado.
-    const listHeight = 268.0;
+    // Padding vertical del ListView (4+12) + alto de fila alineado a [EvetaNewArrivalCard.gridMainAxisExtent].
+    final listHeight = EvetaNewArrivalCard.gridMainAxisExtent + 22;
 
     return SizedBox(
       height: listHeight,

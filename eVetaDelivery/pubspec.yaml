@@ -1,5 +1,5 @@
 name: eveta_delivery
-description: "A new Flutter project."
+description: "eDelivery — app para repartidores eVeta."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -34,6 +34,8 @@ dependencies:
   cupertino_icons: ^1.0.8
   supabase_flutter: ^2.8.1
   flutter_dotenv: ^5.2.1
+  flutter_svg: ^2.2.4
+  google_fonts: ^8.0.2
   flutter_map: ^8.2.2
   latlong2: ^0.9.1
 
@@ -52,7 +54,13 @@ flutter:
 
   assets:
     - assets/env/app.env
+    - assets/images/auth_logo_dark.svg
+    - assets/images/auth_logo_light.svg
+    - assets/images/eVeta.svg
 
+# Icono del launcher: reemplaza assets/images/ic_app_icon.png (PNG cuadrado, ideal 1024×1024) y ejecuta:
+#   dart run flutter_launcher_icons
+# Android genera mipmap-*/ic_launcher.png; iOS actualiza ios/Runner/Assets.xcassets/AppIcon.appiconset/
 flutter_launcher_icons:
   android: true
   ios: true

@@ -146,6 +146,20 @@ class CatalogCacheService {
     );
   }
 
+  static Future<List<Map<String, dynamic>>> getProductsByCategoryIds(
+    List<String> categoryIds, {
+    bool forceRefresh = false,
+  }) {
+    final sorted = categoryIds.map((e) => e.trim()).where((e) => e.isNotEmpty).toList()..sort();
+    if (sorted.isEmpty) return Future.value([]);
+    final key = 'cats_${sorted.join('|')}';
+    return _cachedList(
+      key,
+      () => SupabaseService.getProductsByCategoryIds(sorted),
+      forceRefresh: forceRefresh,
+    );
+  }
+
   static Future<Map<String, dynamic>?> getProductById(
     String id, {
     bool forceRefresh = false,

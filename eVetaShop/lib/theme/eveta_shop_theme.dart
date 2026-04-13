@@ -1,36 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-/// Identidad eVeta: verde acento (#22C55E) solo en CTAs, precios destacados y estados activos.
-/// Superficies neutras premium (light/dark) — sin verde dominante.
+/// eVeta Shop — misma identidad que Portal: #09CB6B; claro #F7F7F7; oscuro #121212.
 abstract final class EvetaShopColors {
-  static const Color brand = Color(0xFF22C55E);
-  /// Mismo acento en oscuro; evitamos variantes neón.
-  static const Color brandDarkMode = Color(0xFF22C55E);
+  static const Color brand = Color(0xFF09CB6B);
+  static const Color brandDarkMode = Color(0xFF09CB6B);
 
-  static const Color lightScaffold = Color(0xFFF7F8FA);
+  static const Color lightScaffold = Color(0xFFF7F7F7);
   static const Color lightCard = Color(0xFFFFFFFF);
-  static const Color lightBorder = Color(0xFFE8EAF0);
-  static const Color lightText = Color(0xFF111827);
-  static const Color lightTextMuted = Color(0xFF6B7280);
+  static const Color lightBorder = Color(0xFFE5E5EA);
+  static const Color lightText = Color(0xFF1C1C1E);
+  static const Color lightTextMuted = Color(0xFF636366);
 
-  /// Oscuro tipo iOS: base #1C1C1E (no negro puro en pantalla). Negro solo en [surfaceDim] / sombras.
-  static const Color darkScaffold = Color(0xFF000000);
+  static const Color darkScaffold = Color(0xFF121212);
   static const Color darkCard = Color(0xFF1C1C1E);
   static const Color darkCardElevated = Color(0xFF2C2C2E);
-  /// Entre base y tarjeta elevada (listas, bloques).
-  static const Color darkSurfaceContainer = Color(0xFF202024);
+  static const Color darkSurfaceContainer = Color(0xFF242428);
   static const Color darkBorder = Color(0xFF3A3A3C);
-  static const Color darkText = Color(0xFFF5F5F5);
-  static const Color darkTextMuted = Color(0xFFA6AAB4);
+  static const Color darkText = Color(0xFFFFFFFF);
+  static const Color darkTextMuted = Color(0xFFAEAEB2);
 }
 
-/// Radios, sombras y espaciado base del rediseño marketplace.
 abstract final class EvetaShopDimens {
-  static const double radiusSm = 12;
-  static const double radiusMd = 16;
-  static const double radiusLg = 20;
-  static const double radiusXl = 24;
+  static const double radiusSm = 14;
+  static const double radiusMd = 18;
+  static const double radiusLg = 22;
+  static const double radiusXl = 26;
+  static const double radius2xl = 28;
 
   static const double spaceXs = 4;
   static const double spaceSm = 8;
@@ -41,17 +37,19 @@ abstract final class EvetaShopDimens {
 
   static List<BoxShadow> cardShadowLight(BuildContext context) => [
         BoxShadow(
-          color: Colors.black.withValues(alpha: 0.05),
-          blurRadius: 16,
-          offset: const Offset(0, 6),
+          color: Colors.black.withValues(alpha: 0.06),
+          blurRadius: 22,
+          offset: const Offset(0, 10),
+          spreadRadius: -2,
         ),
       ];
 
   static List<BoxShadow> cardShadowDark(BuildContext context) => [
         BoxShadow(
-          color: Colors.black.withValues(alpha: 0.28),
-          blurRadius: 20,
-          offset: const Offset(0, 8),
+          color: Colors.black.withValues(alpha: 0.32),
+          blurRadius: 26,
+          offset: const Offset(0, 12),
+          spreadRadius: -4,
         ),
       ];
 }
@@ -63,8 +61,8 @@ abstract final class EvetaShopTheme {
       brightness: Brightness.light,
       primary: brand,
       onPrimary: Colors.white,
-      primaryContainer: const Color(0xFFD1FAE5),
-      onPrimaryContainer: const Color(0xFF064E3B),
+      primaryContainer: const Color(0xFFC8F5DD),
+      onPrimaryContainer: const Color(0xFF045C3A),
       secondary: EvetaShopColors.lightTextMuted,
       onSecondary: Colors.white,
       secondaryContainer: const Color(0xFFE5E7EB),
@@ -79,7 +77,7 @@ abstract final class EvetaShopTheme {
       onSurface: EvetaShopColors.lightText,
       onSurfaceVariant: EvetaShopColors.lightTextMuted,
       outline: EvetaShopColors.lightBorder,
-      outlineVariant: const Color(0xFFF0F2F6),
+      outlineVariant: const Color(0xFFEBEBED),
       shadow: Colors.black,
       scrim: Colors.black,
       inverseSurface: EvetaShopColors.darkScaffold,
@@ -87,11 +85,11 @@ abstract final class EvetaShopTheme {
       inversePrimary: brand,
       surfaceTint: Colors.transparent,
       surfaceContainerHighest: EvetaShopColors.lightCard,
-      surfaceContainerHigh: const Color(0xFFF0F2F5),
-      surfaceContainer: const Color(0xFFECEFF3),
-      surfaceContainerLow: const Color(0xFFE8EBF0),
+      surfaceContainerHigh: const Color(0xFFEFEFF2),
+      surfaceContainer: const Color(0xFFE8E8EC),
+      surfaceContainerLow: const Color(0xFFE3E3E8),
       surfaceBright: Colors.white,
-      surfaceDim: const Color(0xFFE2E5EA),
+      surfaceDim: const Color(0xFFDCDCE0),
     );
 
     return _base(scheme, Brightness.light);
@@ -103,8 +101,8 @@ abstract final class EvetaShopTheme {
       brightness: Brightness.dark,
       primary: brand,
       onPrimary: Colors.white,
-      primaryContainer: const Color(0xFF14532D),
-      onPrimaryContainer: const Color(0xFFBBF7D0),
+      primaryContainer: const Color(0xFF0D4D32),
+      onPrimaryContainer: const Color(0xFFB8F5D0),
       secondary: EvetaShopColors.darkTextMuted,
       onSecondary: EvetaShopColors.darkCard,
       secondaryContainer: EvetaShopColors.darkCardElevated,
@@ -115,23 +113,23 @@ abstract final class EvetaShopTheme {
       onTertiaryContainer: const Color(0xFFFFEDD5),
       error: const Color(0xFFF87171),
       onError: const Color(0xFF450A0A),
-      surface: EvetaShopColors.darkCard,
+      surface: EvetaShopColors.darkScaffold,
       onSurface: EvetaShopColors.darkText,
       onSurfaceVariant: EvetaShopColors.darkTextMuted,
       outline: EvetaShopColors.darkBorder,
       outlineVariant: const Color(0xFF2C2C32),
       shadow: Colors.black,
       scrim: Colors.black,
-      inverseSurface: const Color(0xFFE5E7EB),
-      onInverseSurface: const Color(0xFF111318),
+      inverseSurface: const Color(0xFFE5E5EA),
+      onInverseSurface: const Color(0xFF1C1C1E),
       inversePrimary: brand,
       surfaceTint: Colors.transparent,
-      surfaceContainerHighest: const Color(0xFF323236),
-      surfaceContainerHigh: EvetaShopColors.darkCardElevated,
+      surfaceContainerHighest: EvetaShopColors.darkCardElevated,
+      surfaceContainerHigh: EvetaShopColors.darkCard,
       surfaceContainer: EvetaShopColors.darkSurfaceContainer,
       surfaceContainerLow: const Color(0xFF18181C),
       surfaceBright: const Color(0xFF3A3A3E),
-      surfaceDim: EvetaShopColors.darkScaffold,
+      surfaceDim: const Color(0xFF0A0A0A),
     );
 
     return _base(scheme, Brightness.dark);

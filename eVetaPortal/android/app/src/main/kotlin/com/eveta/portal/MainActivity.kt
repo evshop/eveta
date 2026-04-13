@@ -1,4 +1,4 @@
-package com.example.eveta_portal
+package com.eveta.portal
 
 import io.flutter.embedding.android.FlutterActivity
 

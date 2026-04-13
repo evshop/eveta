@@ -5,7 +5,7 @@ import 'package:eveta/screens/login_screen.dart';
 import 'package:eveta/screens/my_orders_screen.dart';
 import 'package:eveta/theme/eveta_shop_theme.dart';
 import 'package:eveta/theme/eveta_theme_controller.dart';
-import 'package:eveta/ui/shop/eveta_profile_menu_tile.dart';
+import 'package:eveta/ui/shop/eveta_ios_settings_group.dart';
 import 'package:eveta/utils/auth_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -147,156 +147,184 @@ class _MenuScreenState extends State<MenuScreen> {
     return Scaffold(
       backgroundColor: scheme.surface,
       body: CustomScrollView(
+        physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
         slivers: [
-          SliverAppBar(
-            expandedHeight: 168,
-            pinned: true,
-            stretch: true,
-            backgroundColor: scheme.surface,
-            surfaceTintColor: Colors.transparent,
-            flexibleSpace: FlexibleSpaceBar(
-              background: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      scheme.primary.withValues(alpha: 0.18),
-                      scheme.surface,
-                    ],
+          SliverToBoxAdapter(
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
+                child: Text(
+                  'Cuenta',
+                  style: tt.displaySmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -1.1,
+                    fontSize: 34,
+                    color: scheme.onSurface,
                   ),
-                ),
-                padding: EdgeInsets.fromLTRB(
-                  EvetaShopDimens.spaceLg,
-                  MediaQuery.paddingOf(context).top + EvetaShopDimens.spaceLg,
-                  EvetaShopDimens.spaceLg,
-                  EvetaShopDimens.spaceMd,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Tu cuenta', style: tt.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
-                    const SizedBox(height: EvetaShopDimens.spaceLg),
-                    Material(
-                      color: scheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(EvetaShopDimens.radiusLg),
-                      clipBehavior: Clip.antiAlias,
-                      child: InkWell(
-                        onTap: () {
-                          Navigator.push<void>(
-                            context,
-                            MaterialPageRoute<void>(
-                              builder: (_) => _ProfileDetailsScreen(
-                                name: _displayName,
-                                email: _displayEmail,
-                                phone: _displayPhone,
-                              ),
-                            ),
-                          );
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.all(EvetaShopDimens.spaceLg),
-                          child: Row(
-                            children: [
-                              CircleAvatar(
-                                radius: 32,
-                                backgroundColor: scheme.primary.withValues(alpha: 0.2),
-                                child: Text(
-                                  _initials(_displayName),
-                                  style: TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w800,
-                                    color: scheme.primary,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: EvetaShopDimens.spaceMd),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(_displayName, style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      _displayEmail,
-                                      style: tt.bodyMedium,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
                 ),
               ),
             ),
           ),
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: EvetaShopDimens.spaceLg),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                EvetaProfileMenuTile(
-                  icon: Icons.shopping_bag_outlined,
-                  title: 'Mis compras',
-                  onTap: () {
-                    Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const MyOrdersScreen()));
-                  },
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: scheme.surface,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: scheme.outline.withValues(alpha: scheme.brightness == Brightness.dark ? 0.35 : 0.22),
+                    width: 0.5,
+                  ),
                 ),
-                EvetaProfileMenuTile(
-                  icon: Icons.location_on_outlined,
-                  title: 'Direcciones',
-                  onTap: () {
-                    Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const AddLocationScreen()));
-                  },
-                ),
-                EvetaProfileMenuTile(
-                  icon: Icons.payment_outlined,
-                  title: 'Métodos de pago',
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: const Text('Próximamente'),
-                        behavior: SnackBarBehavior.floating,
-                        backgroundColor: scheme.primary,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: () {
+                      Navigator.push<void>(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => _ProfileDetailsScreen(
+                            name: _displayName,
+                            email: _displayEmail,
+                            phone: _displayPhone,
+                          ),
+                        ),
+                      );
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 28,
+                            backgroundColor: scheme.primary.withValues(alpha: 0.18),
+                            child: Text(
+                              _initials(_displayName),
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                                color: scheme.primary,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _displayName,
+                                  style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.3),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  _displayEmail,
+                                  style: tt.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant.withValues(alpha: 0.55), size: 22),
+                        ],
                       ),
-                    );
-                  },
+                    ),
+                  ),
                 ),
-                EvetaProfileMenuTile(
-                  icon: Icons.help_outline_rounded,
-                  title: 'Ayuda y soporte',
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: const Text('Escríbenos desde la app o correo de contacto.'),
-                        behavior: SnackBarBehavior.floating,
-                        backgroundColor: scheme.primary,
-                      ),
-                    );
-                  },
-                ),
-                EvetaProfileMenuTile(
-                  icon: Icons.dark_mode_outlined,
-                  title: 'Tema claro / oscuro',
-                  trailing: Icon(Icons.palette_outlined, color: scheme.onSurfaceVariant),
-                  onTap: _showThemeSheet,
-                ),
-                EvetaProfileMenuTile(
-                  icon: Icons.logout_rounded,
-                  title: 'Cerrar sesión',
-                  destructive: true,
-                  onTap: () => _showLogoutDialog(context),
-                ),
-                const SizedBox(height: EvetaShopDimens.space2xl),
-              ]),
+              ),
             ),
           ),
+          const SliverToBoxAdapter(child: EvetaIosSettingsGroupSpacer()),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: EvetaIosSettingsGroup(
+                children: [
+                  EvetaIosSettingsTile(
+                    icon: Icons.shopping_bag_outlined,
+                    title: 'Mis compras',
+                    onTap: () {
+                      Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const MyOrdersScreen()));
+                    },
+                  ),
+                  EvetaIosSettingsTile(
+                    icon: Icons.location_on_outlined,
+                    title: 'Direcciones',
+                    showDividerAbove: true,
+                    onTap: () {
+                      Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const AddLocationScreen()));
+                    },
+                  ),
+                  EvetaIosSettingsTile(
+                    icon: Icons.payment_outlined,
+                    title: 'Métodos de pago',
+                    showDividerAbove: true,
+                    onTap: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text('Próximamente'),
+                          behavior: SnackBarBehavior.floating,
+                          backgroundColor: scheme.primary,
+                        ),
+                      );
+                    },
+                  ),
+                  EvetaIosSettingsTile(
+                    icon: Icons.help_outline_rounded,
+                    title: 'Ayuda y soporte',
+                    showDividerAbove: true,
+                    onTap: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text('Escríbenos desde la app o correo de contacto.'),
+                          behavior: SnackBarBehavior.floating,
+                          backgroundColor: scheme.primary,
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SliverToBoxAdapter(child: EvetaIosSettingsGroupSpacer()),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: EvetaIosSettingsGroup(
+                children: [
+                  EvetaIosSettingsTile(
+                    icon: Icons.dark_mode_outlined,
+                    title: 'Apariencia',
+                    trailing: Icon(Icons.palette_outlined, color: scheme.onSurfaceVariant.withValues(alpha: 0.65), size: 22),
+                    onTap: _showThemeSheet,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SliverToBoxAdapter(child: EvetaIosSettingsGroupSpacer()),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: EvetaIosSettingsGroup(
+                children: [
+                  EvetaIosSettingsTile(
+                    icon: Icons.logout_rounded,
+                    title: 'Cerrar sesión',
+                    destructive: true,
+                    trailing: const SizedBox.shrink(),
+                    onTap: () => _showLogoutDialog(context),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 40)),
         ],
       ),
     );

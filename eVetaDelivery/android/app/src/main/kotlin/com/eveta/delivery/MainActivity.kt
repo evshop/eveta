@@ -1,4 +1,4 @@
-package com.eveta.eveta_delivery
+package com.eveta.delivery
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:eveta/common_widget/grid_tiles_products.dart';
 import 'package:eveta/common_widget/product_card_skeleton.dart';
 import 'package:eveta/common_widget/promo_carousel_widget.dart';
 import 'package:eveta/screens/add_location_screen.dart';
@@ -17,6 +17,7 @@ import 'package:eveta/ui/shop/eveta_promo_banner.dart';
 import 'package:eveta/ui/shop/eveta_search_bar.dart';
 import 'package:eveta/ui/shop/eveta_section_header.dart';
 import 'package:eveta/ui/shop/premium/brand_card.dart';
+import 'package:eveta/ui/shop/premium/eveta_new_arrival_card.dart';
 import 'package:eveta/ui/shop/premium/horizontal_new_arrivals_list.dart';
 import 'package:eveta/ui/shop/sticky_category_header.dart';
 import 'package:eveta/utils/catalog_cache_service.dart';
@@ -512,42 +513,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
                     SliverPadding(
                       padding: const EdgeInsets.symmetric(horizontal: EvetaShopDimens.spaceLg),
-                      sliver: SliverGrid(
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          mainAxisSpacing: EvetaShopDimens.spaceMd,
-                          crossAxisSpacing: EvetaShopDimens.spaceMd,
-                          childAspectRatio: 0.68,
-                        ),
-                        delegate: SliverChildBuilderDelegate(
-                          (context, i) {
-                            final p = popular[i];
-                            final images = p['images'];
-                            String imageUrl = '';
-                            if (images is List && images.isNotEmpty) {
-                              imageUrl = images.first.toString();
-                            } else if (images is String && images.toString().isNotEmpty) {
-                              imageUrl = images.toString();
-                            }
-                            return GridTilesProducts(
-                              name: p['name']?.toString() ?? 'Sin nombre',
-                              imageUrl: imageUrl,
-                              slug: p['id'].toString(),
-                              price: p['price']?.toString(),
-                              originalPrice: p['original_price']?.toString(),
-                              discount: null,
-                              isBestSeller: p['is_featured'] == true,
-                              stock: productStock(p),
-                              rating: productRating(p),
-                              reviewCount: productReviewCount(p),
-                              isTwoLineMode: true,
-                              onTap: widget.onProductTap != null
-                                  ? () => widget.onProductTap!(p['id'].toString())
-                                  : null,
-                            );
-                          },
-                          childCount: popular.length.clamp(0, 6),
-                        ),
+                      sliver: SliverMasonryGrid.count(
+                        crossAxisCount: 2,
+                        mainAxisSpacing: EvetaShopDimens.spaceMd,
+                        crossAxisSpacing: EvetaShopDimens.spaceMd,
+                        childCount: popular.length.clamp(0, 6),
+                        itemBuilder: (context, i) {
+                          final p = popular[i];
+                          return LayoutBuilder(
+                            builder: (context, c) {
+                              return EvetaNewArrivalCard(
+                                width: c.maxWidth,
+                                product: p,
+                                showNewBadge: false,
+                                adaptProductImageFraming: true,
+                                flexibleImageSlot: true,
+                                onTap: widget.onProductTap != null
+                                    ? () => widget.onProductTap!(p['id'].toString())
+                                    : null,
+                              );
+                            },
+                          );
+                        },
                       ),
                     ),
                   ],
@@ -576,7 +563,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
                     SliverToBoxAdapter(
                       child: SizedBox(
-                        height: 118,
+                        height: 108,
                         child: Align(
                           alignment: Alignment.centerLeft,
                           child: ListView.builder(
@@ -594,7 +581,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 name: name,
                                 imageUrl: url.isNotEmpty ? url : null,
                                 width: 96,
-                                cardHeight: 118,
+                                cardHeight: 108,
                                 onTap: () {
                                   if (sellerId == null || sellerId.isEmpty) return;
                                   Navigator.push<void>(

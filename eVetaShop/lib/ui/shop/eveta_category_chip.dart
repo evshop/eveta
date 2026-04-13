@@ -43,11 +43,14 @@ class SubcategoryChip extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
+    this.dense = false,
   });
 
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  /// Cápsula más baja (p. ej. pantalla productos por categoría).
+  final bool dense;
 
   @override
   Widget build(BuildContext context) {
@@ -55,9 +58,9 @@ class SubcategoryChip extends StatelessWidget {
       label: label,
       selected: selected,
       onTap: onTap,
-      horizontalPadding: 12,
-      verticalPadding: 6,
-      fontSize: 11.5,
+      horizontalPadding: dense ? 10 : 12,
+      verticalPadding: dense ? 4 : 6,
+      fontSize: dense ? 11 : 11.5,
       borderRadius: 100,
     );
   }

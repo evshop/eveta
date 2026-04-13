@@ -3,6 +3,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/cloudinary_service.dart';
+import '../widgets/store_front_preview_header.dart';
 
 class StoreSettingsScreen extends StatefulWidget {
   const StoreSettingsScreen({super.key});
@@ -85,7 +86,6 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
       final bytes = await picked.readAsBytes();
       final fileName = isLogo ? 'logo.png' : 'banner.png';
 
-      // Carpetas por usuario para que no se mezclen tiendas.
       final folder = isLogo
           ? 'eveta/portal_store/logo/${_shopId ?? 'unknown'}'
           : 'eveta/portal_store/banner/${_shopId ?? 'unknown'}';
@@ -94,10 +94,10 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
         bytes: bytes,
         fileName: fileName,
         folder: folder,
-        // Public_id fijo para reemplazar en vez de duplicar.
         publicId: isLogo ? 'logo_${_shopId ?? 'unknown'}' : 'banner_${_shopId ?? 'unknown'}',
       );
 
+      if (!mounted) return;
       setState(() {
         if (isLogo) {
           _logoUrl = url;
@@ -152,6 +152,170 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
     }
   }
 
+  Future<void> _showBannerSheet() async {
+    final scheme = Theme.of(context).colorScheme;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: scheme.surfaceContainerHighest,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: Icon(Icons.photo_library_outlined, color: scheme.primary),
+                  title: const Text('Cambiar imagen del banner'),
+                  subtitle: const Text('Desde la galería'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickAndUpload(isLogo: false);
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.delete_outline, color: scheme.error),
+                  title: const Text('Quitar banner'),
+                  subtitle: const Text('Se borrará al guardar cambios'),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (d) => AlertDialog(
+                        title: const Text('¿Quitar banner?'),
+                        content: const Text('La imagen dejará de mostrarse. Pulsa «Guardar cambios» para aplicar.'),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancelar')),
+                          FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Quitar')),
+                        ],
+                      ),
+                    );
+                    if (ok == true && mounted) setState(() => _bannerUrl = null);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showLogoSheet() async {
+    final scheme = Theme.of(context).colorScheme;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: scheme.surfaceContainerHighest,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: Icon(Icons.photo_library_outlined, color: scheme.primary),
+                  title: const Text('Cambiar icono de tienda'),
+                  subtitle: const Text('Desde la galería (recomendado 1:1)'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickAndUpload(isLogo: true);
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.delete_outline, color: scheme.error),
+                  title: const Text('Quitar icono'),
+                  subtitle: const Text('Se borrará al guardar cambios'),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (d) => AlertDialog(
+                        title: const Text('¿Quitar icono?'),
+                        content: const Text('Pulsa «Guardar cambios» para aplicar en la tienda.'),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancelar')),
+                          FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Quitar')),
+                        ],
+                      ),
+                    );
+                    if (ok == true && mounted) setState(() => _logoUrl = null);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showNameDescSheet() async {
+    final scheme = Theme.of(context).colorScheme;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: scheme.surfaceContainerHighest,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(ctx).bottom,
+          ),
+          child: SafeArea(
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Nombre y descripción',
+                      style: Theme.of(ctx).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _nameCtrl,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                        labelText: 'Nombre de la tienda',
+                      ).applyDefaults(Theme.of(ctx).inputDecorationTheme),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _descCtrl,
+                      minLines: 3,
+                      maxLines: 6,
+                      decoration: const InputDecoration(
+                        labelText: 'Descripción',
+                        alignLabelWithHint: true,
+                      ).applyDefaults(Theme.of(ctx).inputDecorationTheme),
+                    ),
+                    const SizedBox(height: 20),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Listo'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
     _nameCtrl.dispose();
@@ -159,154 +323,87 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
     super.dispose();
   }
 
-  Widget _buildPreviewBox({
-    required String? url,
-    required String label,
-    required double height,
-  }) {
-    if (url == null || url.isEmpty) {
-      return Container(
-        height: height,
-        decoration: BoxDecoration(
-          color: Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade300),
-        ),
-        child: Center(
-          child: Text(
-            label,
-            style: TextStyle(color: Colors.grey.shade600),
-          ),
-        ),
-      );
-    }
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: Image.network(
-        url,
-        height: height,
-        width: double.infinity,
-        fit: BoxFit.cover,
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(body: Center(child: CircularProgressIndicator(color: scheme.primary)));
     }
+    final scale = MediaQuery.sizeOf(context).width / 375;
 
     return Scaffold(
+      backgroundColor: scheme.surface,
       appBar: AppBar(
         title: const Text('Configuración de tienda'),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        foregroundColor: Colors.black,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildPreviewBox(
-              url: _bannerUrl,
-              label: 'Sube banner 16:9',
-              height: 170,
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                SizedBox(
-                  width: 86,
-                  height: 86,
-                  child: _logoUrl == null || _logoUrl!.isEmpty
-                      ? Container(
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade100,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: Colors.grey.shade300),
-                          ),
-                          child: const Icon(Icons.store, color: Colors.grey),
-                        )
-                      : ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: Image.network(
-                            _logoUrl!,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Tu tienda',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_uploading) const LinearProgressIndicator(minHeight: 3),
+          Expanded(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  RepaintBoundary(
+                    child: StoreFrontPreviewHeader(
+                      bannerUrl: _bannerUrl,
+                      logoUrl: _logoUrl,
+                      shopName: _nameCtrl.text.trim(),
+                      shopDescription: _descCtrl.text.trim(),
+                      scale: scale,
+                      onBannerTap: _uploading ? null : _showBannerSheet,
+                      onLogoTap: _uploading ? null : _showLogoSheet,
+                      onInfoTap: _showNameDescSheet,
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                    child: Text(
+                      'Toca el banner, el icono o el texto para editar. Las imágenes se guardan en el dispositivo en caché.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: scheme.onSurfaceVariant,
+                        height: 1.35,
                       ),
-                      if (_email != null)
-                        Text(
-                          _email!,
-                          style: TextStyle(color: Colors.grey.shade700),
-                        ),
-                    ],
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _uploading ? null : () => _pickAndUpload(isLogo: true),
-                    icon: const Icon(Icons.upload_file_outlined),
-                    label: Text(_logoUrl == null ? 'Subir logo 1:1' : 'Cambiar logo'),
+                  if (_email != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Text(
+                        _email!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant.withValues(alpha: 0.9)),
+                      ),
+                    ),
+                  const SizedBox(height: 24),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: FilledButton.icon(
+                      onPressed: (_saving || _uploading) ? null : _save,
+                      icon: _saving
+                          ? SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: scheme.onPrimary),
+                            )
+                          : const Icon(Icons.save_outlined),
+                      label: Text(_saving ? 'Guardando...' : 'Guardar cambios'),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _uploading ? null : () => _pickAndUpload(isLogo: false),
-                    icon: const Icon(Icons.upload_file_outlined),
-                    label: Text(_bannerUrl == null ? 'Subir banner 16:9' : 'Cambiar banner'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _nameCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Nombre de la tienda',
-                border: OutlineInputBorder(),
+                  const SizedBox(height: 32),
+                ],
               ),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _descCtrl,
-              minLines: 2,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                labelText: 'Descripción de la tienda',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              onPressed: (_saving || _uploading) ? null : _save,
-              icon: const Icon(Icons.save_outlined),
-              label: Text(_saving ? 'Guardando...' : 'Guardar cambios'),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
-

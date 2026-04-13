@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:math' show Random;
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:eveta/common_widget/eveta_cached_image.dart';
 import 'package:eveta/common_widget/eveta_circular_back_button.dart';
@@ -9,12 +11,13 @@ import 'package:eveta/utils/catalog_cache_service.dart';
 import 'package:eveta/utils/product_share_helper.dart';
 import 'package:eveta/utils/cart_service.dart';
 import 'package:eveta/utils/favorites_service.dart';
-import 'package:eveta/common_widget/grid_tiles_products.dart';
 import 'package:eveta/common_widget/product_card_skeleton.dart';
+import 'package:eveta/ui/shop/premium/eveta_new_arrival_card.dart';
 import 'package:eveta/utils/cart_animation_helper.dart';
 import 'package:eveta/common_widget/bottom_nav_bar_widget.dart';
 import 'package:eveta/screens/seller_store_screen.dart';
 import 'package:eveta/theme/eveta_shop_theme.dart';
+import 'package:eveta/utils/supabase_service.dart';
 
 class ProductDetailScreen extends StatefulWidget {
   const ProductDetailScreen({super.key, required this.productId, this.onClose, this.onTagTap, this.onRelatedProductTap});
@@ -59,6 +62,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
   final ScrollController _detailScrollController = ScrollController();
   /// 0 = barra blanca sólida; 1 = vidrio con blur (contenido pasando por debajo).
   double _appBarGlassT = 0;
+  bool _descriptionExpanded = false;
 
   void _onDetailScroll() {
     if (!_detailScrollController.hasClients || !mounted) return;
@@ -132,6 +136,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
       _selectedImageIndex = 0;
       _quantity = 1;
       _appBarGlassT = 0;
+      _descriptionExpanded = false;
       if (_detailScrollController.hasClients) {
         _detailScrollController.jumpTo(0);
       }
@@ -150,13 +155,192 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
     _relatedProductsFuture = _loadRelatedProducts();
   }
 
+  List<String> _parseTagsField(dynamic raw) {
+    if (raw is List) {
+      return raw.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList();
+    }
+    if (raw is String && raw.trim().isNotEmpty) {
+      return raw.split(RegExp(r'[\s,;]+')).map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    }
+    return [];
+  }
+
+  List<String> _keywordsFromName(String name) {
+    final parts = name.toLowerCase().split(RegExp(r'\s+'));
+    final out = <String>[];
+    for (final p in parts) {
+      final t = p.replaceAll(RegExp(r'[^a-záéíóúüñ0-9]'), '');
+      if (t.length >= 2 && !out.contains(t)) out.add(t);
+    }
+    return out.take(10).toList();
+  }
+
+  int _nameRelatedScore(String candidateName, List<String> keywords, String originalLower) {
+    if (candidateName.isEmpty) return 0;
+    final n = candidateName.toLowerCase();
+    var s = 0;
+    for (final k in keywords) {
+      if (k.length < 2) continue;
+      if (n.contains(k)) s += 14;
+    }
+    for (final part in originalLower.split(RegExp(r'\s+'))) {
+      final t = part.replaceAll(RegExp(r'[^a-záéíóúüñ0-9]'), '');
+      if (t.length >= 3 && n.contains(t)) s += 9;
+    }
+    return s;
+  }
+
+  /// Orden: 1–3 por nombre, 4º por hashtags, 5–9 mezcla aleatoria (nombre/tienda/tags), 10º al azar.
   Future<List<Map<String, dynamic>>> _loadRelatedProducts() async {
     final product = await _productFuture;
     if (product == null) return [];
-    final categoryId = product['category_id'];
-    if (categoryId == null) return [];
-    final results = await CatalogCacheService.getProductsByCategory(categoryId.toString());
-    return results.where((p) => p['id'].toString() != widget.productId).take(4).toList();
+    final excludeId = widget.productId;
+    final sellerId = product['seller_id']?.toString();
+    final tags = _parseTagsField(product['tags']);
+    final productName = product['name']?.toString() ?? '';
+    final categoryId = product['category_id']?.toString();
+    final rnd = Random();
+    final nameLower = productName.toLowerCase();
+
+    var keywords = _keywordsFromName(productName);
+    if (keywords.isEmpty) {
+      final raw = productName.trim().toLowerCase().replaceAll(RegExp(r'[^a-záéíóúüñ0-9]'), '');
+      if (raw.length >= 2) {
+        keywords = [raw.length >= 4 ? raw.substring(0, 4) : raw];
+      }
+    }
+
+    final used = <String>{excludeId};
+    final result = <Map<String, dynamic>>[];
+
+    final namePool = <String, Map<String, dynamic>>{};
+    for (final w in keywords) {
+      final list = await SupabaseService.searchProductsByNameWord(
+        w,
+        excludeProductId: excludeId,
+        limit: 24,
+      );
+      for (final p in list) {
+        final id = p['id']?.toString();
+        if (id == null || id.isEmpty) continue;
+        namePool[id] = p;
+      }
+    }
+
+    final byNameScore = namePool.values.toList()
+      ..sort((a, b) {
+        final sa = _nameRelatedScore(a['name']?.toString() ?? '', keywords, nameLower);
+        final sb = _nameRelatedScore(b['name']?.toString() ?? '', keywords, nameLower);
+        final c = sb.compareTo(sa);
+        if (c != 0) return c;
+        return (a['id']?.toString() ?? '').compareTo(b['id']?.toString() ?? '');
+      });
+    for (final p in byNameScore) {
+      if (result.length >= 3) break;
+      final id = p['id']?.toString();
+      if (id == null || used.contains(id)) continue;
+      used.add(id);
+      result.add(p);
+    }
+
+    if (result.length < 3 && categoryId != null && categoryId.isNotEmpty) {
+      var cat = await CatalogCacheService.getProductsByCategory(categoryId);
+      cat = cat.where((p) => p['id'].toString() != excludeId).toList();
+      cat.sort((a, b) {
+        final sa = _nameRelatedScore(a['name']?.toString() ?? '', keywords, nameLower);
+        final sb = _nameRelatedScore(b['name']?.toString() ?? '', keywords, nameLower);
+        final c = sb.compareTo(sa);
+        if (c != 0) return c;
+        return (a['id']?.toString() ?? '').compareTo(b['id']?.toString() ?? '');
+      });
+      for (final p in cat) {
+        if (result.length >= 3) break;
+        final id = p['id']?.toString();
+        if (id == null || used.contains(id)) continue;
+        used.add(id);
+        result.add(p);
+      }
+    }
+
+    if (tags.isNotEmpty && result.length == 3) {
+      final tagList = await SupabaseService.getProductsOverlappingTags(
+        tags,
+        excludeProductId: excludeId,
+        limit: 36,
+      );
+      tagList.shuffle(rnd);
+      for (final p in tagList) {
+        final id = p['id']?.toString();
+        if (id == null || used.contains(id)) continue;
+        used.add(id);
+        result.add(p);
+        break;
+      }
+    }
+
+    final mixBucket = <String, Map<String, dynamic>>{};
+    void addMix(List<Map<String, dynamic>> list) {
+      for (final p in list) {
+        final id = p['id']?.toString();
+        if (id == null || id.isEmpty || used.contains(id)) continue;
+        mixBucket[id] = p;
+      }
+    }
+
+    addMix(namePool.values.toList());
+    if (sellerId != null && sellerId.isNotEmpty) {
+      addMix(await SupabaseService.getProductsBySellerId(sellerId));
+    }
+    if (tags.isNotEmpty) {
+      addMix(await SupabaseService.getProductsOverlappingTags(tags, excludeProductId: excludeId, limit: 48));
+    }
+
+    final mixList = mixBucket.values.toList()..shuffle(rnd);
+    for (final p in mixList) {
+      if (result.length >= 9) break;
+      final id = p['id']?.toString();
+      if (id == null || used.contains(id)) continue;
+      used.add(id);
+      result.add(p);
+    }
+
+    if (result.length < 10) {
+      var broad = <Map<String, dynamic>>[];
+      if (categoryId != null && categoryId.isNotEmpty) {
+        broad = await CatalogCacheService.getProductsByCategory(categoryId);
+      }
+      if (broad.length < 8) {
+        final home = await CatalogCacheService.getProducts();
+        final seen = {...broad.map((e) => e['id']?.toString()).whereType<String>()};
+        for (final p in home) {
+          final id = p['id']?.toString();
+          if (id != null && !seen.contains(id)) broad.add(p);
+        }
+      }
+      broad.shuffle(rnd);
+      for (final p in broad) {
+        final id = p['id']?.toString();
+        if (id == null || used.contains(id)) continue;
+        used.add(id);
+        result.add(p);
+        break;
+      }
+    }
+
+    while (result.length < 10) {
+      var progressed = false;
+      for (final p in mixList) {
+        final id = p['id']?.toString();
+        if (id == null || used.contains(id)) continue;
+        used.add(id);
+        result.add(p);
+        progressed = true;
+        break;
+      }
+      if (!progressed) break;
+    }
+
+    return result.take(10).toList();
   }
 
   @override
@@ -961,6 +1145,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
     );
   }
 
+  /// Heurística: textos largos o muchas líneas merecen «Ver más» / «Ver menos».
+  bool _descriptionNeedsExpandToggle(String description) {
+    final d = description.trim();
+    if (d.isEmpty) return false;
+    final lines = d.replaceAll('\r\n', '\n').split('\n').length;
+    if (lines > 5) return true;
+    if (d.length > 260) return true;
+    return false;
+  }
+
   Widget _buildDescriptionSection(
     String description,
     List<String> tags,
@@ -985,7 +1179,50 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
             style: TextStyle(fontSize: 17 * scale, fontWeight: FontWeight.bold, color: scheme.onSurface),
           ),
           SizedBox(height: 10 * scale),
-          Text(description, style: TextStyle(fontSize: 14 * scale, color: scheme.onSurfaceVariant, height: 1.6)),
+          if (description.trim().isEmpty)
+            Text(
+              'Sin descripción',
+              style: TextStyle(fontSize: 14 * scale, color: scheme.onSurfaceVariant.withValues(alpha: 0.8), height: 1.6),
+            )
+          else ...[
+            Text(
+              description,
+              style: TextStyle(fontSize: 14 * scale, color: scheme.onSurfaceVariant, height: 1.6),
+              maxLines: _descriptionExpanded ? null : 5,
+              overflow: _descriptionExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
+            ),
+            if (_descriptionNeedsExpandToggle(description)) ...[
+              SizedBox(height: 8 * scale),
+              Center(
+                child: InkWell(
+                  onTap: () => setState(() => _descriptionExpanded = !_descriptionExpanded),
+                  borderRadius: BorderRadius.circular(20 * scale),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12 * scale, vertical: 6 * scale),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _descriptionExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                          size: 22 * scale,
+                          color: scheme.primary,
+                        ),
+                        SizedBox(width: 6 * scale),
+                        Text(
+                          _descriptionExpanded ? 'Ver menos' : 'Ver más',
+                          style: TextStyle(
+                            fontSize: 14 * scale,
+                            fontWeight: FontWeight.w600,
+                            color: scheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
           if (tags.isNotEmpty) ...[
             SizedBox(height: 18 * scale),
             Wrap(
@@ -1144,25 +1381,30 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Container(
             margin: EdgeInsets.only(top: 16 * scale),
-            padding: EdgeInsets.all(16 * scale),
+            padding: EdgeInsets.fromLTRB(
+              EvetaShopDimens.spaceLg,
+              16 * scale,
+              EvetaShopDimens.spaceLg,
+              24 * scale,
+            ),
             color: canvas,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Productos Relacionados', style: TextStyle(fontSize: 17 * scale, fontWeight: FontWeight.bold, color: scheme.onSurface)),
                 SizedBox(height: 12 * scale),
-                GridView.builder(
+                MasonryGridView.count(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: EvetaShopDimens.spaceMd,
+                  crossAxisSpacing: EvetaShopDimens.spaceMd,
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    childAspectRatio: 0.65,
-                    crossAxisSpacing: 12 * scale,
-                    mainAxisSpacing: 12 * scale,
-                  ),
                   itemCount: 4,
                   itemBuilder: (context, index) {
-                    return const ProductCardSkeleton();
+                    return SizedBox(
+                      height: 220 * scale,
+                      child: const ProductCardSkeleton(),
+                    );
                   },
                 ),
               ],
@@ -1174,45 +1416,51 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
         final products = snapshot.data!;
         return Container(
           margin: EdgeInsets.only(top: 16 * scale),
-          padding: EdgeInsets.all(16 * scale),
+          padding: EdgeInsets.fromLTRB(
+            EvetaShopDimens.spaceLg,
+            16 * scale,
+            EvetaShopDimens.spaceLg,
+            24 * scale,
+          ),
           color: canvas,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Productos Relacionados', style: TextStyle(fontSize: 17 * scale, fontWeight: FontWeight.bold, color: scheme.onSurface)),
               SizedBox(height: 12 * scale),
-              GridView.builder(
+              MasonryGridView.count(
+                crossAxisCount: 2,
+                mainAxisSpacing: EvetaShopDimens.spaceMd,
+                crossAxisSpacing: EvetaShopDimens.spaceMd,
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  childAspectRatio: 0.68,
-                  crossAxisSpacing: 12 * scale,
-                  mainAxisSpacing: 12 * scale,
-                ),
                 itemCount: products.length,
                 itemBuilder: (context, index) {
                   final product = products[index];
-                  final images = product['images'];
-                  String imageUrl = '';
-                  if (images != null) {
-                    if (images is List && images.isNotEmpty) {
-                      imageUrl = images.first.toString();
-                    } else if (images is String && images.isNotEmpty) {
-                      imageUrl = images;
-                    }
-                  }
-                  return GridTilesProducts(
-                    name: product['name']?.toString() ?? '',
-                    imageUrl: imageUrl,
-                    slug: product['id'].toString(),
-                    price: product['price']?.toString(),
-                    stock: product['stock'] ?? 1,
-                    rating: (product['rating'] ?? 0).toDouble(),
-                    reviewCount: product['review_count'] ?? 0,
-                    onTap: widget.onRelatedProductTap != null 
-                        ? () => widget.onRelatedProductTap!(product['id'].toString()) 
-                        : null,
+                  return LayoutBuilder(
+                    builder: (context, c) {
+                      return EvetaNewArrivalCard(
+                        width: c.maxWidth,
+                        product: product,
+                        showNewBadge: false,
+                        adaptProductImageFraming: true,
+                        flexibleImageSlot: true,
+                        onTap: () {
+                          final id = product['id']?.toString() ?? '';
+                          if (id.isEmpty) return;
+                          if (widget.onRelatedProductTap != null) {
+                            widget.onRelatedProductTap!(id);
+                          } else {
+                            Navigator.push<void>(
+                              context,
+                              MaterialPageRoute<void>(
+                                builder: (_) => ProductDetailScreen(productId: id),
+                              ),
+                            );
+                          }
+                        },
+                      );
+                    },
                   );
                 },
               ),
