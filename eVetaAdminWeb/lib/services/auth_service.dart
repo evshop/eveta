@@ -20,6 +20,13 @@ class AuthService {
     await _client.auth.signOut();
   }
 
+  /// Envía el correo de recuperación de contraseña de Supabase Auth (no revela la contraseña actual).
+  static Future<void> sendPasswordResetEmail(String email) async {
+    final e = email.trim().toLowerCase();
+    if (e.isEmpty) throw AuthException('Correo vacío.');
+    await _client.auth.resetPasswordForEmail(e);
+  }
+
   static Future<bool> isCurrentUserAdmin() async {
     final user = _client.auth.currentUser;
     if (user == null) return false;

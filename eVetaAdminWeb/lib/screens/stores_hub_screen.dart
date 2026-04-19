@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/auth_service.dart';
@@ -153,7 +154,7 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
     var showPass = false;
     var showPass2 = false;
 
-    final ok = await showDialog<bool>(
+    final created = await showDialog<Map<String, String>?>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (ctx, setDlg) => AlertDialog(
@@ -243,7 +244,7 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: busy ? null : () => Navigator.pop(dialogContext, false),
+              onPressed: busy ? null : () => Navigator.pop(dialogContext, null),
               child: const Text('Cancelar'),
             ),
             FilledButton(
@@ -278,7 +279,12 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
                           shopName: shop,
                           shopDescription: descCtrl.text.trim(),
                         );
-                        if (dialogContext.mounted) Navigator.pop(dialogContext, true);
+                        if (dialogContext.mounted) {
+                          Navigator.pop(dialogContext, <String, String>{
+                            'email': email,
+                            'password': p1,
+                          });
+                        }
                       } catch (e) {
                         if (dialogContext.mounted) {
                           ScaffoldMessenger.of(dialogContext).showSnackBar(
@@ -309,15 +315,42 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
       });
     }
 
-    if (ok == true && mounted) {
+    if (created != null && mounted) {
+      final em = created['email'] ?? '';
+      final pw = created['password'] ?? '';
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('Tienda creada'),
-          content: const Text(
-            'La cuenta ya puede iniciar sesión en el portal eVeta con el correo y la contraseña que definiste.',
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'La cuenta puede iniciar sesión en el portal eVeta. Las contraseñas no se guardan en texto claro: '
+                  'esta es la única vez que verás la contraseña aquí; cópiala o envía recuperación si se pierde.',
+                  style: TextStyle(color: Colors.grey.shade700, fontSize: 13, height: 1.35),
+                ),
+                const SizedBox(height: 14),
+                SelectableText('Correo: $em', style: const TextStyle(fontSize: 14)),
+                const SizedBox(height: 8),
+                SelectableText('Contraseña: $pw', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              ],
+            ),
           ),
           actions: [
+            TextButton(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: 'Correo: $em\nContraseña: $pw'));
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(content: Text('Credenciales copiadas al portapapeles')),
+                  );
+                }
+              },
+              child: const Text('Copiar'),
+            ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx),
               child: const Text('Entendido'),

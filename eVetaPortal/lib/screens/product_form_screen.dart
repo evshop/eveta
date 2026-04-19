@@ -1,9 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:image_picker/image_picker.dart';
-
 import '../services/cloudinary_service.dart';
-import '../widgets/portal/eveta_portal_image_crop_screen.dart';
+import '../widgets/portal/eveta_portal_image_picker_sheet.dart';
 import '../widgets/portal/portal_haptics.dart';
 import '../widgets/portal/portal_section_header.dart';
 import '../widgets/portal/portal_tokens.dart';
@@ -55,7 +55,50 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   void initState() {
     super.initState();
     _initFormData();
-    _loadCategories();
+    // Abre el scaffold primero; categorías en el siguiente frame (mejor sensación de velocidad).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _loadCategories();
+    });
+  }
+
+  static bool _parseBool(dynamic v, {required bool fallback}) {
+    if (v == null) return fallback;
+    if (v is bool) return v;
+    final s = v.toString().trim().toLowerCase();
+    if (s == 'true' || s == '1' || s == 't') return true;
+    if (s == 'false' || s == '0' || s == 'f') return false;
+    return fallback;
+  }
+
+  /// Lista de URLs desde Supabase (List, JSON string o literal tipo Postgres `{a,b}`).
+  static List<String> _parseProductImages(dynamic raw) {
+    if (raw == null) return [];
+    if (raw is List) {
+      return raw.map((e) => e.toString().trim()).where((s) => s.isNotEmpty).toList();
+    }
+    if (raw is String) {
+      final s = raw.trim();
+      if (s.isEmpty) return [];
+      if (s.startsWith('[')) {
+        try {
+          final decoded = jsonDecode(s);
+          if (decoded is List) {
+            return decoded.map((e) => e.toString().trim()).where((t) => t.isNotEmpty).toList();
+          }
+        } catch (_) {}
+      }
+      if (s.startsWith('{') && s.endsWith('}')) {
+        final inner = s.substring(1, s.length - 1).trim();
+        if (inner.isEmpty) return [];
+        return inner
+            .split(',')
+            .map((t) => t.trim().replaceAll('"', ''))
+            .where((t) => t.isNotEmpty)
+            .toList();
+      }
+      return [s];
+    }
+    return [];
   }
 
   void _initFormData() {
@@ -70,13 +113,10 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
       _unit = unitRaw;
       final cid = p['category_id']?.toString().trim();
       _categoryId = (cid == null || cid.isEmpty) ? null : cid;
-      _isActive = p['is_active'] ?? true;
-      _isFeatured = p['is_featured'] ?? false;
-      
-      final imgs = p['images'];
-      if (imgs is List) {
-        _images = imgs.map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
-      }
+      _isActive = _parseBool(p['is_active'], fallback: true);
+      _isFeatured = _parseBool(p['is_featured'], fallback: false);
+
+      _images = _parseProductImages(p['images']);
       _coverUrl = _images.isNotEmpty ? _images.first : null;
 
       // specs_json: [{"label":"Pantalla","value":"..."}]
@@ -89,6 +129,24 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
             .where((t) => t.isNotEmpty)
             .toList();
         _tagsController.text = tags.join(', ');
+      } else if (tagsRaw is String && tagsRaw.trim().isNotEmpty) {
+        final s = tagsRaw.trim();
+        if (s.startsWith('[')) {
+          try {
+            final decoded = jsonDecode(s);
+            if (decoded is List) {
+              final tags = decoded
+                  .map((e) => e.toString().replaceAll('#', '').trim())
+                  .where((t) => t.isNotEmpty)
+                  .toList();
+              _tagsController.text = tags.join(', ');
+            }
+          } catch (_) {
+            _tagsController.text = s;
+          }
+        } else {
+          _tagsController.text = s;
+        }
       }
     }
   }
@@ -111,14 +169,16 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
             orElse: () => <String, dynamic>{},
           );
           if (selected.isNotEmpty) {
-            final pid = selected['parent_id']?.toString();
-            if (pid != null && pid.isNotEmpty) {
-              _parentCategoryId = pid;
+            final rawPid = selected['parent_id']?.toString().trim();
+            if (rawPid != null && rawPid.isNotEmpty) {
+              _parentCategoryId = rawPid;
             } else {
-              _parentCategoryId = selected['id']?.toString();
+              _parentCategoryId = selected['id']?.toString().trim();
             }
           }
         }
+        _categoryId = _categoryId?.trim();
+        _parentCategoryId = _parentCategoryId?.trim();
       });
 
       if (_categoryId != null && _categoryId!.isNotEmpty) {
@@ -130,10 +190,8 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   }
 
   bool _isRootCategoryRow(Map<dynamic, dynamic> c) {
-    final p = c['parent_id'];
-    if (p == null) return true;
-    final s = p.toString();
-    return s.isEmpty;
+    final p = c['parent_id']?.toString().trim();
+    return p == null || p.isEmpty;
   }
 
   List<Map<String, dynamic>> _parentCategories() {
@@ -175,8 +233,17 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
 
   Map<String, String> _parseSpecsJson(dynamic raw) {
     final out = <String, String>{};
-    if (raw is List) {
-      for (final e in raw) {
+    dynamic list = raw;
+    if (raw is String && raw.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        list = decoded;
+      } catch (_) {
+        return out;
+      }
+    }
+    if (list is List) {
+      for (final e in list) {
         if (e is Map) {
           final l = e['label']?.toString();
           if (l != null && l.trim().isNotEmpty) {
@@ -190,8 +257,9 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
 
   List<String> _specLabelsForCategory(String? categoryId) {
     if (categoryId == null) return const [];
+    final cidNorm = categoryId.trim();
     for (final c in _categories) {
-      if (c['id']?.toString() == categoryId) {
+      if (c['id']?.toString().trim() == cidNorm) {
         if (c['spec_template_enabled'] != true) return const [];
         final raw = c['spec_field_labels'];
         if (raw is List) {
@@ -205,8 +273,9 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
 
   String _specGroupTitleForCategory(String? categoryId) {
     if (categoryId == null) return '';
+    final cidNorm = categoryId.trim();
     for (final c in _categories) {
-      if (c['id']?.toString() == categoryId) {
+      if (c['id']?.toString().trim() == cidNorm) {
         return c['spec_group_title']?.toString().trim() ?? '';
       }
     }
@@ -257,83 +326,64 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
       return;
     }
 
-    final source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      showDragHandle: true,
-      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-      builder: (sheetCtx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const ListTile(
-              title: Text('Agregar foto'),
-              subtitle: Text('Elige de dónde subirla'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('Galería'),
-              onTap: () => Navigator.pop(sheetCtx, ImageSource.gallery),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_camera_outlined),
-              title: const Text('Cámara'),
-              onTap: () => Navigator.pop(sheetCtx, ImageSource.camera),
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
+    final remainingSlots = 10 - _images.length;
+    final files = await EvetaPortalImagePicker.pick(
+      context,
+      EvetaPortalImagePickerOptions(
+        title: 'Añadir fotos',
+        subtitle: 'Galería: varias a la vez · Cámara: vista previa antes de usar',
+        allowMultiFromGallery: true,
+        maxFiles: remainingSlots,
       ),
     );
-    if (source == null) return;
-
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(
-      source: source,
-      imageQuality: 80,
-      maxWidth: 2200,
-    );
-    
-    if (pickedFile == null) return;
-
-    final bytes = await pickedFile.readAsBytes();
-    if (!mounted) return;
-
-    final cropped = await EvetaPortalImageCropScreen.open(
-      context,
-      bytes,
-      initialMode: EvetaCropAspectMode.icon,
-      lockToInitialMode: true,
-    );
-    if (cropped == null) return;
+    if (files == null || files.isEmpty || !mounted) return;
 
     setState(() => _isUploading = true);
-
+    var added = 0;
     try {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) throw Exception('No user logged in');
 
-      final fileExt = pickedFile.path.split('.').last;
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+      for (var i = 0; i < files.length; i++) {
+        if (!mounted) return;
+        final pickedFile = files[i];
+        final bytes = await pickedFile.readAsBytes();
+        final path = pickedFile.path;
+        final rawExt = path.contains('.') ? path.split('.').last.toLowerCase() : 'jpg';
+        final ext = ['jpg', 'jpeg', 'png', 'webp', 'heic'].contains(rawExt) ? rawExt : 'jpg';
+        final fileName =
+            '${DateTime.now().microsecondsSinceEpoch}_${i}_${_images.length}.$ext';
 
-      final imageUrl = await CloudinaryService.uploadImage(
-        bytes: cropped,
-        fileName: fileName,
-        folder: 'eveta/portal_store/products/${user.id}',
-      );
+        final imageUrl = await CloudinaryService.uploadImage(
+          bytes: bytes,
+          fileName: fileName,
+          folder: 'eveta/portal_store/products/${user.id}',
+        );
 
-      setState(() {
-        _images.add(imageUrl);
-        _coverUrl ??= imageUrl;
-      });
+        if (!mounted) return;
+        setState(() {
+          _images.add(imageUrl);
+          _coverUrl ??= imageUrl;
+        });
+        added++;
+      }
+      if (mounted && added > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text(added == 1 ? 'Foto añadida.' : '$added fotos añadidas.'),
+          ),
+        );
+      }
     } catch (e) {
-      debugPrint('Error uploading image: $e');
+      debugPrint('Error uploading images: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error al subir la imagen. Intenta de nuevo.')),
+          SnackBar(content: Text('Error al subir fotos: $e')),
         );
       }
     } finally {
-      setState(() => _isUploading = false);
+      if (mounted) setState(() => _isUploading = false);
     }
   }
 
@@ -457,26 +507,43 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     final scheme = Theme.of(context).colorScheme;
 
     // DropdownButtonFormField exige que initialValue coincida con un item (Flutter 3.33+).
-    final parentRows = _parentCategories();
+    final parentRowsRaw = _parentCategories();
+    final seenParentIds = <String>{};
+    final parentRows = <Map<String, dynamic>>[];
+    for (final c in parentRowsRaw) {
+      final id = c['id']?.toString().trim();
+      if (id == null || id.isEmpty || seenParentIds.contains(id)) continue;
+      seenParentIds.add(id);
+      parentRows.add(c);
+    }
     final parentIdSet = parentRows.map((c) => c['id']?.toString().trim()).whereType<String>().toSet();
+    final parentCatTrim = _parentCategoryId?.trim();
     final parentDropdownInitial =
-        _parentCategoryId != null && parentIdSet.contains(_parentCategoryId!) ? _parentCategoryId : null;
+        parentCatTrim != null && parentIdSet.contains(parentCatTrim) ? parentCatTrim : null;
 
     String? subDropdownInitial;
-    final pid = _parentCategoryId;
+    final pid = _parentCategoryId?.trim();
     if (pid != null && pid.isNotEmpty) {
       final subIdSet = _subCategoriesForParent(pid)
           .map((c) => c['id']?.toString().trim())
           .whereType<String>()
           .toSet();
-      final cid = _categoryId;
+      final cid = _categoryId?.trim();
       if (cid != null && subIdSet.contains(cid)) subDropdownInitial = cid;
     }
 
     final unitDropdownInitial = _units.contains(_unit) ? _unit : 'unidad';
 
     return Scaffold(
+      backgroundColor: scheme.surface,
       appBar: AppBar(
+        // Botón atrás explícito (además del gesto / botón físico del sistema).
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          tooltip: 'Volver',
+          onPressed: () => Navigator.of(context).pop<bool>(false),
+        ),
+        automaticallyImplyLeading: false,
         title: Text(isEditing ? 'Editar producto' : 'Subir producto'),
       ),
       // El Scaffold aplica el inset del teclado al cuerpo; evita Padding(viewInsets) aquí,

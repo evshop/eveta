@@ -12,13 +12,11 @@ class EvetaFullscreenImageViewer extends StatefulWidget {
     super.key,
     required this.imageUrls,
     required this.initialIndex,
-    required this.heroTagPrefix,
     this.onExit,
   });
 
   final List<String> imageUrls;
   final int initialIndex;
-  final String heroTagPrefix;
   final void Function(int index)? onExit;
 
   @override
@@ -202,20 +200,17 @@ class _EvetaFullscreenImageViewerState extends State<EvetaFullscreenImageViewer>
                       child: GestureDetector(
                         behavior: HitTestBehavior.translucent,
                         onDoubleTap: () => _toggleZoom(index, ctrl),
-                        child: Hero(
-                          tag: '${widget.heroTagPrefix}_$index',
-                          child: Material(
-                            color: Colors.transparent,
-                            child: EvetaCachedImage(
-                              imageUrl: urls[index],
-                              delivery: EvetaImageDelivery.detail,
-                              fit: BoxFit.contain,
-                              memCacheWidth: (MediaQuery.sizeOf(context).width *
-                                      MediaQuery.devicePixelRatioOf(context))
-                                  .round()
-                                  .clamp(900, 1600),
-                              errorIconSize: 64,
-                            ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: EvetaCachedImage(
+                            imageUrl: urls[index],
+                            delivery: EvetaImageDelivery.detail,
+                            fit: BoxFit.contain,
+                            memCacheWidth: (MediaQuery.sizeOf(context).width *
+                                    MediaQuery.devicePixelRatioOf(context))
+                                .round()
+                                .clamp(900, 1600),
+                            errorIconSize: 64,
                           ),
                         ),
                       ),
@@ -313,8 +308,9 @@ class _EvetaFullscreenImageViewerState extends State<EvetaFullscreenImageViewer>
                                       duration: const Duration(milliseconds: 200),
                                       width: 48,
                                       height: 48,
+                                      clipBehavior: Clip.antiAlias,
                                       decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(8),
+                                        borderRadius: BorderRadius.circular(14),
                                         border: Border.all(
                                           color: sel ? scheme.primary : scheme.outline.withValues(alpha: 0.45),
                                           width: sel ? 2.2 : 1,
@@ -329,7 +325,6 @@ class _EvetaFullscreenImageViewerState extends State<EvetaFullscreenImageViewer>
                                               ]
                                             : null,
                                       ),
-                                      clipBehavior: Clip.antiAlias,
                                       child: EvetaCachedImage(
                                         imageUrl: urls[i],
                                         delivery: EvetaImageDelivery.card,

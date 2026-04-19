@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -57,28 +58,56 @@ class _ProductsScreenState extends State<ProductsScreen> {
     );
   }
 
+  /// Fila completa desde Supabase (evita datos incompletos al editar desde la lista).
+  Future<Map<String, dynamic>?> _fetchProductRowForEdit(String id) async {
+    try {
+      final row = await Supabase.instance.client
+          .from('products')
+          .select(
+            'id, name, price, stock, images, category_id, description, unit, '
+            'tags, specs_json, is_active, is_featured',
+          )
+          .eq('id', id)
+          .maybeSingle();
+      if (row == null) return null;
+      final m = Map<dynamic, dynamic>.from(row as Map);
+      return Map<String, dynamic>.from(
+        m.map((k, v) => MapEntry(k.toString(), v)),
+      );
+    } catch (e) {
+      debugPrint('Error loading product for edit: $e');
+      return null;
+    }
+  }
+
   Future<void> _navigateToForm([dynamic product]) async {
-    final scheme = Theme.of(context).colorScheme;
     portalHapticLight();
-    final normalized = _normalizeProductMap(product);
-    final result = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      backgroundColor: scheme.surfaceContainerHighest,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(PortalTokens.radius2xl)),
-      ),
-      builder: (ctx) {
-        final h = MediaQuery.of(ctx).size.height;
-        return SizedBox(
-          height: h * 0.94,
-          child: ProductFormScreen(product: normalized),
+    Map<String, dynamic>? normalized = _normalizeProductMap(product);
+    if (product != null) {
+      final id = normalized?['id']?.toString();
+      if (id != null && id.isNotEmpty) {
+        final fresh = await _fetchProductRowForEdit(id);
+        if (fresh != null) normalized = fresh;
+      }
+    }
+    if (product != null && normalized == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo cargar el producto para editar.')),
         );
-      },
+      }
+      return;
+    }
+    if (!mounted) return;
+
+    // Pantalla completa: botón atrás del sistema / AppBar y gesto de retroceso (como antes).
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => ProductFormScreen(product: normalized),
+      ),
     );
 
-    if (result == true) {
+    if (result == true && mounted) {
       setState(() => _isLoading = true);
       _fetchProducts();
     }
@@ -87,35 +116,122 @@ class _ProductsScreenState extends State<ProductsScreen> {
   Future<void> _openPublishSheet() async {
     if (!mounted) return;
     final scheme = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
     portalHapticLight();
-    await showModalBottomSheet<void>(
+    await showGeneralDialog<void>(
       context: context,
-      showDragHandle: true,
-      backgroundColor: scheme.surfaceContainerHighest,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(PortalTokens.radius2xl)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.black.withValues(alpha: 0.45),
+      transitionDuration: PortalTokens.motionNormal,
+      pageBuilder: (ctx, anim, _) {
+        return Align(
+          alignment: Alignment.bottomCenter,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(PortalTokens.space2, 8, PortalTokens.space2, PortalTokens.space2),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: Icon(Icons.add_photo_alternate_rounded, color: scheme.primary),
-                  title: const Text('Subir producto'),
-                  subtitle: const Text('Añade fotos, precio y categoría'),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _navigateToForm();
-                  },
+            padding: EdgeInsets.fromLTRB(14, 0, 14, MediaQuery.paddingOf(ctx).bottom + 12),
+            child: Material(
+              color: Colors.transparent,
+              child: FadeTransition(
+                opacity: CurvedAnimation(parent: anim, curve: Curves.easeOutCubic),
+                child: ScaleTransition(
+                  scale: Tween<double>(begin: 0.94, end: 1).animate(
+                    CurvedAnimation(parent: anim, curve: Curves.easeOutCubic),
+                  ),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: scheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(PortalTokens.radiusXl + 4),
+                      border: Border.all(color: scheme.outline.withValues(alpha: 0.14)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.22),
+                          blurRadius: 28,
+                          offset: const Offset(0, 14),
+                        ),
+                      ],
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Center(
+                            child: Container(
+                              width: 40,
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: scheme.onSurfaceVariant.withValues(alpha: 0.28),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          Text(
+                            'Nuevo producto',
+                            style: tt.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.35,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Fotos, precio, inventario y categoría en un solo formulario.',
+                            style: tt.bodyMedium?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                              height: 1.35,
+                            ),
+                          ),
+                          const SizedBox(height: 22),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: () {
+                                portalHapticSelect();
+                                Navigator.of(ctx).pop();
+                                _navigateToForm();
+                              },
+                              icon: const Icon(CupertinoIcons.plus_circle_fill, size: 22),
+                              label: const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 4),
+                                child: Text(
+                                  'Empezar',
+                                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                              style: FilledButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(PortalTokens.radiusLg + 2),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          TextButton(
+                            onPressed: () {
+                              portalHapticSelect();
+                              Navigator.of(ctx).pop();
+                            },
+                            child: Text(
+                              'Cancelar',
+                              style: tt.titleSmall?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-              ],
+              ),
             ),
           ),
         );
       },
+      transitionBuilder: (ctx, anim, _, child) => child,
     );
   }
 

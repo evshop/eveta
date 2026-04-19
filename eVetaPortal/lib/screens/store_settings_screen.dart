@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/cloudinary_service.dart';
 import '../widgets/portal/eveta_portal_image_crop_screen.dart';
+import '../widgets/portal/eveta_portal_image_picker_sheet.dart';
 import '../widgets/portal/portal_tokens.dart';
 import '../widgets/portal/portal_soft_card.dart';
 import '../widgets/store_front_preview_header.dart';
@@ -79,146 +79,23 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
     }
   }
 
-  Future<ImageSource?> _showStoreMediaSourceSheet({required bool isLogo}) async {
-    final scheme = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-    final title = isLogo ? 'Origen del icono' : 'Origen del banner';
-    final subtitle = isLogo
-        ? 'Después recortás a 1:1 con vista previa.'
-        : 'Después recortás a 16:9 con vista previa.';
-
-    return showModalBottomSheet<ImageSource>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (sheetCtx) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: scheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(PortalTokens.radiusXl + 6),
-              border: Border.all(color: scheme.outline.withValues(alpha: 0.18)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.14),
-                  blurRadius: 24,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: scheme.onSurfaceVariant.withValues(alpha: 0.28),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    Text(
-                      title,
-                      style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -0.3),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      subtitle,
-                      style: tt.bodyMedium?.copyWith(color: scheme.onSurfaceVariant, height: 1.35),
-                    ),
-                    const SizedBox(height: 18),
-                    PortalSoftCard(
-                      padding: EdgeInsets.zero,
-                      radius: PortalTokens.radiusLg + 2,
-                      child: Column(
-                        children: [
-                          ListTile(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                            leading: Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: scheme.primary.withValues(alpha: 0.14),
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: Icon(Icons.photo_library_rounded, color: scheme.primary, size: 24),
-                            ),
-                            title: Text('Galería', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-                            subtitle: Text(
-                              'Elegir una foto que ya tenés',
-                              style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-                            ),
-                            trailing: Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
-                            onTap: () => Navigator.pop(sheetCtx, ImageSource.gallery),
-                          ),
-                          Divider(height: 1, thickness: 1, color: scheme.outline.withValues(alpha: 0.12)),
-                          ListTile(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                            leading: Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: scheme.secondary.withValues(alpha: 0.18),
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: Icon(Icons.photo_camera_rounded, color: scheme.secondary, size: 24),
-                            ),
-                            title: Text('Cámara', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-                            subtitle: Text(
-                              'Sacar una foto ahora',
-                              style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-                            ),
-                            trailing: Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
-                            onTap: () => Navigator.pop(sheetCtx, ImageSource.camera),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   Future<void> _pickCropUpload({required bool isLogo}) async {
-    final source = await _showStoreMediaSourceSheet(isLogo: isLogo);
-    if (source == null || !mounted) return;
-
-    final picker = ImagePicker();
-    XFile? picked;
-    try {
-      picked = await picker.pickImage(
-        source: source,
+    final files = await EvetaPortalImagePicker.pick(
+      context,
+      EvetaPortalImagePickerOptions(
+        title: isLogo ? 'Imagen del icono' : 'Imagen del banner',
+        subtitle: isLogo
+            ? 'Luego recortás 1:1 con vista previa.'
+            : 'Luego recortás 16:9 con vista previa.',
+        allowMultiFromGallery: false,
+        maxFiles: 1,
         imageQuality: 88,
-        maxWidth: isLogo ? 1600 : 2800,
-        requestFullMetadata: false,
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            source == ImageSource.camera
-                ? 'No se pudo abrir la cámara. Revisá permisos en ajustes del dispositivo.'
-                : 'No se pudo abrir la galería: $e',
-          ),
-        ),
-      );
-      return;
-    }
-    if (picked == null || !mounted) return;
+        maxWidth: isLogo ? 1600.0 : 2800.0,
+      ),
+    );
+    if (files == null || files.isEmpty || !mounted) return;
 
-    final bytes = await picked.readAsBytes();
+    final bytes = await files.first.readAsBytes();
     if (!mounted) return;
 
     final cropped = await EvetaPortalImageCropScreen.open(
@@ -251,6 +128,16 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
           _bannerUrl = url;
         }
       });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text(
+              isLogo ? 'Icono listo. Guardá cambios para publicarlo.' : 'Banner listo. Guardá cambios para publicarlo.',
+            ),
+          ),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

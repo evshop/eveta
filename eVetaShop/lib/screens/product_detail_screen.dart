@@ -376,7 +376,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
           return EvetaFullscreenImageViewer(
             imageUrls: imageUrls,
             initialIndex: index,
-            heroTagPrefix: widget.productId,
             onExit: (i) {
               if (!mounted) return;
               setState(() => _selectedImageIndex = i);
@@ -768,12 +767,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
                       return GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: () => _openFullscreenGallery(context, imageUrls, index),
-                        child: Hero(
-                          tag: '${widget.productId}_$index',
-                          child: Material(
-                            color: Colors.transparent,
-                            child: _buildSquareImageContainer(imageUrls[index]),
-                          ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: _buildSquareImageContainer(imageUrls[index]),
                         ),
                       );
                     },
@@ -821,15 +817,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
               width: 56 * scale,
               height: 56 * scale,
               margin: EdgeInsets.only(right: 8 * scale),
+              clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
                 border: Border.all(
                   color: isActive ? scheme.primary : scheme.outline.withValues(alpha: 0.5),
                   width: isActive ? 2 : 1,
                 ),
-                borderRadius: BorderRadius.circular(10 * scale),
+                borderRadius: BorderRadius.circular(14 * scale),
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(9 * scale),
+                borderRadius: BorderRadius.circular(12 * scale),
                 child: EvetaCachedImage(
                   imageUrl: imageUrls[index],
                   delivery: EvetaImageDelivery.thumb,

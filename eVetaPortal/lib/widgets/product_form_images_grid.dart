@@ -44,53 +44,75 @@ class ProductFormImagesGrid extends StatelessWidget {
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        ReorderableGridView.count(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          restrictDragScope: true,
-          crossAxisCount: 3,
-          mainAxisSpacing: PortalTokens.space1,
-          crossAxisSpacing: PortalTokens.space1,
-          childAspectRatio: 1,
-          onReorder: onReorder,
-          dragWidgetBuilderV2: DragWidgetBuilderV2(
-            builder: (index, child, _) {
-              return Transform.scale(
-                scale: 1.04,
-                child: Material(
-                  elevation: 8,
-                  borderRadius: BorderRadius.circular(PortalTokens.radiusLg),
-                  shadowColor: Colors.black38,
-                  clipBehavior: Clip.antiAlias,
-                  child: child,
-                ),
-              );
-            },
-          ),
+    // ReorderableGridView dentro de SingleChildScrollView: shrinkWrap + scroll vertical
+    // sin altura acotada provoca "size: MISSING" / pantalla negra en algunos dispositivos.
+    const crossAxisCount = 3;
+    const spacing = PortalTokens.space1;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxW = constraints.maxWidth;
+        if (!maxW.isFinite || maxW <= 0) {
+          return const SizedBox.shrink();
+        }
+        final cellW = (maxW - spacing * (crossAxisCount - 1)) / crossAxisCount;
+        final cellH = cellW;
+        final rows = (images.length + crossAxisCount - 1) ~/ crossAxisCount;
+        final gridH = rows > 0 ? rows * cellH + (rows - 1) * spacing : 0.0;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (var idx = 0; idx < images.length; idx++)
-              _ImageTile(
-                key: ValueKey<String>(images[idx]),
-                url: images[idx],
-                isCover: images[idx] == coverUrl,
-                scheme: scheme,
-                isDark: isDark,
-                onRemove: isUploading ? null : () => onRemove(idx),
-                onSetCover: () => onMakeCover(idx),
+            if (rows > 0)
+              SizedBox(
+                height: gridH,
+                child: ReorderableGridView.count(
+                  shrinkWrap: false,
+                  physics: const NeverScrollableScrollPhysics(),
+                  restrictDragScope: true,
+                  crossAxisCount: crossAxisCount,
+                  mainAxisSpacing: spacing,
+                  crossAxisSpacing: spacing,
+                  childAspectRatio: 1,
+                  onReorder: onReorder,
+                  dragWidgetBuilderV2: DragWidgetBuilderV2(
+                    builder: (index, child, _) {
+                      return Transform.scale(
+                        scale: 1.04,
+                        child: Material(
+                          elevation: 8,
+                          borderRadius: BorderRadius.circular(PortalTokens.radiusLg),
+                          shadowColor: Colors.black38,
+                          clipBehavior: Clip.antiAlias,
+                          child: child,
+                        ),
+                      );
+                    },
+                  ),
+                  children: [
+                    for (var idx = 0; idx < images.length; idx++)
+                      _ImageTile(
+                        key: ValueKey<String>(images[idx]),
+                        url: images[idx],
+                        isCover: images[idx] == coverUrl,
+                        scheme: scheme,
+                        isDark: isDark,
+                        onRemove: isUploading ? null : () => onRemove(idx),
+                        onSetCover: () => onMakeCover(idx),
+                      ),
+                  ],
+                ),
               ),
+            if (images.length < 10) ...[
+              const SizedBox(height: PortalTokens.space2),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _AddPhotoTile(scheme: scheme, isUploading: isUploading, onAddTap: onAddTap),
+              ),
+            ],
           ],
-        ),
-        if (images.length < 10) ...[
-          const SizedBox(height: PortalTokens.space2),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: _AddPhotoTile(scheme: scheme, isUploading: isUploading, onAddTap: onAddTap),
-          ),
-        ],
-      ],
+        );
+      },
     );
   }
 }
@@ -156,111 +178,109 @@ class _ImageTile extends StatelessWidget {
     final borderColor = isCover ? scheme.primary : scheme.outline.withValues(alpha: isDark ? 0.25 : 0.35);
     final borderW = isCover ? 2.5 : 1.0;
 
-    return AspectRatio(
-      aspectRatio: 1,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(PortalTokens.radiusLg),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            ColoredBox(
-              color: scheme.surfaceContainerHigh,
-              child: Padding(
-                padding: const EdgeInsets.all(3),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(PortalTokens.radiusMd),
-                  child: PortalCachedImage(
-                    imageUrl: url,
-                    fit: BoxFit.cover,
-                    memCacheWidth: 400,
-                  ),
+    // La celda del grid ya es cuadrada (childAspectRatio: 1); no anidar otro AspectRatio.
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(PortalTokens.radiusLg),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ColoredBox(
+            color: scheme.surfaceContainerHigh,
+            child: Padding(
+              padding: const EdgeInsets.all(3),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(PortalTokens.radiusMd),
+                child: PortalCachedImage(
+                  imageUrl: url,
+                  fit: BoxFit.cover,
+                  memCacheWidth: 400,
                 ),
               ),
             ),
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(PortalTokens.radiusLg),
-                  border: Border.all(color: borderColor, width: borderW),
-                ),
+          ),
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(PortalTokens.radiusLg),
+                border: Border.all(color: borderColor, width: borderW),
               ),
             ),
-            if (isCover)
-              Positioned(
-                left: 6,
-                top: 6,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: scheme.primary,
-                    borderRadius: BorderRadius.circular(999),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.2),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.photo_size_select_large_rounded, size: 12, color: scheme.onPrimary),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Portada',
-                        style: TextStyle(
-                          color: scheme.onPrimary,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.2,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            else
-              Positioned(
-                left: 6,
-                bottom: 6,
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: onSetCover,
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      padding: const EdgeInsets.all(5),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.45),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(Icons.image_outlined, size: 14, color: Colors.white.withValues(alpha: 0.95)),
-                    ),
-                  ),
-                ),
-              ),
+          ),
+          if (isCover)
             Positioned(
-              right: 4,
-              top: 4,
+              left: 6,
+              top: 6,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: scheme.primary,
+                  borderRadius: BorderRadius.circular(999),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.photo_size_select_large_rounded, size: 12, color: scheme.onPrimary),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Portada',
+                      style: TextStyle(
+                        color: scheme.onPrimary,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            Positioned(
+              left: 6,
+              bottom: 6,
               child: Material(
                 color: Colors.transparent,
                 child: InkWell(
-                  onTap: onRemove,
-                  borderRadius: BorderRadius.circular(999),
+                  onTap: onSetCover,
+                  borderRadius: BorderRadius.circular(8),
                   child: Container(
-                    padding: const EdgeInsets.all(4),
+                    padding: const EdgeInsets.all(5),
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.45),
-                      shape: BoxShape.circle,
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Icon(Icons.close_rounded, size: 14, color: Colors.white),
+                    child: Icon(Icons.image_outlined, size: 14, color: Colors.white.withValues(alpha: 0.95)),
                   ),
                 ),
               ),
             ),
-          ],
-        ),
+          Positioned(
+            right: 4,
+            top: 4,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onRemove,
+                borderRadius: BorderRadius.circular(999),
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.close_rounded, size: 14, color: Colors.white),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

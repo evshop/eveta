@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../services/auth_service.dart';
 import '../services/products_service.dart';
 import '../widgets/admin_shop_product_card.dart';
 import 'official_store_screen.dart';
@@ -136,6 +138,41 @@ class _StoreProductsScreenState extends State<StoreProductsScreen> {
     if (mounted) _load();
   }
 
+  Future<void> _copyStoreEmail() async {
+    final email = widget.subtitle?.trim() ?? '';
+    if (email.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: email));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Correo copiado')),
+    );
+  }
+
+  Future<void> _sendStorePasswordReset() async {
+    final email = widget.subtitle?.trim() ?? '';
+    if (email.isEmpty || !email.contains('@')) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No hay un correo válido para esta tienda.')),
+      );
+      return;
+    }
+    try {
+      await AuthService.sendPasswordResetEmail(email);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Se envió un enlace de recuperación a $email'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo enviar el correo: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -154,6 +191,27 @@ class _StoreProductsScreenState extends State<StoreProductsScreen> {
           ],
         ),
         actions: [
+          if (widget.subtitle != null &&
+              widget.subtitle!.trim().isNotEmpty &&
+              widget.subtitle!.contains('@'))
+            PopupMenuButton<String>(
+              tooltip: 'Acceso de la tienda',
+              icon: const Icon(Icons.key_rounded),
+              onSelected: (value) {
+                if (value == 'copy') {
+                  _copyStoreEmail();
+                } else if (value == 'reset') {
+                  _sendStorePasswordReset();
+                }
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem(value: 'copy', child: Text('Copiar correo')),
+                PopupMenuItem(
+                  value: 'reset',
+                  child: Text('Enviar recuperación de contraseña'),
+                ),
+              ],
+            ),
           IconButton(
             tooltip: widget.isOfficialAdminStore ? 'Configurar tienda' : 'Editar tienda',
             icon: const Icon(Icons.tune_rounded),
