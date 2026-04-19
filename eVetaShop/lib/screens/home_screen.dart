@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:ui' show lerpDouble;
+import 'dart:ui' show ImageFilter, lerpDouble;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
@@ -7,7 +7,7 @@ import 'package:shimmer/shimmer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:eveta/common_widget/product_card_skeleton.dart';
 import 'package:eveta/common_widget/promo_carousel_widget.dart';
-import 'package:eveta/screens/add_location_screen.dart';
+import 'package:eveta/screens/location_onboarding_screen.dart';
 import 'package:eveta/screens/category_products_screen.dart';
 import 'package:eveta/screens/search_screen.dart';
 import 'package:eveta/screens/seller_store_screen.dart';
@@ -20,6 +20,7 @@ import 'package:eveta/ui/shop/premium/brand_card.dart';
 import 'package:eveta/ui/shop/premium/eveta_new_arrival_card.dart';
 import 'package:eveta/ui/shop/premium/horizontal_new_arrivals_list.dart';
 import 'package:eveta/ui/shop/sticky_category_header.dart';
+import 'package:eveta/utils/delivery_location_prefs.dart';
 import 'package:eveta/utils/catalog_cache_service.dart';
 import 'package:eveta/utils/supabase_service.dart';
 import 'package:eveta/ui/shop/product_map_ui.dart';
@@ -42,11 +43,14 @@ class HomeScreen extends StatefulWidget {
     this.onProductTap,
     this.onOpenCart,
     this.onOpenWishlist,
+    this.onOpenSearch,
   });
 
   final void Function(String productId)? onProductTap;
   final VoidCallback? onOpenCart;
   final VoidCallback? onOpenWishlist;
+  /// Si no es null (p. ej. [MyHomePage]), el buscador se muestra encima sin ocultar la barra inferior.
+  final VoidCallback? onOpenSearch;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -56,6 +60,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late Future<_HomeData> _homeFuture;
   final ScrollController _homeScrollController = ScrollController();
   StreamSubscription<AuthState>? _authSub;
+  String _locationLine = 'Entrega en La Paz, Bolivia';
 
   @override
   void initState() {
@@ -64,6 +69,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _homeFuture = _load();
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((_) {
       if (mounted) setState(() {});
+    });
+    _refreshLocationLine();
+  }
+
+  Future<void> _refreshLocationLine() async {
+    final loc = await DeliveryLocationPrefs.load();
+    if (!mounted) return;
+    setState(() {
+      if (loc.lat != null && loc.lng != null && loc.displayLabel.trim().isNotEmpty) {
+        _locationLine = loc.displayLabel.trim();
+      } else {
+        _locationLine = 'Elige dónde entregamos · La Paz, Bolivia';
+      }
     });
   }
 
@@ -79,6 +97,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       setState(() => _homeFuture = _load());
+      _refreshLocationLine();
     }
   }
 
@@ -89,45 +108,90 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return _HomeData(products: products, categories: categories, sellers: sellers);
   }
 
-  void _showLocationSheet(BuildContext context) {
+  Future<void> _showLocationSheet(BuildContext context) async {
     final scheme = Theme.of(context).colorScheme;
-    showModalBottomSheet<void>(
+    final tt = Theme.of(context).textTheme;
+    final saved = await DeliveryLocationPrefs.loadSaved();
+    if (!context.mounted) return;
+
+    if (saved.isEmpty) {
+      await Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const LocationOnboardingScreen()));
+      await _refreshLocationLine();
+      return;
+    }
+
+    await showModalBottomSheet<void>(
       context: context,
       backgroundColor: scheme.surfaceContainerHighest,
       barrierColor: Colors.black.withValues(alpha: 0.35),
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(EvetaShopDimens.radiusXl)),
       ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: scheme.outline,
-                borderRadius: BorderRadius.circular(2),
-              ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: scheme.outline,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text('Tus ubicaciones', style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: (MediaQuery.sizeOf(ctx).height * 0.36).clamp(160.0, 340.0),
+                  child: ListView.separated(
+                    itemCount: saved.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, i) {
+                      final loc = saved[i];
+                      return Material(
+                        color: scheme.surfaceContainerHigh,
+                        borderRadius: BorderRadius.circular(EvetaShopDimens.radiusMd),
+                        child: ListTile(
+                          leading: Icon(Icons.place_outlined, color: scheme.primary),
+                          title: Text(loc.displayTitle, maxLines: 2, overflow: TextOverflow.ellipsis),
+                          onTap: () async {
+                            Navigator.pop(ctx);
+                            await DeliveryLocationPrefs.selectSaved(loc.id);
+                            await _refreshLocationLine();
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    await Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const LocationOnboardingScreen()));
+                    await _refreshLocationLine();
+                  },
+                  icon: const Icon(Icons.add_location_alt_outlined, size: 20),
+                  label: const Text('Agregar nueva ubicación'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: scheme.primary,
+                    foregroundColor: scheme.onPrimary,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 20),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: CircleAvatar(
-                backgroundColor: scheme.primary.withValues(alpha: 0.15),
-                child: Icon(Icons.add_location_alt_rounded, color: scheme.primary),
-              ),
-              title: const Text('Agregar o cambiar ubicación', style: TextStyle(fontWeight: FontWeight.w600)),
-              trailing: Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
-              onTap: () {
-                Navigator.pop(ctx);
-                Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const AddLocationScreen()));
-              },
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -136,6 +200,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final pid = c['parent_id'];
       return pid == null || pid.toString().trim().isEmpty;
     }).toList();
+  }
+
+  static String? _parentCategoryId(Map<String, dynamic> c) {
+    final v = c['parent_id'];
+    if (v == null) return null;
+    final s = v.toString().trim();
+    if (s.isEmpty || s == 'null') return null;
+    return s;
+  }
+
+  /// Categorías raíz con al menos un producto (propia o en alguna subcategoría).
+  List<Map<String, dynamic>> _topCategoriesWithStock(
+    List<Map<String, dynamic>> allCategories,
+    List<Map<String, dynamic>> products,
+  ) {
+    final counts = <String, int>{};
+    for (final p in products) {
+      final id = p['category_id']?.toString();
+      if (id == null || id.isEmpty) continue;
+      counts[id] = (counts[id] ?? 0) + 1;
+    }
+    bool hasUnder(String topId) {
+      if ((counts[topId] ?? 0) > 0) return true;
+      for (final c in allCategories) {
+        if (_parentCategoryId(c) == topId && (counts[c['id'].toString()] ?? 0) > 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+    return _topCategories(allCategories).where((c) => hasUnder(c['id'].toString())).toList();
   }
 
   String _resolveUserFirstName() {
@@ -154,6 +249,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _openSearch(BuildContext context) {
+    if (widget.onOpenSearch != null) {
+      widget.onOpenSearch!();
+      return;
+    }
     Navigator.push(
       context,
       MaterialPageRoute<void>(builder: (_) => const SearchScreen()),
@@ -175,11 +274,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget _buildHomeStickyHeader(BuildContext context, double t) {
     final scheme = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final statusTop = MediaQuery.paddingOf(context).top;
     final firstName = _resolveUserFirstName();
     final expandedOpacity = (1.0 - t).clamp(0.0, 1.0);
     final compactOpacity = t.clamp(0.0, 1.0);
     final searchPhase = Curves.easeInOutCubic.transform((t / 0.42).clamp(0.0, 1.0));
-    final belowPt = (lerpDouble(236, 56, t) ?? (236 - 180 * t));
+    final belowPt =
+        (lerpDouble(236, 56, t) ?? (236 - 180 * t)) + statusTop;
 
     return SizedBox(
       height: belowPt,
@@ -190,6 +291,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           clipBehavior: Clip.hardEdge,
           fit: StackFit.expand,
           children: [
+            if (t < 0.05)
+              Positioned.fill(child: ColoredBox(color: scheme.surface)),
+            if (t >= 0.05)
+              Positioned.fill(
+                child: Builder(
+                  builder: (context) {
+                    // Misma intensidad que la barra de detalle de producto (sigma 16 + velo).
+                    final isDarkBar = Theme.of(context).brightness == Brightness.dark;
+                    const sigma = 16.0;
+                    final baseA = isDarkBar ? 0.42 : 0.55;
+                    final scrim = isDarkBar ? Colors.black : Colors.white;
+                    return BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              scrim.withValues(alpha: baseA),
+                              scrim.withValues(alpha: baseA * 0.88),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
             Positioned.fill(
               child: Align(
                 alignment: Alignment.topCenter,
@@ -202,7 +332,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       clipBehavior: Clip.hardEdge,
                       primary: false,
                       child: Padding(
-                        padding: const EdgeInsets.fromLTRB(EvetaShopDimens.spaceLg, 6, EvetaShopDimens.spaceLg, 0),
+                        padding: EdgeInsets.fromLTRB(
+                          EvetaShopDimens.spaceLg,
+                          6 + statusTop,
+                          EvetaShopDimens.spaceLg,
+                          0,
+                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
@@ -256,7 +391,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                         const SizedBox(width: 8),
                                         Expanded(
                                           child: Text(
-                                            'Entrega en La Paz, Bolivia',
+                                            _locationLine,
                                             style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: scheme.onSurface),
                                           ),
                                         ),
@@ -305,7 +440,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   child: IgnorePointer(
                     ignoring: t < 0.4,
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(EvetaShopDimens.spaceLg, 4, EvetaShopDimens.spaceSm, 6),
+                      padding: EdgeInsets.fromLTRB(
+                        EvetaShopDimens.spaceLg,
+                        4 + statusTop,
+                        EvetaShopDimens.spaceSm,
+                        6,
+                      ),
                       child: Row(
                         children: [
                           Expanded(
@@ -350,22 +490,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final tt = Theme.of(context).textTheme;
 
     return Scaffold(
-      backgroundColor: scheme.surface,
-      body: SafeArea(
-        bottom: false,
-        child: RefreshIndicator(
-          color: scheme.primary,
-          onRefresh: () async {
-            final f = _load();
-            setState(() => _homeFuture = f);
-            await CatalogCacheService.getProducts(forceRefresh: true);
-            await f;
-          },
-          child: FutureBuilder<_HomeData>(
-            future: _homeFuture,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-                return CustomScrollView(
+        backgroundColor: scheme.surface,
+        body: SafeArea(
+          top: false,
+          bottom: false,
+          child: RefreshIndicator(
+            color: scheme.primary,
+            onRefresh: () async {
+              final f = _load();
+              setState(() => _homeFuture = f);
+              await CatalogCacheService.getProducts(forceRefresh: true);
+              await f;
+            },
+            child: FutureBuilder<_HomeData>(
+              future: _homeFuture,
+              builder: (context, snapshot) {
+                final statusTop = MediaQuery.paddingOf(context).top;
+                if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+                  return CustomScrollView(
                   controller: _homeScrollController,
                   cacheExtent: 280,
                   physics: const AlwaysScrollableScrollPhysics(parent: ClampingScrollPhysics()),
@@ -373,8 +515,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     SliverPersistentHeader(
                       pinned: true,
                       delegate: StickyCategoryHeader(
-                        minHeight: 236,
-                        maxHeight: 236,
+                        minHeight: 236 + statusTop,
+                        maxHeight: 236 + statusTop,
                         backgroundColor: scheme.surface,
                         borderColor: scheme.outline.withValues(alpha: 0.25),
                         builder: (ctx, _) => _HeaderSkeleton(loading: true),
@@ -396,35 +538,36 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                     ),
                   ],
-                );
-              }
+                  );
+                }
 
-              if (snapshot.hasError || !snapshot.hasData) {
-                return ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  children: [
-                    SizedBox(height: MediaQuery.sizeOf(context).height * 0.2),
-                    Icon(Icons.wifi_off_rounded, size: 48, color: scheme.onSurfaceVariant),
-                    const SizedBox(height: 12),
-                    Center(
-                      child: Text(
-                        'No pudimos cargar el inicio',
-                        style: tt.titleMedium,
+                if (snapshot.hasError || !snapshot.hasData) {
+                  return ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: EdgeInsets.only(top: statusTop),
+                    children: [
+                      SizedBox(height: MediaQuery.sizeOf(context).height * 0.2),
+                      Icon(Icons.wifi_off_rounded, size: 48, color: scheme.onSurfaceVariant),
+                      const SizedBox(height: 12),
+                      Center(
+                        child: Text(
+                          'No pudimos cargar el inicio',
+                          style: tt.titleMedium,
+                        ),
                       ),
-                    ),
-                  ],
-                );
-              }
+                    ],
+                  );
+                }
 
-              final data = snapshot.data!;
-              final products = data.products;
-              final topCats = _topCategories(data.categories);
-              final featured = products.where((p) => p['is_featured'] == true).toList();
-              final popular = List<Map<String, dynamic>>.from(products)
-                ..sort((a, b) => productRating(b).compareTo(productRating(a)));
-              final recommended = featured.isNotEmpty ? featured : products;
+                final data = snapshot.data!;
+                final products = data.products;
+                final topCats = _topCategoriesWithStock(data.categories, products);
+                final featured = products.where((p) => p['is_featured'] == true).toList();
+                final popular = List<Map<String, dynamic>>.from(products)
+                  ..sort((a, b) => productRating(b).compareTo(productRating(a)));
+                final recommended = featured.isNotEmpty ? featured : products;
 
-              return CustomScrollView(
+                return CustomScrollView(
                 controller: _homeScrollController,
                 cacheExtent: 280,
                 physics: const AlwaysScrollableScrollPhysics(parent: ClampingScrollPhysics()),
@@ -432,9 +575,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   SliverPersistentHeader(
                     pinned: true,
                     delegate: StickyCategoryHeader(
-                      minHeight: 56,
-                      maxHeight: 236,
-                      backgroundColor: scheme.surface,
+                      minHeight: 56 + statusTop,
+                      maxHeight: 236 + statusTop,
+                      backgroundColor: Colors.transparent,
                       borderColor: scheme.outline.withValues(alpha: 0.28),
                       builder: (ctx, progress) => _buildHomeStickyHeader(
                         ctx,
@@ -600,11 +743,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ],
                   const SliverToBoxAdapter(child: SizedBox(height: 110)),
                 ],
-              );
-            },
+                );
+              },
+            ),
           ),
         ),
-      ),
     );
   }
 }
@@ -668,8 +811,9 @@ class _HeaderSkeleton extends StatelessWidget {
       );
     }
 
+    final statusTop = MediaQuery.paddingOf(context).top;
     final inner = Padding(
-      padding: const EdgeInsets.fromLTRB(EvetaShopDimens.spaceLg, 8, EvetaShopDimens.spaceLg, 12),
+      padding: EdgeInsets.fromLTRB(EvetaShopDimens.spaceLg, 8 + statusTop, EvetaShopDimens.spaceLg, 12),
       child: loading
           ? Shimmer.fromColors(
               baseColor: base,

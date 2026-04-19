@@ -50,6 +50,7 @@ class ProductFormImagesGrid extends StatelessWidget {
         ReorderableGridView.count(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
+          restrictDragScope: true,
           crossAxisCount: 3,
           mainAxisSpacing: PortalTokens.space1,
           crossAxisSpacing: PortalTokens.space1,

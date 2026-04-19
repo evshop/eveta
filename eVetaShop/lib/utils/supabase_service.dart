@@ -256,6 +256,42 @@ class SupabaseService {
     }
   }
 
+  /// Condiciones `or(...)` para nombre, categoría y tags (palabras sueltas y texto con #).
+  static String _productTextSearchOrFilter(String rawQuery, {required bool includeCategoryName}) {
+    var t = rawQuery.trim();
+    if (t.length < 2) return '';
+    final parts = <String>{};
+    final fullEscaped = _escapeIlike(t);
+    parts.add('name.ilike.%$fullEscaped%');
+    if (includeCategoryName) {
+      parts.add('categories.name.ilike.%$fullEscaped%');
+    }
+
+    var tagProbe = t.startsWith('#') ? t.substring(1).trim() : t;
+    if (tagProbe.length >= 2 && !tagProbe.contains(',') && !tagProbe.contains('{') && !tagProbe.contains('}')) {
+      parts.add('tags.cs.{$tagProbe}');
+    }
+
+    final words = t
+        .split(RegExp(r'\s+'))
+        .map((w) => w.trim())
+        .where((w) => w.length >= 2)
+        .toSet();
+    for (final w in words) {
+      var w2 = w.startsWith('#') ? w.substring(1).trim() : w;
+      if (w2.length < 2) continue;
+      final ew = _escapeIlike(w2);
+      parts.add('name.ilike.%$ew%');
+      if (includeCategoryName) {
+        parts.add('categories.name.ilike.%$ew%');
+      }
+      if (!w2.contains(',') && !w2.contains('{') && !w2.contains('}')) {
+        parts.add('tags.cs.{$w2}');
+      }
+    }
+    return parts.join(',');
+  }
+
   /// Búsqueda con filtros (texto opcional si [query] tiene ≥2 caracteres).
   static Future<List<Map<String, dynamic>>> searchProductsAdvanced({
     required String query,
@@ -265,47 +301,52 @@ class SupabaseService {
     required double priceFilterCeiling,
     ProductSearchSort sort = ProductSearchSort.recent,
   }) async {
-    try {
-      dynamic qb = client
-          .from('products')
-          .select('id, name, price, stock, images, category_id, created_at, categories(name)')
-          .eq('is_active', true);
+    final trimmed = query.trim();
+    for (final includeCat in [true, false]) {
+      try {
+        dynamic qb = client
+            .from('products')
+            .select('id, name, price, stock, images, category_id, created_at, tags, categories(name)')
+            .eq('is_active', true);
 
-      final trimmed = query.trim();
-      if (trimmed.length >= 2) {
-        final q = _escapeIlike(trimmed);
-        qb = qb.or('name.ilike.%$q%,tags.cs.{$trimmed}');
-      }
+        if (trimmed.length >= 2) {
+          final orExpr = _productTextSearchOrFilter(trimmed, includeCategoryName: includeCat);
+          if (orExpr.isNotEmpty) {
+            qb = qb.or(orExpr);
+          }
+        }
 
-      if (categoryIds != null && categoryIds.isNotEmpty) {
-        qb = qb.inFilter('category_id', categoryIds);
-      }
-      if (minPrice > 0) {
-        qb = qb.gte('price', minPrice);
-      }
-      if (maxPrice < priceFilterCeiling - 0.01) {
-        qb = qb.lte('price', maxPrice);
-      }
+        if (categoryIds != null && categoryIds.isNotEmpty) {
+          qb = qb.inFilter('category_id', categoryIds);
+        }
+        if (minPrice > 0) {
+          qb = qb.gte('price', minPrice);
+        }
+        if (maxPrice < priceFilterCeiling - 0.01) {
+          qb = qb.lte('price', maxPrice);
+        }
 
-      switch (sort) {
-        case ProductSearchSort.recent:
-          qb = qb.order('created_at', ascending: false);
-          break;
-        case ProductSearchSort.priceAsc:
-          qb = qb.order('price', ascending: true);
-          break;
-        case ProductSearchSort.priceDesc:
-          qb = qb.order('price', ascending: false);
-          break;
-      }
+        switch (sort) {
+          case ProductSearchSort.recent:
+            qb = qb.order('created_at', ascending: false);
+            break;
+          case ProductSearchSort.priceAsc:
+            qb = qb.order('price', ascending: true);
+            break;
+          case ProductSearchSort.priceDesc:
+            qb = qb.order('price', ascending: false);
+            break;
+        }
 
-      qb = qb.limit(100);
-      final response = await qb;
-      return List<Map<String, dynamic>>.from(response);
-    } catch (e) {
-      debugPrint('Error en búsqueda avanzada: $e');
-      return [];
+        qb = qb.limit(100);
+        final response = await qb;
+        return List<Map<String, dynamic>>.from(response);
+      } catch (e) {
+        debugPrint('searchProductsAdvanced (includeCategoryName=$includeCat): $e');
+        if (!includeCat) return [];
+      }
     }
+    return [];
   }
 
   /// Vendedores cuyo nombre de tienda o nombre coincide con la búsqueda.

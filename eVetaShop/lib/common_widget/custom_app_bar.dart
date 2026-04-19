@@ -144,7 +144,6 @@ class _CustomAppBarState extends State<CustomAppBar> {
                       Opacity(
                         opacity: (1.0 - widget.shrinkProgress * 2).clamp(0.0, 1.0),
                         child: Align(
-                          heightFactor: (1.0 - widget.shrinkProgress).clamp(0.0, 1.0),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [

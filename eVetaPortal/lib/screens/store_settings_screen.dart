@@ -3,6 +3,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/cloudinary_service.dart';
+import '../widgets/portal/eveta_portal_image_crop_screen.dart';
+import '../widgets/portal/portal_tokens.dart';
+import '../widgets/portal/portal_soft_card.dart';
 import '../widgets/store_front_preview_header.dart';
 
 class StoreSettingsScreen extends StatefulWidget {
@@ -76,22 +79,165 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
     }
   }
 
-  Future<void> _pickAndUpload({required bool isLogo}) async {
+  Future<ImageSource?> _showStoreMediaSourceSheet({required bool isLogo}) async {
+    final scheme = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final title = isLogo ? 'Origen del icono' : 'Origen del banner';
+    final subtitle = isLogo
+        ? 'Después recortás a 1:1 con vista previa.'
+        : 'Después recortás a 16:9 con vista previa.';
+
+    return showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(PortalTokens.radiusXl + 6),
+              border: Border.all(color: scheme.outline.withValues(alpha: 0.18)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.14),
+                  blurRadius: 24,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: scheme.onSurfaceVariant.withValues(alpha: 0.28),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      title,
+                      style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -0.3),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      subtitle,
+                      style: tt.bodyMedium?.copyWith(color: scheme.onSurfaceVariant, height: 1.35),
+                    ),
+                    const SizedBox(height: 18),
+                    PortalSoftCard(
+                      padding: EdgeInsets.zero,
+                      radius: PortalTokens.radiusLg + 2,
+                      child: Column(
+                        children: [
+                          ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                            leading: Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: scheme.primary.withValues(alpha: 0.14),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Icon(Icons.photo_library_rounded, color: scheme.primary, size: 24),
+                            ),
+                            title: Text('Galería', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                            subtitle: Text(
+                              'Elegir una foto que ya tenés',
+                              style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                            ),
+                            trailing: Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+                            onTap: () => Navigator.pop(sheetCtx, ImageSource.gallery),
+                          ),
+                          Divider(height: 1, thickness: 1, color: scheme.outline.withValues(alpha: 0.12)),
+                          ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                            leading: Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: scheme.secondary.withValues(alpha: 0.18),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Icon(Icons.photo_camera_rounded, color: scheme.secondary, size: 24),
+                            ),
+                            title: Text('Cámara', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                            subtitle: Text(
+                              'Sacar una foto ahora',
+                              style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                            ),
+                            trailing: Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+                            onTap: () => Navigator.pop(sheetCtx, ImageSource.camera),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _pickCropUpload({required bool isLogo}) async {
+    final source = await _showStoreMediaSourceSheet(isLogo: isLogo);
+    if (source == null || !mounted) return;
+
+    final picker = ImagePicker();
+    XFile? picked;
+    try {
+      picked = await picker.pickImage(
+        source: source,
+        imageQuality: 88,
+        maxWidth: isLogo ? 1600 : 2800,
+        requestFullMetadata: false,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            source == ImageSource.camera
+                ? 'No se pudo abrir la cámara. Revisá permisos en ajustes del dispositivo.'
+                : 'No se pudo abrir la galería: $e',
+          ),
+        ),
+      );
+      return;
+    }
+    if (picked == null || !mounted) return;
+
+    final bytes = await picked.readAsBytes();
+    if (!mounted) return;
+
+    final cropped = await EvetaPortalImageCropScreen.open(
+      context,
+      bytes,
+      initialMode: isLogo ? EvetaCropAspectMode.icon : EvetaCropAspectMode.banner,
+      lockToInitialMode: true,
+    );
+    if (cropped == null || !mounted) return;
+
     setState(() => _uploading = true);
     try {
-      final picker = ImagePicker();
-      final picked = await picker.pickImage(source: ImageSource.gallery);
-      if (picked == null) return;
-
-      final bytes = await picked.readAsBytes();
       final fileName = isLogo ? 'logo.png' : 'banner.png';
-
       final folder = isLogo
           ? 'eveta/portal_store/logo/${_shopId ?? 'unknown'}'
           : 'eveta/portal_store/banner/${_shopId ?? 'unknown'}';
 
       final url = await CloudinaryService.uploadImage(
-        bytes: bytes,
+        bytes: cropped,
         fileName: fileName,
         folder: folder,
         publicId: isLogo ? 'logo_${_shopId ?? 'unknown'}' : 'banner_${_shopId ?? 'unknown'}',
@@ -154,49 +300,138 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
 
   Future<void> _showBannerSheet() async {
     final scheme = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final hasBanner = _bannerUrl != null && _bannerUrl!.trim().isNotEmpty;
+
     await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: scheme.surfaceContainerHighest,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: Icon(Icons.photo_library_outlined, color: scheme.primary),
-                  title: const Text('Cambiar imagen del banner'),
-                  subtitle: const Text('Desde la galería'),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _pickAndUpload(isLogo: false);
-                  },
-                ),
-                ListTile(
-                  leading: Icon(Icons.delete_outline, color: scheme.error),
-                  title: const Text('Quitar banner'),
-                  subtitle: const Text('Se borrará al guardar cambios'),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    final ok = await showDialog<bool>(
-                      context: context,
-                      builder: (d) => AlertDialog(
-                        title: const Text('¿Quitar banner?'),
-                        content: const Text('La imagen dejará de mostrarse. Pulsa «Guardar cambios» para aplicar.'),
-                        actions: [
-                          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancelar')),
-                          FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Quitar')),
-                        ],
-                      ),
-                    );
-                    if (ok == true && mounted) setState(() => _bannerUrl = null);
-                  },
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(PortalTokens.radiusXl + 6),
+              border: Border.all(color: scheme.outline.withValues(alpha: 0.18)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.14),
+                  blurRadius: 24,
+                  offset: const Offset(0, 10),
                 ),
               ],
+            ),
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: scheme.onSurfaceVariant.withValues(alpha: 0.28),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      'Banner de la tienda',
+                      style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -0.3),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Recorte 16:9 con vista previa. Queda arriba en tu vitrina.',
+                      style: tt.bodyMedium?.copyWith(color: scheme.onSurfaceVariant, height: 1.35),
+                    ),
+                    const SizedBox(height: 18),
+                    PortalSoftCard(
+                      padding: EdgeInsets.zero,
+                      radius: PortalTokens.radiusLg + 2,
+                      child: Column(
+                        children: [
+                          ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                            leading: Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: scheme.primary.withValues(alpha: 0.14),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Icon(Icons.crop_16_9_outlined, color: scheme.primary, size: 24),
+                            ),
+                            title: Text('Cambiar banner', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                            subtitle: Text(
+                              'Elegí foto y ajustá el encuadre',
+                              style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                            ),
+                            trailing: Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+                            onTap: () {
+                              Navigator.pop(ctx);
+                              _pickCropUpload(isLogo: false);
+                            },
+                          ),
+                          if (hasBanner) ...[
+                            Divider(height: 1, thickness: 1, color: scheme.outline.withValues(alpha: 0.12)),
+                            ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                              leading: Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: scheme.error.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: Icon(Icons.delete_outline_rounded, color: scheme.error, size: 24),
+                              ),
+                              title: Text(
+                                'Quitar banner',
+                                style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800, color: scheme.error),
+                              ),
+                              subtitle: Text(
+                                'Se aplica al pulsar «Guardar cambios»',
+                                style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                              ),
+                              onTap: () async {
+                                Navigator.pop(ctx);
+                                final ok = await showDialog<bool>(
+                                  context: context,
+                                  builder: (d) => AlertDialog(
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(PortalTokens.radiusLg + 4),
+                                    ),
+                                    title: const Text('¿Quitar banner?'),
+                                    content: const Text(
+                                      'La imagen dejará de mostrarse en la tienda hasta que subas otra.',
+                                    ),
+                                    actions: [
+                                      TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancelar')),
+                                      FilledButton(
+                                        style: FilledButton.styleFrom(
+                                          backgroundColor: scheme.error,
+                                          foregroundColor: scheme.onError,
+                                        ),
+                                        onPressed: () => Navigator.pop(d, true),
+                                        child: const Text('Quitar'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (ok == true && mounted) setState(() => _bannerUrl = null);
+                              },
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         );
@@ -206,49 +441,138 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
 
   Future<void> _showLogoSheet() async {
     final scheme = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final hasLogo = _logoUrl != null && _logoUrl!.trim().isNotEmpty;
+
     await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: scheme.surfaceContainerHighest,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: Icon(Icons.photo_library_outlined, color: scheme.primary),
-                  title: const Text('Cambiar icono de tienda'),
-                  subtitle: const Text('Desde la galería (recomendado 1:1)'),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _pickAndUpload(isLogo: true);
-                  },
-                ),
-                ListTile(
-                  leading: Icon(Icons.delete_outline, color: scheme.error),
-                  title: const Text('Quitar icono'),
-                  subtitle: const Text('Se borrará al guardar cambios'),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    final ok = await showDialog<bool>(
-                      context: context,
-                      builder: (d) => AlertDialog(
-                        title: const Text('¿Quitar icono?'),
-                        content: const Text('Pulsa «Guardar cambios» para aplicar en la tienda.'),
-                        actions: [
-                          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancelar')),
-                          FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Quitar')),
-                        ],
-                      ),
-                    );
-                    if (ok == true && mounted) setState(() => _logoUrl = null);
-                  },
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(PortalTokens.radiusXl + 6),
+              border: Border.all(color: scheme.outline.withValues(alpha: 0.18)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.14),
+                  blurRadius: 24,
+                  offset: const Offset(0, 10),
                 ),
               ],
+            ),
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: scheme.onSurfaceVariant.withValues(alpha: 0.28),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      'Icono de la tienda',
+                      style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w900, letterSpacing: -0.3),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Recorte 1:1 (cuadrado) con vista previa.',
+                      style: tt.bodyMedium?.copyWith(color: scheme.onSurfaceVariant, height: 1.35),
+                    ),
+                    const SizedBox(height: 18),
+                    PortalSoftCard(
+                      padding: EdgeInsets.zero,
+                      radius: PortalTokens.radiusLg + 2,
+                      child: Column(
+                        children: [
+                          ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                            leading: Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: scheme.primary.withValues(alpha: 0.14),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Icon(Icons.crop_square_outlined, color: scheme.primary, size: 24),
+                            ),
+                            title: Text('Cambiar icono', style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                            subtitle: Text(
+                              'Elegí foto y ajustá el encuadre',
+                              style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                            ),
+                            trailing: Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+                            onTap: () {
+                              Navigator.pop(ctx);
+                              _pickCropUpload(isLogo: true);
+                            },
+                          ),
+                          if (hasLogo) ...[
+                            Divider(height: 1, thickness: 1, color: scheme.outline.withValues(alpha: 0.12)),
+                            ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                              leading: Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: scheme.error.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: Icon(Icons.delete_outline_rounded, color: scheme.error, size: 24),
+                              ),
+                              title: Text(
+                                'Quitar icono',
+                                style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800, color: scheme.error),
+                              ),
+                              subtitle: Text(
+                                'Se aplica al pulsar «Guardar cambios»',
+                                style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                              ),
+                              onTap: () async {
+                                Navigator.pop(ctx);
+                                final ok = await showDialog<bool>(
+                                  context: context,
+                                  builder: (d) => AlertDialog(
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(PortalTokens.radiusLg + 4),
+                                    ),
+                                    title: const Text('¿Quitar icono?'),
+                                    content: const Text(
+                                      'Se usará un marcador por defecto en la tienda hasta que subas otro.',
+                                    ),
+                                    actions: [
+                                      TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancelar')),
+                                      FilledButton(
+                                        style: FilledButton.styleFrom(
+                                          backgroundColor: scheme.error,
+                                          foregroundColor: scheme.onError,
+                                        ),
+                                        onPressed: () => Navigator.pop(d, true),
+                                        child: const Text('Quitar'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (ok == true && mounted) setState(() => _logoUrl = null);
+                              },
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         );
@@ -361,7 +685,7 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
                     child: Text(
-                      'Toca el banner, el icono o el texto para editar. Las imágenes se guardan en el dispositivo en caché.',
+                      'Toca el banner, el icono o el texto. Banner 16:9 e icono 1:1 con recorte antes de subir.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 12.5,

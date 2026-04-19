@@ -1,4 +1,5 @@
 import 'package:carousel_slider/carousel_slider.dart';
+import 'package:eveta/common_widget/eveta_carousel_segment_indicator.dart';
 import 'package:eveta/common_widget/eveta_cached_image.dart';
 import 'package:eveta/utils/cloudinary_image_url.dart';
 import 'package:eveta/utils/supabase_service.dart';
@@ -104,39 +105,10 @@ class _PromoCarouselWidgetState extends State<PromoCarouselWidget> with SingleTi
                 const SizedBox(height: 12),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: items.asMap().entries.map((entry) {
-                      final isSelected = _currentIndex == entry.key;
-                      return Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 4.0),
-                        width: isSelected ? 28.0 : 8.0,
-                        height: 6.0,
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(4.0),
-                        ),
-                        child: isSelected
-                            ? AnimatedBuilder(
-                                animation: _progressController,
-                                builder: (context, child) {
-                                  return Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: FractionallySizedBox(
-                                      widthFactor: _progressController.value,
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFF09CB6B),
-                                          borderRadius: BorderRadius.circular(4.0),
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                },
-                              )
-                            : null,
-                      );
-                    }).toList(),
+                  child: EvetaCarouselSegmentIndicator(
+                    count: items.length,
+                    selectedIndex: _currentIndex,
+                    progressController: _progressController,
                   ),
                 ),
                 const SizedBox(height: 16),

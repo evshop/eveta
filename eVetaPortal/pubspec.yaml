@@ -49,6 +49,8 @@ dependencies:
   cached_network_image: ^3.4.1
   reorderable_grid_view: ^2.2.8
   flutter_slidable: ^4.0.3
+  crop_your_image: ^2.0.0
+  image: ^4.8.0
 
 dev_dependencies:
   flutter_test:

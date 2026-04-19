@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:eveta/common_widget/eveta_cached_image.dart';
@@ -8,12 +10,23 @@ import 'package:eveta/screens/seller_store_screen.dart';
 import 'package:eveta/search/advanced_search_filters_sheet.dart';
 import 'package:eveta/search/product_search_controller.dart';
 import 'package:eveta/search/search_filter_bar.dart';
+import 'package:eveta/theme/eveta_shop_theme.dart';
 import 'package:eveta/utils/page_transitions.dart';
+import 'package:eveta/utils/search_history_prefs.dart';
 
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key, this.initialQuery});
+  const SearchScreen({
+    super.key,
+    this.initialQuery,
+    this.onClose,
+    this.onProductSelected,
+  });
 
   final String? initialQuery;
+  /// Desde [MyHomePage]: cerrar overlay de búsqueda sin ocultar la barra inferior.
+  final VoidCallback? onClose;
+  /// Si se define, se usa en lugar de [Navigator.push] al abrir un producto (misma barra inferior visible).
+  final ValueChanged<String>? onProductSelected;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -21,11 +34,24 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> {
   late final ProductSearchController _controller;
+  List<String> _histQueries = [];
+  List<SearchHistoryProduct> _histProducts = [];
+
+  Future<void> _reloadSearchHistory() async {
+    final qs = await SearchHistoryPrefs.getQueries();
+    final ps = await SearchHistoryPrefs.getProducts();
+    if (!mounted) return;
+    setState(() {
+      _histQueries = qs;
+      _histProducts = ps;
+    });
+  }
 
   @override
   void initState() {
     super.initState();
     _controller = ProductSearchController(initialQuery: widget.initialQuery);
+    unawaited(_reloadSearchHistory());
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await Future.wait([
         _controller.ensureCategoriesLoaded(),
@@ -69,6 +95,142 @@ class _SearchScreenState extends State<SearchScreen> {
     }
   }
 
+  Widget _buildSearchHistoryLanding(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      children: [
+        Text(
+          'Buscá por nombre, categoría o etiquetas (#)',
+          style: tt.bodyMedium?.copyWith(color: scheme.onSurfaceVariant, height: 1.35),
+        ),
+        const SizedBox(height: 20),
+        Text(
+          'Búsquedas recientes',
+          style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800, color: scheme.onSurface),
+        ),
+        const SizedBox(height: 10),
+        if (_histQueries.isEmpty)
+          Text(
+            'Aparecerán aquí cuando busques (mínimo 2 caracteres) y abras un resultado.',
+            style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+          )
+        else
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _histQueries.map((q) {
+              return ActionChip(
+                label: Text(q, maxLines: 1, overflow: TextOverflow.ellipsis),
+                onPressed: () {
+                  _controller.applyQueryAndSearch(q);
+                  unawaited(_reloadSearchHistory());
+                },
+              );
+            }).toList(),
+          ),
+        const SizedBox(height: 24),
+        Text(
+          'Productos vistos al buscar',
+          style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800, color: scheme.onSurface),
+        ),
+        const SizedBox(height: 10),
+        if (_histProducts.isEmpty)
+          Text(
+            'Los productos que abras desde los resultados se guardan aquí.',
+            style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+          )
+        else
+          SizedBox(
+            height: 118,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _histProducts.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (context, i) {
+                final p = _histProducts[i];
+                return _HistoryProductCard(
+                  product: p,
+                  scheme: scheme,
+                  onTap: () => _openProductFromHistory(context, p),
+                );
+              },
+            ),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _openProductFromHistory(BuildContext context, SearchHistoryProduct p) async {
+    if (widget.onProductSelected != null) {
+      widget.onProductSelected!(p.id);
+    } else {
+      await Navigator.push<void>(
+        context,
+        SlideUpPageRoute<void>(builder: (_) => ProductDetailScreen(productId: p.id)),
+      );
+    }
+  }
+
+  Widget _buildHistoryBelowResults(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    if (_histQueries.isEmpty && _histProducts.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_histQueries.isNotEmpty) ...[
+            Text(
+              'Búsquedas recientes',
+              style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _histQueries.take(8).map((q) {
+                return ActionChip(
+                  label: Text(q, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  onPressed: () {
+                    _controller.applyQueryAndSearch(q);
+                    unawaited(_reloadSearchHistory());
+                  },
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
+          ],
+          if (_histProducts.isNotEmpty) ...[
+            Text(
+              'Vistos antes al buscar',
+              style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 118,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: _histProducts.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                itemBuilder: (context, i) {
+                  final p = _histProducts[i];
+                  return _HistoryProductCard(
+                    product: p,
+                    scheme: scheme,
+                    onTap: () => _openProductFromHistory(context, p),
+                  );
+                },
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -86,8 +248,15 @@ class _SearchScreenState extends State<SearchScreen> {
                 children: [
                   EvetaCircularBackButton(
                     variant: Theme.of(context).brightness == Brightness.dark
-                        ? EvetaCircularBackVariant.onDarkBackground
+                        ? EvetaCircularBackVariant.tonalSurface
                         : EvetaCircularBackVariant.onLightBackground,
+                    onPressed: () {
+                      if (widget.onClose != null) {
+                        widget.onClose!();
+                      } else {
+                        Navigator.pop(context);
+                      }
+                    },
                   ),
                   const SizedBox(width: 2),
                   Expanded(
@@ -111,7 +280,7 @@ class _SearchScreenState extends State<SearchScreen> {
       valueListenable: _controller.showResultsPanel,
       builder: (context, showPanel, child) {
         if (!showPanel) {
-          return const SizedBox.shrink();
+          return _buildSearchHistoryLanding(context);
         }
         return child!;
       },
@@ -130,14 +299,21 @@ class _SearchScreenState extends State<SearchScreen> {
           }
 
           if (!loading && products.isEmpty && stores.isEmpty) {
-            return Center(
-              child: Text(
-                'No se encontraron resultados',
-                style: TextStyle(
-                  color: scheme.onSurfaceVariant,
-                  fontSize: 15,
+            return ListView(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              children: [
+                SizedBox(height: MediaQuery.sizeOf(context).height * 0.08),
+                Center(
+                  child: Text(
+                    'No se encontraron resultados',
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 15,
+                    ),
+                  ),
                 ),
-              ),
+                _buildHistoryBelowResults(context),
+              ],
             );
           }
 
@@ -153,6 +329,7 @@ class _SearchScreenState extends State<SearchScreen> {
             }
             listItemCount += productCount;
           }
+          listItemCount += 1;
 
           return Stack(
             children: [
@@ -160,6 +337,9 @@ class _SearchScreenState extends State<SearchScreen> {
                 padding: const EdgeInsets.only(top: 8, bottom: 24),
                 itemCount: listItemCount,
                 itemBuilder: (context, index) {
+                  if (index == listItemCount - 1) {
+                    return _buildHistoryBelowResults(context);
+                  }
                   var i = index;
                   if (storeCount > 0) {
                     if (i == 0) {
@@ -219,6 +399,17 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
+  Future<void> _recordSearchTap(Map<String, dynamic> product, String name, String imageUrl) async {
+    final id = product['id']?.toString() ?? '';
+    if (id.isEmpty) return;
+    final q = _controller.debouncedQuery.trim();
+    if (q.length >= 2) {
+      await SearchHistoryPrefs.addQuery(q);
+    }
+    await SearchHistoryPrefs.recordProductView(id, name, imageUrl);
+    if (mounted) await _reloadSearchHistory();
+  }
+
   Widget _buildProductTile(BuildContext context, Map<String, dynamic> product) {
     final scheme = Theme.of(context).colorScheme;
     final images = product['images'];
@@ -235,15 +426,22 @@ class _SearchScreenState extends State<SearchScreen> {
     final category = product['categories']?['name']?.toString() ?? '';
 
     return InkWell(
-      onTap: () {
-        Navigator.push(
-          context,
-          SlideUpPageRoute(
-            builder: (context) => ProductDetailScreen(
-              productId: product['id'].toString(),
+      onTap: () async {
+        final id = product['id'].toString();
+        await _recordSearchTap(product, name, imageUrl);
+        if (!context.mounted) return;
+        if (widget.onProductSelected != null) {
+          widget.onProductSelected!(id);
+        } else {
+          Navigator.push(
+            context,
+            SlideUpPageRoute(
+              builder: (context) => ProductDetailScreen(
+                productId: id,
+              ),
             ),
-          ),
-        );
+          );
+        }
       },
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -392,6 +590,63 @@ class _SearchScreenState extends State<SearchScreen> {
               color: scheme.onSurfaceVariant,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HistoryProductCard extends StatelessWidget {
+  const _HistoryProductCard({
+    required this.product,
+    required this.scheme,
+    required this.onTap,
+  });
+
+  final SearchHistoryProduct product;
+  final ColorScheme scheme;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: scheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(EvetaShopDimens.radiusMd),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          width: 104,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: product.imageUrl.isEmpty
+                    ? ColoredBox(
+                        color: scheme.surfaceContainerHigh,
+                        child: Icon(Icons.image_outlined, color: scheme.onSurfaceVariant),
+                      )
+                    : EvetaCachedImage(
+                        imageUrl: product.imageUrl,
+                        delivery: EvetaImageDelivery.card,
+                        fit: BoxFit.cover,
+                        memCacheWidth: 220,
+                      ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(6, 6, 6, 8),
+                child: Text(
+                  product.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        height: 1.2,
+                      ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

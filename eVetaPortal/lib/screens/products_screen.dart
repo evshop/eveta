@@ -49,9 +49,18 @@ class _ProductsScreenState extends State<ProductsScreen> {
     }
   }
 
-  Future<void> _navigateToForm([Map<String, dynamic>? product]) async {
+  Map<String, dynamic>? _normalizeProductMap(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is! Map) return null;
+    return Map<String, dynamic>.from(
+      raw.map((k, v) => MapEntry(k.toString(), v)),
+    );
+  }
+
+  Future<void> _navigateToForm([dynamic product]) async {
     final scheme = Theme.of(context).colorScheme;
     portalHapticLight();
+    final normalized = _normalizeProductMap(product);
     final result = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -64,7 +73,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
         final h = MediaQuery.of(ctx).size.height;
         return SizedBox(
           height: h * 0.94,
-          child: ProductFormScreen(product: product),
+          child: ProductFormScreen(product: normalized),
         );
       },
     );
@@ -201,7 +210,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                 SlidableAction(
                                   onPressed: (_) {
                                     portalHapticLight();
-                                    _navigateToForm(Map<String, dynamic>.from(product as Map));
+                                    _navigateToForm(product);
                                   },
                                   backgroundColor: scheme.primary,
                                   foregroundColor: scheme.onPrimary,
@@ -240,7 +249,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                 borderRadius: BorderRadius.circular(PortalTokens.radius2xl),
                                 onTap: () {
                                   portalHapticLight();
-                                  _navigateToForm(Map<String, dynamic>.from(product as Map));
+                                  _navigateToForm(product);
                                 },
                                 splashColor: scheme.primary.withValues(alpha: 0.08),
                                 child: Padding(

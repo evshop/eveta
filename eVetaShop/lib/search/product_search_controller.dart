@@ -70,14 +70,19 @@ class ProductSearchController extends ChangeNotifier {
   Future<void> ensurePriceSliderMax() async {
     if (_priceCeilingLoaded) return;
     try {
+      final prevCeiling = _priceSliderMax;
+      final prev = _filters;
       final m = await SupabaseService.getMaxActiveProductPrice();
       final next = m != null ? m + 200.0 : kProductSearchPriceSliderFallbackMax;
       _priceSliderMax = next < kProductSearchPriceSliderFallbackMax ? kProductSearchPriceSliderFallbackMax : next;
+      // Si el usuario no había acotado el máximo (estaba en “todo el rango” del tope anterior),
+      // al cargar el techo real no debe quedar un tope accidental (p. ej. 1500) por debajo del catálogo.
+      final wasFullPriceRange = prev.priceMin <= 0.01 && prev.priceMax >= prevCeiling - 0.01;
       _filters = ProductSearchFilters(
-        selectedCategoryId: _filters.selectedCategoryId,
-        priceMin: _filters.priceMin.clamp(0, _priceSliderMax),
-        priceMax: _filters.priceMax.clamp(_filters.priceMin, _priceSliderMax),
-        sort: _filters.sort,
+        selectedCategoryId: prev.selectedCategoryId,
+        priceMin: prev.priceMin.clamp(0, _priceSliderMax),
+        priceMax: wasFullPriceRange ? _priceSliderMax : prev.priceMax.clamp(prev.priceMin, _priceSliderMax),
+        sort: prev.sort,
       );
       _priceCeilingLoaded = true;
       _syncShowResultsPanel();
@@ -119,6 +124,20 @@ class ProductSearchController extends ChangeNotifier {
     textController.clear();
     _debouncedQuery = '';
     _debounce?.cancel();
+    _syncShowResultsPanel();
+    notifyListeners();
+    unawaited(_runSearch());
+  }
+
+  /// Desde chips de historial: aplica texto y ejecuta búsqueda sin esperar el debounce.
+  void applyQueryAndSearch(String raw) {
+    final q = raw.trim();
+    _debounce?.cancel();
+    textController.value = TextEditingValue(
+      text: q,
+      selection: TextSelection.collapsed(offset: q.length),
+    );
+    _debouncedQuery = q;
     _syncShowResultsPanel();
     notifyListeners();
     unawaited(_runSearch());

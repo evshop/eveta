@@ -5,7 +5,8 @@ import 'package:eveta/common_widget/bottom_nav_bar_widget.dart';
 import 'package:eveta/common_widget/eveta_blur_confirm_sheet.dart';
 import 'package:eveta/common_widget/eveta_cached_image.dart';
 import 'package:eveta/common_widget/eveta_swipe_reveal_delete.dart';
-import 'package:eveta/screens/add_location_screen.dart';
+import 'package:eveta/screens/checkout_payment_screen.dart';
+import 'package:eveta/screens/location_onboarding_screen.dart';
 import 'package:eveta/screens/login_screen.dart';
 import 'package:eveta/screens/product_detail_screen.dart';
 import 'package:eveta/theme/eveta_shop_theme.dart';
@@ -19,7 +20,10 @@ import 'package:eveta/utils/delivery_pricing.dart';
 import 'package:eveta/utils/order_service.dart';
 
 class ShoppingCartScreen extends StatefulWidget {
-  const ShoppingCartScreen({super.key});
+  const ShoppingCartScreen({super.key, this.onProductTap});
+
+  /// Si viene de [MyHomePage], abre el detalle como overlay y mantiene la barra inferior.
+  final ValueChanged<String>? onProductTap;
 
   @override
   State<ShoppingCartScreen> createState() => _ShoppingCartScreenState();
@@ -35,6 +39,7 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
   String _deliveryAddress = '';
   String? _openSwipeProductId;
   final TextEditingController _promoController = TextEditingController();
+  final DraggableScrollableController _checkoutSheetCtrl = DraggableScrollableController();
 
   @override
   void initState() {
@@ -44,6 +49,7 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
 
   @override
   void dispose() {
+    _checkoutSheetCtrl.dispose();
     _promoController.dispose();
     super.dispose();
   }
@@ -68,7 +74,9 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
       _total = total;
       _deliveryFee = fee;
       _distanceKm = km;
-      _deliveryAddress = (loc.lat != null && loc.lng != null) ? loc.address : '';
+      _deliveryAddress = (loc.lat != null && loc.lng != null)
+          ? (loc.displayLabel.trim().isNotEmpty ? loc.displayLabel.trim() : loc.address.trim())
+          : '';
       _isLoading = false;
       if (_openSwipeProductId != null && !items.any((e) => e.productId == _openSwipeProductId)) {
         _openSwipeProductId = null;
@@ -100,7 +108,7 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
     var loc = await DeliveryLocationPrefs.load();
     if (loc.lat == null || loc.lng == null) {
       if (!mounted) return;
-      await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => const AddLocationScreen()));
+      await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => const LocationOnboardingScreen()));
       await _loadCart();
       loc = await DeliveryLocationPrefs.load();
       if (loc.lat == null || loc.lng == null) {
@@ -116,9 +124,10 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
       }
     }
 
+    final grandTotal = _total + (_deliveryFee ?? 0);
     setState(() => _checkoutBusy = true);
     try {
-      await OrderService.placeOrdersFromCart(
+      final orderIds = await OrderService.placeOrdersFromCart(
         dropoffLat: loc.lat!,
         dropoffLng: loc.lng!,
         dropoffAddress: loc.address.isEmpty ? 'Entrega' : loc.address,
@@ -126,19 +135,21 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
       if (!mounted) return;
       await _loadCart();
       if (!mounted) return;
-      final primary = Theme.of(context).colorScheme.primary;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('¡Pedido registrado! Buscamos repartidor.'),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: primary,
+      if (orderIds.isEmpty) return;
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          fullscreenDialog: true,
+          builder: (_) => CheckoutPaymentScreen(
+            orderIds: orderIds,
+            amountLabel: 'Bs ${grandTotal.toStringAsFixed(0)}',
+          ),
         ),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('$e'),
+          content: Text(OrderService.humanizeOrderError(e)),
           behavior: SnackBarBehavior.floating,
           backgroundColor: Theme.of(context).colorScheme.error,
         ),
@@ -195,7 +206,12 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(item.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text(
+                  item.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontWeight: FontWeight.w600, color: scheme.onSurface),
+                ),
                 const SizedBox(height: 6),
                 Text('Bs ${lineTotal.toStringAsFixed(0)}', style: TextStyle(fontWeight: FontWeight.w800, color: scheme.primary)),
               ],
@@ -235,8 +251,11 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
     );
   }
 
-  /// Espacio inferior del listado para no quedar tapado por el panel fijo (cupón + resumen + CTA + entrega).
-  static const double _checkoutPanelScrollPadding = 330;
+  /// Altura máxima del panel (~ mitad de pantalla) + barra inferior: padding del listado del carrito.
+  double _cartListBottomPadding(BuildContext context) {
+    final h = MediaQuery.sizeOf(context).height;
+    return (h * 0.52).clamp(320.0, 620.0) + _bottomBarInset(context);
+  }
 
   /// [MyHomePage] usa `extendBody: true`; el cuerpo llega detrás de la barra — inset igual a [BottomNavBarWidget].
   double _bottomBarInset(BuildContext context) {
@@ -336,7 +355,7 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
                                   const SizedBox(width: EvetaShopDimens.spaceMd),
                                   Expanded(
                                     child: Text(
-                                      loc.address.trim().isEmpty ? 'Ubicación en mapa' : loc.address.trim(),
+                                      loc.displayTitle,
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
                                       style: tt.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
@@ -359,12 +378,12 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
                       onPressed: () async {
                         Navigator.pop(sheetContext);
                         if (!mounted) return;
-                        await Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const AddLocationScreen()));
+                        await Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const LocationOnboardingScreen()));
                         if (mounted) await _loadCart(showLoadingIndicator: false);
                       },
                       icon: Icon(Icons.add_location_alt_outlined, color: scheme.primary, size: 20),
                       label: Text(
-                        'Otra ubicación en el mapa',
+                        'Agregar otra ubicación',
                         style: TextStyle(fontWeight: FontWeight.w700, color: scheme.primary),
                       ),
                     ),
@@ -378,6 +397,50 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
     );
   }
 
+  Widget _buildDragHandle(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 6),
+      child: Center(
+        child: Container(
+          width: 40,
+          height: 4,
+          decoration: BoxDecoration(
+            color: scheme.onSurfaceVariant.withValues(alpha: 0.32),
+            borderRadius: BorderRadius.circular(999),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTotalRow(BuildContext context, double total) {
+    final scheme = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          'Total',
+          style: tt.titleLarge?.copyWith(
+            fontWeight: FontWeight.w800,
+            color: scheme.onSurface,
+          ),
+        ),
+        Text(
+          'Bs ${total.toStringAsFixed(0)}',
+          style: tt.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w900,
+            color: scheme.primary,
+            letterSpacing: -0.4,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildCheckoutPanel(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
@@ -387,164 +450,157 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
     final hasDropoff = _distanceKm != null;
     final sheetBg = scheme.surfaceContainerHighest;
 
-    final topR = BorderRadius.vertical(top: Radius.circular(EvetaShopDimens.radiusLg + 4));
-    final navH = _bottomBarInset(context);
+    final topR = BorderRadius.vertical(top: Radius.circular(EvetaShopDimens.radiusLg + 6));
+    final navInset = _bottomBarInset(context);
     final safeBottom = MediaQuery.paddingOf(context).bottom;
-    // Unos px menos de reserva: el bloque baja y alinea mejor con la línea de la barra inferior.
-    final bottomSpacer = (navH - 14).clamp(safeBottom, navH);
-    return ClipRRect(
-      borderRadius: topR,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: sheetBg,
-          border: Border(
-            top: BorderSide(color: scheme.outline.withValues(alpha: isDark ? 0.5 : 0.38)),
-          ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(EvetaShopDimens.spaceLg, 6, EvetaShopDimens.spaceLg, 10),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: scheme.onSurfaceVariant.withValues(alpha: 0.28),
-                      borderRadius: BorderRadius.circular(999),
+    final contentBottomPad = navInset + safeBottom;
+
+    return DraggableScrollableSheet(
+      controller: _checkoutSheetCtrl,
+      initialChildSize: 0.5,
+      minChildSize: 0.34,
+      maxChildSize: 0.5,
+      snap: true,
+      snapSizes: const [0.5],
+      snapAnimationDuration: const Duration(milliseconds: 260),
+      builder: (context, scrollController) {
+        return ClipRRect(
+          borderRadius: topR,
+          child: Material(
+            color: sheetBg,
+            elevation: 7,
+            shadowColor: Colors.black.withValues(alpha: isDark ? 0.42 : 0.1),
+            shape: RoundedRectangleBorder(
+              borderRadius: topR,
+              side: BorderSide(color: scheme.outline.withValues(alpha: isDark ? 0.5 : 0.38)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildDragHandle(context),
+                Expanded(
+                  child: ListView(
+                    controller: scrollController,
+                    padding: EdgeInsets.fromLTRB(
+                      EvetaShopDimens.spaceLg,
+                      4,
+                      EvetaShopDimens.spaceLg,
+                      contentBottomPad + EvetaShopDimens.spaceLg,
                     ),
-                  ),
-                ),
-                const SizedBox(height: EvetaShopDimens.spaceSm),
-                Text(
-                  'Resumen del pedido',
-                  style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.2),
-                ),
-                const SizedBox(height: EvetaShopDimens.spaceSm),
-                Material(
-                  color: scheme.surfaceContainerHigh,
-                  borderRadius: BorderRadius.circular(EvetaShopDimens.radiusLg),
-                  clipBehavior: Clip.antiAlias,
-                  child: InkWell(
-                    onTap: _openDeliveryLocation,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: EvetaShopDimens.spaceMd, vertical: EvetaShopDimens.spaceMd),
-                      child: Row(
-                        children: [
-                          Icon(Icons.place_outlined, size: 22, color: hasDropoff ? scheme.primary : scheme.onSurfaceVariant),
-                          const SizedBox(width: EvetaShopDimens.spaceMd),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Resumen del pedido',
+                        style: tt.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.2,
+                          color: scheme.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: EvetaShopDimens.spaceMd),
+                      Material(
+                        color: scheme.surfaceContainerHigh,
+                        borderRadius: BorderRadius.circular(EvetaShopDimens.radiusLg),
+                        clipBehavior: Clip.antiAlias,
+                        child: InkWell(
+                          onTap: _openDeliveryLocation,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: EvetaShopDimens.spaceMd, vertical: EvetaShopDimens.spaceMd),
+                            child: Row(
                               children: [
-                                Text(
-                                  hasDropoff ? 'Entrega' : 'Ubicación de entrega',
-                                  style: tt.labelSmall?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 0.2,
-                                    color: scheme.onSurfaceVariant,
+                                Icon(Icons.place_outlined, size: 22, color: hasDropoff ? scheme.primary : scheme.onSurfaceVariant),
+                                const SizedBox(width: EvetaShopDimens.spaceMd),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        hasDropoff ? 'Entrega' : 'Ubicación de entrega',
+                                        style: tt.labelSmall?.copyWith(
+                                          fontWeight: FontWeight.w700,
+                                          letterSpacing: 0.2,
+                                          color: scheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        hasDropoff
+                                            ? (_deliveryAddress.trim().isEmpty ? 'Punto en el mapa' : _deliveryAddress.trim())
+                                            : 'Toca para elegir en el mapa',
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: tt.bodyMedium?.copyWith(
+                                          fontWeight: FontWeight.w600,
+                                          color: hasDropoff ? scheme.onSurface : scheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  hasDropoff
-                                      ? (_deliveryAddress.trim().isEmpty ? 'Punto en el mapa' : _deliveryAddress.trim())
-                                      : 'Toca para elegir en el mapa',
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: tt.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    color: hasDropoff ? scheme.onSurface : scheme.onSurfaceVariant,
-                                  ),
-                                ),
+                                Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant, size: 22),
                               ],
                             ),
                           ),
-                          Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant, size: 22),
-                        ],
+                        ),
                       ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: EvetaShopDimens.spaceLg),
-                EvetaCouponField(
-                  controller: _promoController,
-                  onApply: _applyPromo,
-                ),
-                const SizedBox(height: EvetaShopDimens.spaceLg),
-                _summaryRow(context, 'Subtotal', 'Bs ${_total.toStringAsFixed(0)}'),
-                const SizedBox(height: EvetaShopDimens.spaceSm + 2),
-                _summaryRow(
-                  context,
-                  hasDropoff ? 'Envío (~${_distanceKm!.toStringAsFixed(1)} km)' : 'Envío',
-                  'Bs ${shipping.toStringAsFixed(0)}',
-                ),
-                const SizedBox(height: EvetaShopDimens.spaceSm + 2),
-                _summaryRow(context, 'Descuento', '—', valueMuted: true),
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: EvetaShopDimens.spaceMd),
-                  child: Divider(height: 1, thickness: 1, color: scheme.outline.withValues(alpha: 0.35)),
-                ),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Total',
-                      style: tt.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: scheme.onSurface,
+                      const SizedBox(height: EvetaShopDimens.spaceLg),
+                      EvetaCouponField(
+                        controller: _promoController,
+                        onApply: _applyPromo,
                       ),
-                    ),
-                    Text(
-                      'Bs ${total.toStringAsFixed(0)}',
-                      style: tt.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w900,
-                        color: scheme.primary,
-                        letterSpacing: -0.4,
+                      const SizedBox(height: EvetaShopDimens.spaceLg),
+                      _summaryRow(context, 'Subtotal', 'Bs ${_total.toStringAsFixed(0)}'),
+                      const SizedBox(height: EvetaShopDimens.spaceSm + 2),
+                      _summaryRow(
+                        context,
+                        hasDropoff ? 'Envío (~${_distanceKm!.toStringAsFixed(1)} km)' : 'Envío',
+                        'Bs ${shipping.toStringAsFixed(0)}',
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: EvetaShopDimens.spaceMd),
-                SizedBox(
-                  height: 50,
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: _checkoutBusy ? null : _onCheckout,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: scheme.primary,
-                      foregroundColor: scheme.onPrimary,
-                      disabledBackgroundColor: scheme.surfaceContainerHigh,
-                      disabledForegroundColor: scheme.onSurfaceVariant,
-                      elevation: 0,
-                    ),
-                    child: _checkoutBusy
-                        ? SizedBox(
-                            height: 22,
-                            width: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2.4, color: scheme.onPrimary),
-                          )
-                        : Text(
-                            'Confirmar pedido',
-                            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: scheme.onPrimary),
+                      const SizedBox(height: EvetaShopDimens.spaceSm + 2),
+                      _summaryRow(context, 'Descuento', '—', valueMuted: true),
+                      SizedBox(height: EvetaShopDimens.spaceLg + 4),
+                      Divider(height: 1, thickness: 1, color: scheme.outline.withValues(alpha: 0.35)),
+                      const SizedBox(height: EvetaShopDimens.spaceMd),
+                      _buildTotalRow(context, total),
+                      const SizedBox(height: EvetaShopDimens.spaceMd),
+                      SizedBox(
+                        height: 50,
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: _checkoutBusy ? null : _onCheckout,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: EvetaShopColors.brand,
+                            foregroundColor: Colors.white,
+                            disabledBackgroundColor: scheme.surfaceContainerHigh,
+                            disabledForegroundColor: scheme.onSurfaceVariant,
+                            elevation: 0,
                           ),
+                          child: _checkoutBusy
+                              ? const SizedBox(
+                                  height: 22,
+                                  width: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.4,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : Text(
+                                  'Confirmar pedido',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 16,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                ],
-              ),
+              ],
             ),
-            SizedBox(height: bottomSpacer),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -578,6 +634,7 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
     final w = MediaQuery.sizeOf(context).width;
 
     return Scaffold(
+      extendBody: true,
       backgroundColor: scheme.surface,
       appBar: AppBar(
         backgroundColor: scheme.surface,
@@ -609,7 +666,7 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
                             ],
                           )
                         : ListView.builder(
-                            padding: EdgeInsets.only(bottom: _checkoutPanelScrollPadding + _bottomBarInset(context)),
+                            padding: EdgeInsets.only(bottom: _cartListBottomPadding(context)),
                             itemCount: _items.length,
                             itemBuilder: (context, index) {
                               final item = _items[index];
@@ -629,10 +686,16 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
                                       item: item,
                                       lineTotal: lineTotal,
                                       onProductTap: () {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute<void>(builder: (_) => ProductDetailScreen(productId: item.productId)),
-                                        );
+                                        if (widget.onProductTap != null) {
+                                          widget.onProductTap!(item.productId);
+                                        } else {
+                                          Navigator.push<void>(
+                                            context,
+                                            MaterialPageRoute<void>(
+                                              builder: (_) => ProductDetailScreen(productId: item.productId),
+                                            ),
+                                          );
+                                        }
                                       },
                                       onDecrement: item.quantity > 1 ? () => _updateQuantity(item.productId, -1) : null,
                                       onIncrement: item.quantity < item.stock ? () => _updateQuantity(item.productId, 1) : null,
@@ -647,10 +710,7 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
                   ),
                 ),
                 if (_items.isNotEmpty)
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
+                  Positioned.fill(
                     child: _buildCheckoutPanel(context),
                   ),
               ],

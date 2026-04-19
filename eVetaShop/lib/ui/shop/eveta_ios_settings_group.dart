@@ -35,6 +35,7 @@ class EvetaIosSettingsTile extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.onTap,
+    this.subtitle,
     this.trailing,
     this.destructive = false,
     this.showDividerAbove = false,
@@ -42,6 +43,7 @@ class EvetaIosSettingsTile extends StatelessWidget {
 
   final IconData icon;
   final String title;
+  final String? subtitle;
   final VoidCallback onTap;
   final Widget? trailing;
   final bool destructive;
@@ -65,7 +67,7 @@ class EvetaIosSettingsTile extends StatelessWidget {
           child: InkWell(
             onTap: onTap,
             child: SizedBox(
-              height: 48,
+              height: subtitle == null ? 48 : 60,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 child: Row(
@@ -76,15 +78,41 @@ class EvetaIosSettingsTile extends StatelessWidget {
                     ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: Text(
-                        title,
-                        style: tt.bodyLarge?.copyWith(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w400,
-                          letterSpacing: -0.41,
-                          color: titleColor,
-                        ),
-                      ),
+                      child: subtitle == null
+                          ? Text(
+                              title,
+                              style: tt.bodyLarge?.copyWith(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w400,
+                                letterSpacing: -0.41,
+                                color: titleColor,
+                              ),
+                            )
+                          : Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  title,
+                                  style: tt.bodyLarge?.copyWith(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w400,
+                                    letterSpacing: -0.41,
+                                    color: titleColor,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  subtitle!,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: tt.bodySmall?.copyWith(
+                                    fontSize: 13,
+                                    color: scheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
                     ),
                     trailing ??
                         Icon(

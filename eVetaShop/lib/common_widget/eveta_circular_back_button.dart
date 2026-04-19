@@ -23,16 +23,7 @@ class EvetaCircularBackButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final canPop = Navigator.of(context).canPop();
     final tappable = onPressed != null || canPop;
-    final iconColor = variant == EvetaCircularBackVariant.onLightBackground
-        ? const Color(0xFF1F2937)
-        : Colors.white;
-    final fillColor = variant == EvetaCircularBackVariant.onLightBackground
-        ? Colors.white
-        : Colors.white.withValues(alpha: 0.22);
-    // Borde suave (baja opacidad), que se note pero sin ser duro.
-    final borderColor = variant == EvetaCircularBackVariant.onLightBackground
-        ? const Color(0xFF64748B).withValues(alpha: 0.28)
-        : Colors.white.withValues(alpha: 0.45);
+    final chrome = _chromeForBackVariant(context, variant);
     final localizations = MaterialLocalizations.of(context);
 
     void handleTap() {
@@ -62,16 +53,16 @@ class EvetaCircularBackButton extends StatelessWidget {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: fillColor,
+                  color: chrome.fill,
                   border: Border.all(
-                    color: borderColor,
+                    color: chrome.border,
                     width: borderWidth,
                   ),
                 ),
                 child: Icon(
                   Icons.arrow_back,
                   size: iconSize ?? diameter * 0.44,
-                  color: tappable ? iconColor : iconColor.withValues(alpha: 0.38),
+                  color: tappable ? chrome.icon : chrome.icon.withValues(alpha: 0.38),
                 ),
               ),
             ),
@@ -88,6 +79,42 @@ enum EvetaCircularBackVariant {
 
   /// Fondo oscuro o verde eVeta: icono blanco.
   onDarkBackground,
+
+  /// AppBar sobre superficie del tema (modo oscuro en detalle / búsqueda): píldora [ColorScheme], sin blanco semitransparente.
+  tonalSurface,
+}
+
+class _CircleChrome {
+  const _CircleChrome({required this.fill, required this.border, required this.icon});
+
+  final Color fill;
+  final Color border;
+  final Color icon;
+}
+
+_CircleChrome _chromeForBackVariant(BuildContext context, EvetaCircularBackVariant variant) {
+  switch (variant) {
+    case EvetaCircularBackVariant.onLightBackground:
+      return _CircleChrome(
+        fill: Colors.white,
+        border: const Color(0xFF64748B).withValues(alpha: 0.28),
+        icon: const Color(0xFF1F2937),
+      );
+    case EvetaCircularBackVariant.onDarkBackground:
+      return _CircleChrome(
+        fill: Colors.white.withValues(alpha: 0.22),
+        border: Colors.white.withValues(alpha: 0.45),
+        icon: Colors.white,
+      );
+    case EvetaCircularBackVariant.tonalSurface:
+      final scheme = Theme.of(context).colorScheme;
+      final isDark = scheme.brightness == Brightness.dark;
+      return _CircleChrome(
+        fill: scheme.surfaceContainerHigh,
+        border: scheme.outline.withValues(alpha: isDark ? 0.38 : 0.26),
+        icon: scheme.onSurface.withValues(alpha: isDark ? 0.95 : 0.9),
+      );
+  }
 }
 
 /// Mismo estilo visual que [EvetaCircularBackButton], con icono y acción libres.
@@ -117,16 +144,12 @@ class EvetaCircularIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final baseIcon = variant == EvetaCircularBackVariant.onLightBackground
-        ? const Color(0xFF1F2937)
-        : Colors.white;
-    final iconColor = selected ? activeIconColor : baseIcon;
-    final fillColor = variant == EvetaCircularBackVariant.onLightBackground
-        ? Colors.white
-        : Colors.white.withValues(alpha: 0.22);
-    final borderColor = variant == EvetaCircularBackVariant.onLightBackground
-        ? const Color(0xFF64748B).withValues(alpha: 0.28)
-        : Colors.white.withValues(alpha: 0.45);
+    final chrome = _chromeForIconVariant(
+      context,
+      variant: variant,
+      selected: selected,
+      activeIconColor: activeIconColor,
+    );
 
     final child = SizedBox(
       width: 56,
@@ -143,16 +166,16 @@ class EvetaCircularIconButton extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: fillColor,
+                color: chrome.fill,
                 border: Border.all(
-                  color: borderColor,
+                  color: chrome.border,
                   width: borderWidth,
                 ),
               ),
               child: Icon(
                 icon,
                 size: iconSize ?? diameter * 0.44,
-                color: onPressed != null ? iconColor : iconColor.withValues(alpha: 0.38),
+                color: onPressed != null ? chrome.icon : chrome.icon.withValues(alpha: 0.38),
               ),
             ),
           ),
@@ -164,5 +187,41 @@ class EvetaCircularIconButton extends StatelessWidget {
       return Tooltip(message: tooltip!, child: child);
     }
     return child;
+  }
+}
+
+_CircleChrome _chromeForIconVariant(
+  BuildContext context, {
+  required EvetaCircularBackVariant variant,
+  required bool selected,
+  required Color activeIconColor,
+}) {
+  switch (variant) {
+    case EvetaCircularBackVariant.onLightBackground:
+      return _CircleChrome(
+        fill: Colors.white,
+        border: const Color(0xFF64748B).withValues(alpha: 0.28),
+        icon: selected ? activeIconColor : const Color(0xFF1F2937),
+      );
+    case EvetaCircularBackVariant.onDarkBackground:
+      return _CircleChrome(
+        fill: Colors.white.withValues(alpha: 0.22),
+        border: Colors.white.withValues(alpha: 0.45),
+        icon: selected ? activeIconColor : Colors.white,
+      );
+    case EvetaCircularBackVariant.tonalSurface:
+      final scheme = Theme.of(context).colorScheme;
+      if (selected) {
+        return _CircleChrome(
+          fill: scheme.primary.withValues(alpha: 0.18),
+          border: activeIconColor.withValues(alpha: 0.42),
+          icon: activeIconColor,
+        );
+      }
+      return _CircleChrome(
+        fill: scheme.surfaceContainerHigh,
+        border: scheme.outline.withValues(alpha: scheme.brightness == Brightness.dark ? 0.38 : 0.26),
+        icon: scheme.onSurface.withValues(alpha: scheme.brightness == Brightness.dark ? 0.95 : 0.9),
+      );
   }
 }

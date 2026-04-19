@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
 /// eVeta Shop — misma identidad que Portal: #09CB6B; claro #F7F7F7; oscuro #121212.
 abstract final class EvetaShopColors {
   static const Color brand = Color(0xFF09CB6B);

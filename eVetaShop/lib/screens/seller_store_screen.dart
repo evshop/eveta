@@ -7,17 +7,7 @@ import 'package:eveta/utils/cloudinary_image_url.dart';
 import 'package:eveta/utils/supabase_service.dart';
 import 'package:eveta/screens/product_detail_screen.dart';
 import 'package:eveta/screens/search_screen.dart';
-
-SystemUiOverlayStyle _storeUiOverlay(ColorScheme scheme) {
-  final isDark = scheme.brightness == Brightness.dark;
-  return SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
-    statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
-    systemNavigationBarColor: scheme.surface,
-    systemNavigationBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
-  );
-}
+import 'package:eveta/theme/shop_system_ui.dart';
 
 class SellerStoreScreen extends StatefulWidget {
   const SellerStoreScreen({super.key, required this.sellerId});
@@ -40,20 +30,15 @@ class _SellerStoreScreenState extends State<SellerStoreScreen> {
     _storeFuture = _load();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      SystemChrome.setSystemUIOverlayStyle(_storeUiOverlay(Theme.of(context).colorScheme));
+      SystemChrome.setSystemUIOverlayStyle(
+        evetaShopShellOverlayStyle(Theme.of(context).colorScheme),
+      );
     });
   }
 
   @override
   void dispose() {
-    final plat = WidgetsBinding.instance.platformDispatcher.platformBrightness;
-    final isDark = plat == Brightness.dark;
-    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
-      statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
-      statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
-      systemNavigationBarColor: isDark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
-      systemNavigationBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
-    ));
+    SystemChrome.setSystemUIOverlayStyle(evetaShopShellOverlayStyle());
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -96,7 +81,7 @@ class _SellerStoreScreenState extends State<SellerStoreScreen> {
     final gridCellW = (screenW - 12 * scale * 2 - 10) / 2;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: _storeUiOverlay(scheme),
+      value: evetaShopShellOverlayStyle(scheme),
       child: Scaffold(
         backgroundColor: scheme.surface,
         bottomNavigationBar: BottomNavBarWidget(

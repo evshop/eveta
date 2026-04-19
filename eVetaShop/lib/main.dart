@@ -18,6 +18,7 @@ import 'package:eveta/utils/catalog_local_sync.dart';
 import 'package:eveta/utils/favorites_service.dart';
 import 'package:eveta/theme/eveta_shop_theme.dart';
 import 'package:eveta/theme/eveta_theme_controller.dart';
+import 'package:eveta/theme/shop_system_ui.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -162,11 +163,24 @@ class _MyHomePageNewState extends State<MyHomePage> with WidgetsBindingObserver 
   final List<String> _productHistory = [];
   final PageController _pageController = PageController(initialPage: 0);
   final GlobalKey<CategoriesScreenState> _categoriesScreenKey = GlobalKey<CategoriesScreenState>();
+  bool _searchOpen = false;
+  int _searchSession = 0;
+  String? _searchInitialQuery;
+
+  void _onThemeModeChanged() {
+    if (mounted) _updateSystemUI();
+  }
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    evetaThemeMode.addListener(_onThemeModeChanged);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
     _updateSystemUI();
   }
 
@@ -179,28 +193,28 @@ class _MyHomePageNewState extends State<MyHomePage> with WidgetsBindingObserver 
   }
 
   void _updateSystemUI() {
-    final brightness = WidgetsBinding.instance.platformDispatcher.platformBrightness;
-    final isDark = brightness == Brightness.dark;
-    SystemChrome.setSystemUIOverlayStyle(
-      SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
-        statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
-      ),
-    );
+    if (!mounted) return;
+    final scheme = Theme.of(context).colorScheme;
+    SystemChrome.setSystemUIOverlayStyle(evetaShopShellOverlayStyle(scheme));
   }
 
   String? get _selectedProductId => _productHistory.isNotEmpty ? _productHistory.last : null;
 
   @override
   void dispose() {
+    evetaThemeMode.removeListener(_onThemeModeChanged);
     WidgetsBinding.instance.removeObserver(this);
     _pageController.dispose();
     super.dispose();
   }
 
   void _showProductDetail(String productId) {
+    // Cierra rutas encima (p. ej. "Ver todo" / productos de categoría) para que el detalle
+    // se pinte sobre MyHomePage y la navbar sea coherente.
+    Navigator.of(context).popUntil((route) => route.isFirst);
     setState(() {
+      _searchOpen = false;
+      _searchInitialQuery = null;
       _productHistory.add(productId);
     });
   }
@@ -219,14 +233,31 @@ class _MyHomePageNewState extends State<MyHomePage> with WidgetsBindingObserver 
     });
   }
 
+  void _openSearchOverlay({String? initialQuery}) {
+    setState(() {
+      _searchOpen = true;
+      _searchSession++;
+      _searchInitialQuery = initialQuery;
+    });
+  }
+
+  void _closeSearchOverlay() {
+    setState(() {
+      _searchOpen = false;
+      _searchInitialQuery = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: _selectedProductId == null && _currentIndex == 0,
+      canPop: _selectedProductId == null && !_searchOpen && _currentIndex == 0,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
         if (_selectedProductId != null) {
           _closeProductDetail();
+        } else if (_searchOpen) {
+          _closeSearchOverlay();
         } else if (_currentIndex != 0) {
           _pageController.animateToPage(
             0,
@@ -252,8 +283,10 @@ class _MyHomePageNewState extends State<MyHomePage> with WidgetsBindingObserver 
               children: [
                 HomeScreen(
                   onProductTap: _showProductDetail,
+                  onOpenSearch: () => _openSearchOverlay(),
                   onOpenWishlist: () {
                     _closeAllProductDetails();
+                    _closeSearchOverlay();
                     _pageController.animateToPage(
                       2,
                       duration: const Duration(milliseconds: 300),
@@ -262,6 +295,7 @@ class _MyHomePageNewState extends State<MyHomePage> with WidgetsBindingObserver 
                   },
                   onOpenCart: () {
                     _closeAllProductDetails();
+                    _closeSearchOverlay();
                     _pageController.animateToPage(
                       3,
                       duration: const Duration(milliseconds: 300),
@@ -272,11 +306,33 @@ class _MyHomePageNewState extends State<MyHomePage> with WidgetsBindingObserver 
                 CategoriesScreen(
                   key: _categoriesScreenKey,
                   onProductTap: _showProductDetail,
+                  onOpenSearch: () => _openSearchOverlay(),
+                  onBottomNavTap: (index) {
+                    _closeAllProductDetails();
+                    _closeSearchOverlay();
+                    _pageController.animateToPage(
+                      index,
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                    );
+                  },
                 ),
-                const WishListScreen(),
-                const ShoppingCartScreen(),
+                WishListScreen(onProductTap: _showProductDetail),
+                ShoppingCartScreen(onProductTap: _showProductDetail),
                 const MenuScreen(),
               ],
+            ),
+          if (_searchOpen)
+            Positioned.fill(
+              child: Material(
+                color: Theme.of(context).colorScheme.surface,
+                child: SearchScreen(
+                  key: ValueKey<int>(_searchSession),
+                  initialQuery: _searchInitialQuery,
+                  onClose: _closeSearchOverlay,
+                  onProductSelected: _showProductDetail,
+                ),
+              ),
             ),
           if (_selectedProductId != null) ...[
             Positioned.fill(
@@ -301,12 +357,8 @@ class _MyHomePageNewState extends State<MyHomePage> with WidgetsBindingObserver 
                     productId: _selectedProductId!,
                     onClose: _closeProductDetail,
                     onTagTap: (tag) {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => SearchScreen(initialQuery: tag),
-                        ),
-                      );
+                      _closeAllProductDetails();
+                      _openSearchOverlay(initialQuery: tag);
                     },
                     onRelatedProductTap: _showProductDetail,
                   ),
@@ -320,6 +372,7 @@ class _MyHomePageNewState extends State<MyHomePage> with WidgetsBindingObserver 
         currentIndex: _currentIndex,
         onTap: (index) {
           _closeAllProductDetails();
+          _closeSearchOverlay();
           _pageController.animateToPage(
             index,
             duration: const Duration(milliseconds: 300),

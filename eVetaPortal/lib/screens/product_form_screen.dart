@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../services/cloudinary_service.dart';
+import '../widgets/portal/eveta_portal_image_crop_screen.dart';
 import '../widgets/portal/portal_haptics.dart';
 import '../widgets/portal/portal_section_header.dart';
 import '../widgets/portal/portal_tokens.dart';
@@ -64,14 +65,17 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
       _descController.text = p['description'] ?? '';
       _priceController.text = (p['price'] ?? '').toString();
       _stockController.text = (p['stock'] ?? '').toString();
-      _unit = (p['unit'] ?? 'unidad').toString();
-      final cid = p['category_id']?.toString();
+      var unitRaw = (p['unit'] ?? 'unidad').toString().trim();
+      if (!_units.contains(unitRaw)) unitRaw = 'unidad';
+      _unit = unitRaw;
+      final cid = p['category_id']?.toString().trim();
       _categoryId = (cid == null || cid.isEmpty) ? null : cid;
       _isActive = p['is_active'] ?? true;
       _isFeatured = p['is_featured'] ?? false;
       
-      if (p['images'] != null) {
-        _images = List<String>.from(p['images']);
+      final imgs = p['images'];
+      if (imgs is List) {
+        _images = imgs.map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
       }
       _coverUrl = _images.isNotEmpty ? _images.first : null;
 
@@ -101,8 +105,9 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
         _categories = data;
 
         if (_categoryId != null && _categoryId!.isNotEmpty) {
+          final cid = _categoryId!;
           final selected = data.firstWhere(
-            (c) => c['id']?.toString() == _categoryId,
+            (c) => c['id']?.toString().trim() == cid,
             orElse: () => <String, dynamic>{},
           );
           if (selected.isNotEmpty) {
@@ -139,8 +144,9 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   }
 
   List<Map<String, dynamic>> _subCategoriesForParent(String parentId) {
+    final p = parentId.trim();
     return _categories
-        .where((c) => c['parent_id']?.toString() == parentId)
+        .where((c) => c['parent_id']?.toString().trim() == p)
         .map((c) => Map<String, dynamic>.from(c as Map))
         .toList();
   }
@@ -152,14 +158,6 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     final subs = _subCategoriesForParent(pid);
     if (subs.isEmpty) return pid;
     return _categoryId ?? pid;
-  }
-
-  /// Valor válido para el dropdown de subcategoría (evita `value` que no está en `items`).
-  String? get _subCategoryDropdownValue {
-    final pid = _parentCategoryId;
-    if (pid == null || _categoryId == null) return null;
-    final ids = _subCategoriesForParent(pid).map((c) => c['id']?.toString()).whereType<String>().toSet();
-    return ids.contains(_categoryId) ? _categoryId : null;
   }
 
   InputDecoration _inputDec(
@@ -297,18 +295,28 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     
     if (pickedFile == null) return;
 
+    final bytes = await pickedFile.readAsBytes();
+    if (!mounted) return;
+
+    final cropped = await EvetaPortalImageCropScreen.open(
+      context,
+      bytes,
+      initialMode: EvetaCropAspectMode.icon,
+      lockToInitialMode: true,
+    );
+    if (cropped == null) return;
+
     setState(() => _isUploading = true);
 
     try {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) throw Exception('No user logged in');
 
-      final bytes = await pickedFile.readAsBytes();
       final fileExt = pickedFile.path.split('.').last;
       final fileName = '${DateTime.now().millisecondsSinceEpoch}.$fileExt';
 
       final imageUrl = await CloudinaryService.uploadImage(
-        bytes: bytes,
+        bytes: cropped,
         fileName: fileName,
         folder: 'eveta/portal_store/products/${user.id}',
       );
@@ -342,10 +350,10 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   void _reorderImage(int oldIndex, int newIndex) {
     if (oldIndex == newIndex) return;
     setState(() {
-      // En ReorderableListView el nuevo índice llega como "after move".
-      if (newIndex > oldIndex) newIndex -= 1;
       final item = _images.removeAt(oldIndex);
-      _images.insert(newIndex, item);
+      // Criterio del paquete reorderable_grid_view (README): insert en newIndex sin ajuste tipo ListView.
+      final j = newIndex.clamp(0, _images.length);
+      _images.insert(j, item);
     });
   }
 
@@ -422,7 +430,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
         await Supabase.instance.client
             .from('products')
             .update(productData)
-            .eq('id', widget.product!['id']);
+            .eq('id', widget.product!['id'].toString());
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Producto actualizado')));
         }
@@ -448,6 +456,25 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     final isEditing = widget.product != null;
     final scheme = Theme.of(context).colorScheme;
 
+    // DropdownButtonFormField exige que initialValue coincida con un item (Flutter 3.33+).
+    final parentRows = _parentCategories();
+    final parentIdSet = parentRows.map((c) => c['id']?.toString().trim()).whereType<String>().toSet();
+    final parentDropdownInitial =
+        _parentCategoryId != null && parentIdSet.contains(_parentCategoryId!) ? _parentCategoryId : null;
+
+    String? subDropdownInitial;
+    final pid = _parentCategoryId;
+    if (pid != null && pid.isNotEmpty) {
+      final subIdSet = _subCategoriesForParent(pid)
+          .map((c) => c['id']?.toString().trim())
+          .whereType<String>()
+          .toSet();
+      final cid = _categoryId;
+      if (cid != null && subIdSet.contains(cid)) subDropdownInitial = cid;
+    }
+
+    final unitDropdownInitial = _units.contains(_unit) ? _unit : 'unidad';
+
     return Scaffold(
       appBar: AppBar(
         title: Text(isEditing ? 'Editar producto' : 'Subir producto'),
@@ -458,7 +485,8 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(PortalTokens.space2),
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          // onDrag competía con el scroll vertical y bloqueaba arrastrar hacia la derecha en la grilla.
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
           child: Form(
             key: _formKey,
             child: Column(
@@ -533,8 +561,8 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
               const SizedBox(height: PortalTokens.space2),
 
               DropdownButtonFormField<String>(
-                key: ValueKey<String>('unit_$_unit'),
-                initialValue: _unit,
+                key: ValueKey<String>('unit_$unitDropdownInitial'),
+                initialValue: unitDropdownInitial,
                 decoration: _inputDec(context, 'Unidad de venta'),
                 items: _units.map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
                 onChanged: (val) => setState(() => _unit = val!),
@@ -546,16 +574,20 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                 subtitle: 'Clasifica tu producto para que sea fácil de encontrar',
               ),
               DropdownButtonFormField<String>(
-                key: ValueKey<String?>('parent_$_parentCategoryId'),
-                initialValue: _parentCategoryId,
+                key: ValueKey<String?>('parent_${parentDropdownInitial}_${_parentCategoryId}_${parentRows.length}'),
+                initialValue: parentDropdownInitial,
                 decoration: _inputDec(context, 'Categoría'),
-                items: _parentCategories().map((c) {
-                  final id = c['id']?.toString();
-                  return DropdownMenuItem<String>(
-                    value: id,
-                    child: Text(c['name']?.toString() ?? ''),
-                  );
-                }).toList(),
+                items: parentRows
+                    .map((c) {
+                      final id = c['id']?.toString().trim();
+                      if (id == null || id.isEmpty) return null;
+                      return DropdownMenuItem<String>(
+                        value: id,
+                        child: Text(c['name']?.toString() ?? ''),
+                      );
+                    })
+                    .whereType<DropdownMenuItem<String>>()
+                    .toList(),
                 onChanged: (val) {
                   if (val == null || val.isEmpty) return;
                   final children = _subCategoriesForParent(val);
@@ -572,14 +604,19 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
               if (_parentCategoryId != null && _subCategoriesForParent(_parentCategoryId!).isNotEmpty) ...[
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  key: ValueKey<String?>('sub_${_parentCategoryId}_$_categoryId'),
-                  initialValue: _subCategoryDropdownValue,
+                  key: ValueKey<String?>('sub_${_parentCategoryId}_${subDropdownInitial}_$_categoryId'),
+                  initialValue: subDropdownInitial,
                   decoration: _inputDec(context, 'Subcategoría'),
                   items: _subCategoriesForParent(_parentCategoryId!)
-                      .map((c) => DropdownMenuItem<String>(
-                            value: c['id']?.toString(),
-                            child: Text(c['name']?.toString() ?? ''),
-                          ))
+                      .map((c) {
+                        final id = c['id']?.toString().trim();
+                        if (id == null || id.isEmpty) return null;
+                        return DropdownMenuItem<String>(
+                          value: id,
+                          child: Text(c['name']?.toString() ?? ''),
+                        );
+                      })
+                      .whereType<DropdownMenuItem<String>>()
                       .toList(),
                   onChanged: (val) {
                     if (val == null || val.isEmpty) return;

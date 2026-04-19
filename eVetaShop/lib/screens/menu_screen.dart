@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:eveta/common_widget/eveta_circular_back_button.dart';
-import 'package:eveta/screens/add_location_screen.dart';
+import 'package:eveta/screens/appearance_settings_screen.dart';
+import 'package:eveta/screens/saved_addresses_screen.dart';
 import 'package:eveta/screens/login_screen.dart';
 import 'package:eveta/screens/my_orders_screen.dart';
 import 'package:eveta/theme/eveta_shop_theme.dart';
@@ -62,48 +63,6 @@ class _MenuScreenState extends State<MenuScreen> {
   String get _displayPhone {
     final phone = _profile?['phone']?.toString().trim();
     return (phone == null || phone.isEmpty) ? '-' : phone;
-  }
-
-  void _showThemeSheet() {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(EvetaShopDimens.radiusXl)),
-      ),
-      builder: (ctx) {
-        final st = Theme.of(ctx).colorScheme;
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(EvetaShopDimens.spaceLg),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text('Apariencia', style: Theme.of(ctx).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-                const SizedBox(height: EvetaShopDimens.spaceMd),
-                ...ThemeMode.values.map((mode) {
-                  final label = switch (mode) {
-                    ThemeMode.system => 'Según el sistema',
-                    ThemeMode.light => 'Claro',
-                    ThemeMode.dark => 'Oscuro',
-                  };
-                  final selected = evetaThemeMode.value == mode;
-                  return ListTile(
-                    title: Text(label),
-                    trailing: selected ? Icon(Icons.check_rounded, color: st.primary) : null,
-                    onTap: () {
-                      evetaThemeMode.value = mode;
-                      Navigator.pop(ctx);
-                    },
-                  );
-                }),
-              ],
-            ),
-          ),
-        );
-      },
-    );
   }
 
   void _showLogoutDialog(BuildContext dialogContext) {
@@ -256,7 +215,10 @@ class _MenuScreenState extends State<MenuScreen> {
                     title: 'Direcciones',
                     showDividerAbove: true,
                     onTap: () {
-                      Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const AddLocationScreen()));
+                      Navigator.push<void>(
+                        context,
+                        MaterialPageRoute<void>(builder: (_) => const SavedAddressesScreen()),
+                      );
                     },
                   ),
                   EvetaIosSettingsTile(
@@ -297,11 +259,22 @@ class _MenuScreenState extends State<MenuScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: EvetaIosSettingsGroup(
                 children: [
-                  EvetaIosSettingsTile(
-                    icon: Icons.dark_mode_outlined,
-                    title: 'Apariencia',
-                    trailing: Icon(Icons.palette_outlined, color: scheme.onSurfaceVariant.withValues(alpha: 0.65), size: 22),
-                    onTap: _showThemeSheet,
+                  ValueListenableBuilder<ThemeMode>(
+                    valueListenable: evetaThemeMode,
+                    builder: (context, mode, _) {
+                      return EvetaIosSettingsTile(
+                        icon: Icons.dark_mode_outlined,
+                        title: 'Apariencia',
+                        subtitle: ShopAppearanceSettingsScreen.labelFor(mode),
+                        trailing: Icon(Icons.palette_outlined, color: scheme.onSurfaceVariant.withValues(alpha: 0.65), size: 22),
+                        onTap: () {
+                          Navigator.push<void>(
+                            context,
+                            MaterialPageRoute<void>(builder: (_) => const ShopAppearanceSettingsScreen()),
+                          );
+                        },
+                      );
+                    },
                   ),
                 ],
               ),

@@ -2,8 +2,6 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
-const Color _kConfirmDeleteRed = Color(0xFFFF4747);
-
 /// Diálogo a pantalla completa: el fondo **solo hace fade** (sin deslizar el blur) y la tarjeta **sube** aparte.
 /// Evita la línea que aparecía al animar junto con [showModalBottomSheet].
 Future<bool?> showEvetaBlurConfirmSheet(
@@ -114,15 +112,16 @@ class _SheetCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Material(
       color: Colors.transparent,
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: scheme.surfaceContainerHighest,
           borderRadius: topRadius,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.12),
+              color: Colors.black.withValues(alpha: scheme.brightness == Brightness.dark ? 0.45 : 0.12),
               blurRadius: 28,
               spreadRadius: 0,
               offset: const Offset(0, -6),
@@ -140,10 +139,10 @@ class _SheetCard extends StatelessWidget {
                 Text(
                   title,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF1A1A1A),
+                    color: scheme.onSurface,
                   ),
                 ),
                 const SizedBox(height: 18),
@@ -153,7 +152,7 @@ class _SheetCard extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Material(
-                        color: Colors.grey.shade200.withValues(alpha: 0.65),
+                        color: scheme.surfaceContainerHigh,
                         borderRadius: pill,
                         child: InkWell(
                           onTap: () => Navigator.pop(context, false),
@@ -169,7 +168,7 @@ class _SheetCard extends StatelessWidget {
                                   style: TextStyle(
                                     fontWeight: FontWeight.w600,
                                     fontSize: 15,
-                                    color: Colors.grey.shade800,
+                                    color: scheme.onSurface,
                                   ),
                                 ),
                               ),
@@ -181,14 +180,14 @@ class _SheetCard extends StatelessWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Material(
-                        color: _kConfirmDeleteRed,
+                        color: scheme.error,
                         borderRadius: pill,
                         child: InkWell(
                           onTap: () => Navigator.pop(context, true),
                           borderRadius: pill,
-                          splashColor: Colors.white24,
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 14, horizontal: 6),
+                          splashColor: scheme.onError.withValues(alpha: 0.2),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
                             child: Center(
                               child: FittedBox(
                                 fit: BoxFit.scaleDown,
@@ -198,7 +197,7 @@ class _SheetCard extends StatelessWidget {
                                   style: TextStyle(
                                     fontWeight: FontWeight.w700,
                                     fontSize: 15,
-                                    color: Colors.white,
+                                    color: scheme.onError,
                                   ),
                                 ),
                               ),

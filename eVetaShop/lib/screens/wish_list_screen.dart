@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:eveta/screens/product_detail_screen.dart';
 import 'package:eveta/theme/eveta_shop_theme.dart';
 import 'package:eveta/ui/shop/eveta_empty_state.dart';
 import 'package:eveta/ui/shop/premium/eveta_new_arrival_card.dart';
-import 'package:eveta/utils/cart_service.dart';
 import 'package:eveta/utils/favorites_service.dart';
 
 class WishListScreen extends StatefulWidget {
-  const WishListScreen({super.key});
+  const WishListScreen({super.key, this.onProductTap});
+
+  /// Si viene de [MyHomePage], abre el detalle como overlay y mantiene la barra inferior.
+  final ValueChanged<String>? onProductTap;
 
   @override
   State<WishListScreen> createState() => _WishListScreenState();
@@ -57,25 +60,6 @@ class _WishListScreenState extends State<WishListScreen> {
     };
   }
 
-  void _quickAddToCart(FavoriteItem item) {
-    CartService.addToCart(CartItem(
-      productId: item.productId,
-      name: item.name,
-      price: item.price,
-      imageUrl: item.imageUrl,
-      quantity: 1,
-      stock: item.stock > 0 ? item.stock : 999,
-    ));
-    final scheme = Theme.of(context).colorScheme;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Agregado al carrito'),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: scheme.primary,
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -99,52 +83,35 @@ class _WishListScreenState extends State<WishListScreen> {
                   title: 'Aún no tienes favoritos',
                   subtitle: 'Toca el corazón en un producto para guardarlo aquí',
                 )
-              : GridView.builder(
+              : MasonryGridView.count(
                   padding: const EdgeInsets.fromLTRB(EvetaShopDimens.spaceLg, EvetaShopDimens.spaceSm, EvetaShopDimens.spaceLg, 100),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: EvetaShopDimens.spaceMd,
-                    crossAxisSpacing: EvetaShopDimens.spaceMd,
-                    childAspectRatio: 0.55,
-                  ),
+                  crossAxisCount: 2,
+                  mainAxisSpacing: EvetaShopDimens.spaceMd,
+                  crossAxisSpacing: EvetaShopDimens.spaceMd,
                   itemCount: _items.length,
                   itemBuilder: (context, index) {
                     final item = _items[index];
                     final map = _favoriteToProductMap(item);
-                    return Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        LayoutBuilder(
-                          builder: (context, c) {
-                            return EvetaNewArrivalCard(
-                              width: c.maxWidth,
-                              product: map,
-                              showNewBadge: false,
-                              adaptProductImageFraming: true,
-                              flexibleImageSlot: true,
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute<void>(builder: (_) => ProductDetailScreen(productId: item.productId)),
-                                );
-                              },
-                            );
+                    return LayoutBuilder(
+                      builder: (context, c) {
+                        return EvetaNewArrivalCard(
+                          width: c.maxWidth,
+                          product: map,
+                          showNewBadge: false,
+                          adaptProductImageFraming: true,
+                          flexibleImageSlot: true,
+                          onTap: () {
+                            if (widget.onProductTap != null) {
+                              widget.onProductTap!(item.productId);
+                            } else {
+                              Navigator.push<void>(
+                                context,
+                                MaterialPageRoute<void>(builder: (_) => ProductDetailScreen(productId: item.productId)),
+                              );
+                            }
                           },
-                        ),
-                        Positioned(
-                          right: 6,
-                          bottom: 56,
-                          child: Material(
-                            color: scheme.secondaryContainer,
-                            shape: const CircleBorder(),
-                            child: IconButton(
-                              visualDensity: VisualDensity.compact,
-                              icon: Icon(Icons.shopping_bag_outlined, size: 20, color: scheme.primary),
-                              onPressed: () => _quickAddToCart(item),
-                            ),
-                          ),
-                        ),
-                      ],
+                        );
+                      },
                     );
                   },
                 ),

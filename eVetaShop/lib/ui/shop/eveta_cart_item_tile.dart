@@ -55,25 +55,35 @@ class EvetaCartItemTile extends StatelessWidget {
           ),
           const SizedBox(width: EvetaShopDimens.spaceMd),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.name,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: tt.titleMedium?.copyWith(fontSize: 15, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Bs ${lineTotal.toStringAsFixed(0)}',
-                  style: tt.titleMedium?.copyWith(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: scheme.primary,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onProductTap,
+                borderRadius: BorderRadius.circular(EvetaShopDimens.radiusSm),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: tt.titleMedium?.copyWith(fontSize: 15, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Bs ${lineTotal.toStringAsFixed(0)}',
+                        style: tt.titleMedium?.copyWith(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: scheme.primary,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
+              ),
             ),
           ),
           Column(

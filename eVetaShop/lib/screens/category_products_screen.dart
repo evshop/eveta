@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+import 'package:eveta/common_widget/bottom_nav_bar_widget.dart';
 import 'package:eveta/common_widget/eveta_cached_image.dart';
+import 'package:eveta/common_widget/eveta_circular_back_button.dart';
 import 'package:eveta/common_widget/product_card_skeleton.dart';
 import 'package:eveta/theme/eveta_shop_theme.dart';
-import 'package:eveta/ui/shop/eveta_category_chip.dart' show SubcategoryChip;
+import 'package:eveta/ui/shop/eveta_category_chip.dart';
 import 'package:eveta/ui/shop/premium/eveta_new_arrival_card.dart';
 import 'package:eveta/utils/catalog_cache_service.dart';
 import 'package:eveta/utils/cloudinary_image_url.dart';
@@ -15,11 +17,13 @@ class CategoryProductsScreen extends StatefulWidget {
     required this.categoryId,
     required this.title,
     this.onProductTap,
+    this.onBottomNavTap,
   });
 
   final String categoryId;
   final String title;
   final void Function(String productId)? onProductTap;
+  final void Function(int index)? onBottomNavTap;
 
   @override
   State<CategoryProductsScreen> createState() => _CategoryProductsScreenState();
@@ -122,7 +126,14 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
         );
       }
       if (!mounted) return;
-      setState(() => _products = list);
+      setState(() {
+        _products = list;
+        final vis = _subcategoriesWithProducts();
+        if (_selectedSubCategoryId != null &&
+            !vis.any((s) => s['id'].toString() == _selectedSubCategoryId)) {
+          _selectedSubCategoryId = null;
+        }
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -159,6 +170,20 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
     if (filtered.isEmpty) return 'Sin productos';
     if (filtered.length == 1) return '1 producto';
     return '${filtered.length} productos';
+  }
+
+  /// Subcategorías con al menos un producto (no se muestran vacías).
+  List<Map<String, dynamic>> _subcategoriesWithProducts() {
+    if (_subcategories.isEmpty || _products.isEmpty) return [];
+    final counts = <String, int>{};
+    for (final p in _products) {
+      final id = p['category_id']?.toString();
+      if (id == null || id.isEmpty) continue;
+      counts[id] = (counts[id] ?? 0) + 1;
+    }
+    return _subcategories
+        .where((s) => (counts[s['id'].toString()] ?? 0) > 0)
+        .toList();
   }
 
   List<Map<String, dynamic>> _filterProducts(List<Map<String, dynamic>> all, String rawQuery) {
@@ -225,6 +250,7 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
             ),
           ),
         ),
+        bottomNavigationBar: _categoryProductsBottomNav(context),
       );
     }
 
@@ -248,50 +274,47 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
             ),
           ),
         ),
+        bottomNavigationBar: _categoryProductsBottomNav(context),
       );
     }
 
     final filtered = _filterProducts(_products, _query);
+    final subsWithProducts = _subcategoriesWithProducts();
     final banner = _categoryImageUrl();
     final logo = _categoryImageUrl();
     final tt = Theme.of(context).textTheme;
+    final barVariant = scheme.brightness == Brightness.dark
+        ? EvetaCircularBackVariant.tonalSurface
+        : EvetaCircularBackVariant.onLightBackground;
+
+    final bottomPad = BottomNavBarWidget.totalHeight(context);
 
     return Scaffold(
       backgroundColor: scheme.surface,
+      extendBody: true,
+      bottomNavigationBar: _categoryProductsBottomNav(context),
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: EdgeInsets.fromLTRB(6 * scale, 12 * scale, 12 * scale, 6 * scale),
+              padding: EdgeInsets.fromLTRB(0, 2 * scale, 12 * scale, 2 * scale),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  TextButton(
+                  EvetaCircularBackButton(
+                    variant: barVariant,
+                    diameter: (40 * scale).clamp(36.0, 46.0),
+                    iconSize: 18 * scale,
+                    borderWidth: (1 * scale).clamp(1.0, 1.2),
                     onPressed: () => Navigator.of(context).maybePop(),
-                    style: TextButton.styleFrom(
-                      foregroundColor: scheme.primary,
-                      padding: EdgeInsets.symmetric(horizontal: 8 * scale, vertical: 4 * scale),
-                      minimumSize: Size(44 * scale, 34 * scale),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    child: Text(
-                      'Atrás',
-                      style: TextStyle(fontSize: 13 * scale, fontWeight: FontWeight.w700),
-                    ),
                   ),
                   SizedBox(width: 2 * scale),
                   Expanded(
-                    child: Material(
-                      color: Colors.transparent,
-                      elevation: 6,
-                      shadowColor: Colors.black.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(999),
-                      child: _CategorySearchField(
-                        scale: scale,
-                        controller: _searchCtrl,
-                        onChanged: (v) => setState(() => _query = v),
-                      ),
+                    child: _CategorySearchField(
+                      scale: scale,
+                      controller: _searchCtrl,
+                      onChanged: (v) => setState(() => _query = v),
                     ),
                   ),
                 ],
@@ -333,18 +356,17 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                         scale: scale,
                       ),
                     ),
-                    SliverToBoxAdapter(child: SizedBox(height: 10 * scale)),
-                    if (_subcategories.isNotEmpty)
+                    if (subsWithProducts.isNotEmpty)
                       SliverToBoxAdapter(
                         child: Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 12 * scale),
+                          padding: EdgeInsets.fromLTRB(12 * scale, 0, 12 * scale, 2 * scale),
                           child: SizedBox(
-                            height: 42,
+                            height: 34 * scale,
                             child: Align(
                               alignment: Alignment.centerLeft,
                               child: ListView.separated(
                                 scrollDirection: Axis.horizontal,
-                                itemCount: 1 + _subcategories.length,
+                                itemCount: 1 + subsWithProducts.length,
                                 separatorBuilder: (_, __) => SizedBox(width: 8 * scale),
                                 itemBuilder: (context, index) {
                                   if (index == 0) {
@@ -355,7 +377,7 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                                       onTap: () => _onSelectSubcategory(null),
                                     );
                                   }
-                                  final c = _subcategories[index - 1];
+                                  final c = subsWithProducts[index - 1];
                                   final id = c['id'].toString();
                                   final name = c['name']?.toString() ?? '';
                                   return SubcategoryChip(
@@ -371,7 +393,7 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                         ),
                       ),
                     SliverPadding(
-                      padding: EdgeInsets.fromLTRB(12 * scale, 8 * scale, 12 * scale, 100),
+                      padding: EdgeInsets.fromLTRB(12 * scale, 8 * scale, 12 * scale, bottomPad + 12 * scale),
                       sliver: filtered.isEmpty
                           ? SliverFillRemaining(
                               hasScrollBody: false,
@@ -418,9 +440,21 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
       ),
     );
   }
+
+  Widget? _categoryProductsBottomNav(BuildContext context) {
+    if (widget.onBottomNavTap == null) return null;
+    return BottomNavBarWidget(
+      currentIndex: 1,
+      useCartFlyTargetKey: false,
+      onTap: (index) {
+        Navigator.of(context).pop();
+        widget.onBottomNavTap!(index);
+      },
+    );
+  }
 }
 
-/// Campo de búsqueda (mismo estilo que la tienda; más delgado, sin icono de lupa).
+/// Campo de búsqueda alineado con [EvetaSearchBar] de la pantalla Categorías (cápsula, no círculo).
 class _CategorySearchField extends StatelessWidget {
   const _CategorySearchField({
     required this.scale,
@@ -435,35 +469,48 @@ class _CategorySearchField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Container(
-      height: 34 * scale,
-      padding: const EdgeInsets.all(1.5),
-      decoration: BoxDecoration(
-        color: scheme.primary,
-        borderRadius: BorderRadius.circular(999),
-      ),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final r = EvetaShopDimens.radiusXl + 4;
+    final hPad = (EvetaShopDimens.spaceMd * scale).clamp(12.0, 16.0);
+    return Material(
+      color: scheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(r),
       child: Container(
+        constraints: BoxConstraints(minHeight: 38 * scale, maxHeight: 42 * scale),
         decoration: BoxDecoration(
-          color: scheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(r),
+          border: Border.all(color: scheme.outline.withValues(alpha: isDark ? 0.35 : 0.5)),
         ),
-        child: TextField(
-          controller: controller,
-          onChanged: onChanged,
-          textAlign: TextAlign.left,
-          textAlignVertical: TextAlignVertical.center,
-          style: TextStyle(
-            fontSize: 13 * scale,
-            color: scheme.onSurface,
-            fontWeight: FontWeight.w500,
-          ),
-          decoration: InputDecoration(
-            hintText: 'Buscar en esta categoría',
-            hintStyle: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12.5 * scale),
-            isDense: true,
-            contentPadding: EdgeInsets.symmetric(vertical: 8 * scale, horizontal: 14 * scale),
-            border: InputBorder.none,
-          ),
+        padding: EdgeInsets.symmetric(horizontal: hPad, vertical: 2 * scale),
+        child: Row(
+          children: [
+            Icon(Icons.search_rounded, color: scheme.onSurfaceVariant, size: 20 * scale),
+            SizedBox(width: (8 * scale).clamp(6.0, 10.0)),
+            Expanded(
+              child: TextField(
+                controller: controller,
+                onChanged: onChanged,
+                textAlign: TextAlign.left,
+                textAlignVertical: TextAlignVertical.center,
+                style: TextStyle(
+                  fontSize: 14 * scale,
+                  color: scheme.onSurface,
+                  fontWeight: FontWeight.w500,
+                  height: 1.2,
+                ),
+                decoration: InputDecoration(
+                  hintText: 'Buscar en esta categoría',
+                  hintStyle: TextStyle(
+                    color: scheme.onSurfaceVariant.withValues(alpha: 0.75),
+                    fontSize: 14 * scale,
+                  ),
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(vertical: 6 * scale),
+                  border: InputBorder.none,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -490,7 +537,7 @@ class _CategoryScrollHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final bannerH = 196.0 * scale;
-    final headerH = 304.0 * scale;
+    final headerH = 292.0 * scale;
     final surface = scheme.surface;
     final b = bannerUrl?.trim() ?? '';
     final l = logoUrl?.trim() ?? '';

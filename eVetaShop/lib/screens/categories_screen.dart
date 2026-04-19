@@ -11,9 +11,17 @@ import 'package:eveta/ui/shop/eveta_section_header.dart';
 import 'package:eveta/ui/shop/sticky_category_header.dart';
 
 class CategoriesScreen extends StatefulWidget {
-  const CategoriesScreen({super.key, this.onProductTap});
+  const CategoriesScreen({
+    super.key,
+    this.onProductTap,
+    this.onOpenSearch,
+    this.onBottomNavTap,
+  });
 
   final ValueChanged<String>? onProductTap;
+  final VoidCallback? onOpenSearch;
+  /// Misma acción que la barra principal (cambiar pestaña tras cerrar sub-rutas).
+  final ValueChanged<int>? onBottomNavTap;
 
   @override
   State<CategoriesScreen> createState() => CategoriesScreenState();
@@ -51,6 +59,17 @@ class CategoriesScreenState extends State<CategoriesScreen> {
     return s;
   }
 
+  bool _categoryHasProducts(String id) => (_categoryProducts[id]?.isNotEmpty ?? false);
+
+  /// Esta categoría o alguna hija directa con productos en caché.
+  bool _categoryOrChildHasProducts(String categoryId) {
+    if (_categoryHasProducts(categoryId)) return true;
+    for (final c in _categories) {
+      if (_parentIdOf(c) == categoryId && _categoryHasProducts(c['id'].toString())) return true;
+    }
+    return false;
+  }
+
   Future<void> _loadData({bool forceRefresh = false}) async {
     try {
       final categories = await CatalogCacheService.getCategories(forceRefresh: forceRefresh);
@@ -67,6 +86,12 @@ class CategoriesScreenState extends State<CategoriesScreen> {
           _categories = categories;
           _topLevelCategories = categories.where((c) => _parentIdOf(c) == null).toList();
           _categoryProducts = productsByCategory;
+          if (_selectedSubCategoryId != null) {
+            final sid = _selectedSubCategoryId!;
+            if (!(productsByCategory[sid]?.isNotEmpty ?? false)) {
+              _selectedSubCategoryId = null;
+            }
+          }
           _isLoading = false;
         });
       }
@@ -81,7 +106,10 @@ class CategoriesScreenState extends State<CategoriesScreen> {
   List<Map<String, dynamic>> get _subcategoriesForSelected {
     if (_selectedTopCategoryId == null) return [];
     final sel = _selectedTopCategoryId!;
-    return _categories.where((c) => _parentIdOf(c) == sel).toList();
+    return _categories
+        .where((c) => _parentIdOf(c) == sel)
+        .where((s) => _categoryHasProducts(s['id'].toString()))
+        .toList();
   }
 
   /// Altura fija del bloque pinned (safe area + título + buscador + chips + subchips opcional).
@@ -92,17 +120,20 @@ class CategoriesScreenState extends State<CategoriesScreen> {
     var h = pt + titleBlock + mainChips;
     final subs = _subcategoriesForSelected;
     if (_selectedTopCategoryId != null && subs.isNotEmpty) {
-      h += 1.0 + 6.0 + 32.0 + 6.0;
+      h += 1.0 + 6.0 + 26.0 + 6.0;
     }
     return h;
   }
 
   List<Map<String, dynamic>> get _categoriesToDisplay {
     if (_selectedTopCategoryId == null) {
-      return _categories;
+      return _categories.where((c) => _categoryOrChildHasProducts(c['id'].toString())).toList();
     }
     final pid = _selectedTopCategoryId!;
-    final subcats = _categories.where((c) => _parentIdOf(c) == pid).toList();
+    final subcats = _categories
+        .where((c) => _parentIdOf(c) == pid)
+        .where((s) => _categoryHasProducts(s['id'].toString()))
+        .toList();
 
     Map<String, dynamic>? parentRow;
     for (final c in _categories) {
@@ -113,7 +144,7 @@ class CategoriesScreenState extends State<CategoriesScreen> {
     }
 
     if (subcats.isEmpty) {
-      if (parentRow != null) return [parentRow];
+      if (parentRow != null && _categoryHasProducts(pid)) return [parentRow];
       return [];
     }
 
@@ -253,23 +284,27 @@ class CategoriesScreenState extends State<CategoriesScreen> {
                 'Categorías',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               EvetaSearchBar(
                 controller: _searchController,
                 hintText: 'Buscar en eVeta…',
                 onTap: () {
-                  Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const SearchScreen()));
+                  if (widget.onOpenSearch != null) {
+                    widget.onOpenSearch!();
+                  } else {
+                    Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const SearchScreen()));
+                  }
                 },
               ),
             ],
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         Align(
           alignment: Alignment.centerLeft,
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: EvetaShopDimens.spaceLg),
+            padding: const EdgeInsets.only(left: EvetaShopDimens.spaceLg, right: EvetaShopDimens.spaceLg, bottom: 2),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -284,7 +319,9 @@ class CategoriesScreenState extends State<CategoriesScreen> {
                     });
                   },
                 ),
-                ..._topLevelCategories.map((cat) {
+                ..._topLevelCategories
+                    .where((cat) => _categoryOrChildHasProducts(cat['id'].toString()))
+                    .map((cat) {
                   final id = cat['id'].toString();
                   return EvetaCategoryChip(
                     label: cat['name']?.toString() ?? '',
@@ -303,10 +340,10 @@ class CategoriesScreenState extends State<CategoriesScreen> {
         ),
         if (showSubRow) ...[
           Padding(
-            padding: const EdgeInsets.fromLTRB(EvetaShopDimens.spaceLg, 6, EvetaShopDimens.spaceLg, 0),
+            padding: const EdgeInsets.fromLTRB(EvetaShopDimens.spaceLg, 2, EvetaShopDimens.spaceLg, 0),
             child: Divider(height: 1, thickness: 1, color: scheme.outline.withValues(alpha: 0.35)),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           Align(
             alignment: Alignment.centerLeft,
             child: SingleChildScrollView(
@@ -317,6 +354,7 @@ class CategoriesScreenState extends State<CategoriesScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   SubcategoryChip(
+                    dense: true,
                     label: 'Todos',
                     selected: _selectedSubCategoryId == null,
                     onTap: () => setState(() => _selectedSubCategoryId = null),
@@ -324,6 +362,7 @@ class CategoriesScreenState extends State<CategoriesScreen> {
                   ...subs.map((cat) {
                     final id = cat['id'].toString();
                     return SubcategoryChip(
+                      dense: true,
                       label: cat['name']?.toString() ?? '',
                       selected: _selectedSubCategoryId == id,
                       onTap: () => setState(() => _selectedSubCategoryId = id),
@@ -349,6 +388,7 @@ class CategoriesScreenState extends State<CategoriesScreen> {
           categoryId: id,
           title: title,
           onProductTap: widget.onProductTap,
+          onBottomNavTap: widget.onBottomNavTap,
         ),
       ),
     );
@@ -370,19 +410,8 @@ class CategoriesScreenState extends State<CategoriesScreen> {
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: EvetaShopDimens.spaceLg),
-            itemCount: products.length + 1,
+            itemCount: products.length,
             itemBuilder: (context, index) {
-              if (index == products.length) {
-                return Padding(
-                  padding: const EdgeInsets.only(left: EvetaShopDimens.spaceSm),
-                  child: Center(
-                    child: IconButton.filled(
-                      onPressed: () => _openCategoryAll(category),
-                      icon: const Icon(Icons.arrow_forward_rounded),
-                    ),
-                  ),
-                );
-              }
               final p = products[index];
               return Padding(
                 padding: const EdgeInsets.only(right: EvetaShopDimens.spaceMd),

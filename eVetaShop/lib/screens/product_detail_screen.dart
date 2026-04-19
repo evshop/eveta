@@ -4,7 +4,9 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:eveta/common_widget/eveta_carousel_segment_indicator.dart';
 import 'package:eveta/common_widget/eveta_cached_image.dart';
+import 'package:eveta/common_widget/eveta_fullscreen_image_viewer.dart';
 import 'package:eveta/common_widget/eveta_circular_back_button.dart';
 import 'package:eveta/utils/cloudinary_image_url.dart';
 import 'package:eveta/utils/catalog_cache_service.dart';
@@ -46,44 +48,22 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
 
   final PageController _pageController = PageController();
   final PageController _thumbnailController = PageController();
+  bool _edgeSwipeEnabled = true;
   Timer? _autoPlayTimer;
   Timer? _resumeTimer;
   bool _isUserInteracting = false;
-  bool _isTouchingImage = false;
   bool _isFavorite = false;
   late AnimationController _progressController;
   final int _autoPlaySeconds = 8;
-  final TransformationController _transformationController = TransformationController();
-  late AnimationController _zoomAnimationController;
-  Animation<Matrix4>? _zoomAnimation;
   int _currentImageCount = 0;
   /// Evita llamar `_startAutoPlay` desde `build`: cada `setState` reiniciaba el temporizador.
   String? _autoPlayPrimedForProductId;
   final ScrollController _detailScrollController = ScrollController();
-  /// 0 = barra blanca sólida; 1 = vidrio con blur (contenido pasando por debajo).
-  double _appBarGlassT = 0;
   bool _descriptionExpanded = false;
-
-  void _onDetailScroll() {
-    if (!_detailScrollController.hasClients || !mounted) return;
-    final px = _detailScrollController.offset;
-    // Arriba del todo = barra blanca sólida; el vidrio solo tras bajar un poco el contenido.
-    const start = 16.0;
-    const range = 52.0;
-    final double next;
-    if (px <= start) {
-      next = 0;
-    } else {
-      next = ((px - start) / range).clamp(0.0, 1.0);
-    }
-    if ((next - _appBarGlassT).abs() < 0.02) return;
-    setState(() => _appBarGlassT = next);
-  }
 
   @override
   void initState() {
     super.initState();
-    _detailScrollController.addListener(_onDetailScroll);
     _progressController = AnimationController(
       vsync: this,
       duration: Duration(seconds: _autoPlaySeconds),
@@ -98,24 +78,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
             curve: Curves.easeInOut,
           );
         }
-      }
-    });
-
-    _zoomAnimationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    );
-    _zoomAnimationController.addListener(() {
-      if (_zoomAnimation != null) {
-        _transformationController.value = _zoomAnimation!.value;
-        // Notificamos el cambio de estado durante la animación para que las físicas de scroll
-        // (PageView y CustomScrollView) se actualicen en tiempo real mientras se achica.
-        if (mounted) setState(() {});
-      }
-    });
-    _zoomAnimationController.addStatusListener((status) {
-      if (status == AnimationStatus.completed || status == AnimationStatus.dismissed) {
-        if (mounted) setState(() {});
       }
     });
 
@@ -135,7 +97,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
       _autoPlayPrimedForProductId = null;
       _selectedImageIndex = 0;
       _quantity = 1;
-      _appBarGlassT = 0;
       _descriptionExpanded = false;
       if (_detailScrollController.hasClients) {
         _detailScrollController.jumpTo(0);
@@ -350,9 +311,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
     _pageController.dispose();
     _thumbnailController.dispose();
     _progressController.dispose();
-    _transformationController.dispose();
-    _zoomAnimationController.dispose();
-    _detailScrollController.removeListener(_onDetailScroll);
     _detailScrollController.dispose();
     super.dispose();
   }
@@ -407,53 +365,35 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
     });
   }
 
-  void _animateZoomToNormal() {
-    if (_zoomAnimationController.isAnimating) return;
-    _zoomAnimation = Matrix4Tween(
-      begin: _transformationController.value,
-      end: Matrix4.identity(),
-    ).animate(CurvedAnimation(
-      parent: _zoomAnimationController,
-      curve: Curves.easeInOut,
-    ));
-    _zoomAnimationController.forward(from: 0.0);
-  }
-
-  void _onZoomEnd(int imageCount) {
-    _resumeTimer?.cancel();
-    _resumeTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted) {
-        setState(() => _isUserInteracting = false);
-        _animateZoomToNormal();
-        _startAutoPlay(imageCount, resume: true);
-      }
-    });
-  }
-
-  void _zoomIn(int imageCount, double viewportSize) {
+  Future<void> _openFullscreenGallery(BuildContext context, List<String> imageUrls, int index) {
     _onUserInteractionStart();
-    final double currentScale = _transformationController.value.getMaxScaleOnAxis();
-    final double newScale = (currentScale + 0.5).clamp(1.0, 4.0);
-    final double center = viewportSize / 2;
-    setState(() {
-      _transformationController.value = Matrix4.identity()
-        ..setTranslationRaw(center * (1 - newScale), center * (1 - newScale), 0.0)
-        ..scaleByDouble(newScale, newScale, 1.0, 1.0);
+    return Navigator.of(context).push<int>(
+      PageRouteBuilder<int>(
+        fullscreenDialog: true,
+        transitionDuration: const Duration(milliseconds: 360),
+        reverseTransitionDuration: const Duration(milliseconds: 280),
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return EvetaFullscreenImageViewer(
+            imageUrls: imageUrls,
+            initialIndex: index,
+            heroTagPrefix: widget.productId,
+            onExit: (i) {
+              if (!mounted) return;
+              setState(() => _selectedImageIndex = i);
+              _pageController.jumpToPage(i);
+            },
+          );
+        },
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(
+            opacity: CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+            child: child,
+          );
+        },
+      ),
+    ).then((_) {
+      if (mounted) _onUserInteractionEnd(imageUrls.length);
     });
-    _onZoomEnd(imageCount);
-  }
-
-  void _zoomOut(int imageCount, double viewportSize) {
-    _onUserInteractionStart();
-    final double currentScale = _transformationController.value.getMaxScaleOnAxis();
-    final double newScale = (currentScale - 0.5).clamp(1.0, 4.0);
-    final double center = viewportSize / 2;
-    setState(() {
-      _transformationController.value = Matrix4.identity()
-        ..setTranslationRaw(center * (1 - newScale), center * (1 - newScale), 0.0)
-        ..scaleByDouble(newScale, newScale, 1.0, 1.0);
-    });
-    _onZoomEnd(imageCount);
   }
 
   Future<void> _addToCart(Map<String, dynamic> product) async {
@@ -671,31 +611,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
     final scheme = Theme.of(context).colorScheme;
     final canvas = _detailCanvasColor(scheme);
     final barVariant = scheme.brightness == Brightness.dark
-        ? EvetaCircularBackVariant.onDarkBackground
+        ? EvetaCircularBackVariant.tonalSurface
         : EvetaCircularBackVariant.onLightBackground;
 
     return Column(
       children: [
         Expanded(
-          child: NotificationListener<ScrollUpdateNotification>(
-            onNotification: (notification) {
-              // Si el usuario desliza la página (fuera de la imagen) y hay zoom activo...
-              if (notification.dragDetails != null && 
-                  _transformationController.value.getMaxScaleOnAxis() > 1.01) {
-                if (!_zoomAnimationController.isAnimating) {
-                  _resumeTimer?.cancel(); // Cancelamos el temporizador de inactividad de 3s
-                  _animateZoomToNormal();
-                  // Forzamos el reinicio del auto-play una vez que el usuario terminó su gesto
-                  _onUserInteractionEnd(_currentImageCount);
-                }
-              }
-              return false;
-            },
-            child: CustomScrollView(
+          child: CustomScrollView(
               controller: _detailScrollController,
-              physics: (_isTouchingImage && _transformationController.value.getMaxScaleOnAxis() > 1.01)
-                  ? const NeverScrollableScrollPhysics() // Bloquea el scroll de la página SOLO si el usuario toca la imagen ampliada
-                  : const ClampingScrollPhysics(),
+              physics: const ClampingScrollPhysics(),
               slivers: [
               SliverAppBar(
                 backgroundColor: Colors.transparent,
@@ -708,15 +632,24 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
                 flexibleSpace: ClipRect(
                   child: LayoutBuilder(
                     builder: (context, constraints) {
-                      final t = _appBarGlassT;
-                      if (t < 0.02) {
-                        return ColoredBox(color: canvas);
-                      }
-                      final sigma = (11 * t).clamp(0.5, 11.0);
+                      // Barra siempre tipo vidrio (blur fijo), sin depender del scroll.
+                      final isDarkBar = scheme.brightness == Brightness.dark;
+                      const sigma = 16.0;
+                      final baseA = isDarkBar ? 0.42 : 0.55;
+                      final scrim = isDarkBar ? Colors.black : Colors.white;
                       return BackdropFilter(
                         filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
                         child: Container(
-                          color: canvas.withValues(alpha: 0.58 + 0.22 * t),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                scrim.withValues(alpha: baseA),
+                                scrim.withValues(alpha: baseA * 0.88),
+                              ],
+                            ),
+                          ),
                         ),
                       );
                     },
@@ -739,7 +672,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
                 automaticallyImplyLeading: false,
                 title: Text(
                   'Detalle del Producto',
-                  style: TextStyle(fontSize: 18 * scale, fontWeight: FontWeight.w600, color: scheme.onSurface),
+                  style: TextStyle(
+                    fontSize: 18 * scale,
+                    fontWeight: FontWeight.w600,
+                    color: scheme.onSurface,
+                  ),
                 ),
                 centerTitle: true,
                 actions: [
@@ -784,61 +721,60 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
             ],
           ),
         ),
-      ),
         _buildBottomBar(isOutOfStock, product, scale),
       ],
     );
   }
 
   Widget _buildImageCarousel(List<String> imageUrls, bool hasDiscount, int discountPercent, double scale) {
-    final scheme = Theme.of(context).colorScheme;
-    final canvas = _detailCanvasColor(scheme);
+    final canvas = _detailCanvasColor(Theme.of(context).colorScheme);
     return Container(
       color: canvas,
       child: Column(
         children: [
-          GestureDetector(
-            onVerticalDragUpdate: _transformationController.value.getMaxScaleOnAxis() > 1.01 
-                ? null 
-                : (_) {}, // Solo bloquea el scroll vertical de la página si NO hay zoom
-            child: AspectRatio(
-              aspectRatio: 1,
+          AspectRatio(
+            aspectRatio: 1,
             child: Stack(
               children: [
                 Listener(
                   key: _imageKey,
-                  onPointerDown: (_) {
-                    setState(() => _isTouchingImage = true);
+                  onPointerDown: (e) {
+                    final box = _imageKey.currentContext?.findRenderObject() as RenderBox?;
+                    final local = box?.globalToLocal(e.position);
+                    final w = box?.size.width ?? MediaQuery.sizeOf(context).width;
+                    final x = local?.dx ?? e.position.dx;
+                    final edge = w * 0.2; // 20% por lado
+                    final enable = x <= edge || x >= (w - edge);
+                    if (_edgeSwipeEnabled != enable) setState(() => _edgeSwipeEnabled = enable);
                     _onUserInteractionStart();
                   },
                   onPointerUp: (_) {
-                    setState(() => _isTouchingImage = false);
                     _onUserInteractionEnd(imageUrls.length);
+                    if (_edgeSwipeEnabled != true) setState(() => _edgeSwipeEnabled = true);
                   },
                   onPointerCancel: (_) {
-                    setState(() => _isTouchingImage = false);
                     _onUserInteractionEnd(imageUrls.length);
+                    if (_edgeSwipeEnabled != true) setState(() => _edgeSwipeEnabled = true);
                   },
                   child: PageView.builder(
-                    physics: _transformationController.value.getMaxScaleOnAxis() > 1.01
-                        ? const NeverScrollableScrollPhysics()
-                        : null,
                     controller: _pageController,
                     itemCount: imageUrls.length,
+                    physics: _edgeSwipeEnabled ? const BouncingScrollPhysics() : const NeverScrollableScrollPhysics(),
                     onPageChanged: (index) {
                       setState(() => _selectedImageIndex = index);
-                      _transformationController.value = Matrix4.identity();
                       _startAutoPlay(imageUrls.length, resume: false);
                     },
                     itemBuilder: (context, index) {
-                      return InteractiveViewer(
-                        transformationController: _transformationController,
-                        scaleEnabled: false, // Quitar pinch to zoom según solicitado
-                        minScale: 1.0,
-                        maxScale: 4.0, // Permite hacer zoom hasta 4x
-                        onInteractionStart: (_) => _onUserInteractionStart(),
-                        onInteractionEnd: (_) => _onZoomEnd(imageUrls.length),
-                        child: _buildSquareImageContainer(imageUrls[index]),
+                      return GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => _openFullscreenGallery(context, imageUrls, index),
+                        child: Hero(
+                          tag: '${widget.productId}_$index',
+                          child: Material(
+                            color: Colors.transparent,
+                            child: _buildSquareImageContainer(imageUrls[index]),
+                          ),
+                        ),
                       );
                     },
                   ),
@@ -850,45 +786,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
                     right: 0,
                     child: _buildAnimatedPageIndicator(imageUrls.length),
                   ),
-                if (imageUrls.isNotEmpty)
-                  Positioned(
-                    bottom: 16,
-                    right: 16,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        GestureDetector(
-                          onTap: () => _zoomOut(imageUrls.length, MediaQuery.of(context).size.width),
-                          child: Container(
-                            padding: EdgeInsets.all(6 * scale),
-                            decoration: BoxDecoration(
-                              color: scheme.surfaceContainerHighest,
-                              shape: BoxShape.circle,
-                              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 4)],
-                            ),
-                            child: Icon(Icons.remove, size: 18 * scale, color: scheme.onSurface),
-                          ),
-                        ),
-                        SizedBox(width: 8 * scale),
-                        GestureDetector(
-                          onTap: () => _zoomIn(imageUrls.length, MediaQuery.of(context).size.width),
-                          child: Container(
-                            padding: EdgeInsets.all(6 * scale),
-                            decoration: BoxDecoration(
-                              color: scheme.surfaceContainerHighest,
-                              shape: BoxShape.circle,
-                              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 4)],
-                            ),
-                            child: Icon(Icons.add, size: 18 * scale, color: scheme.onSurface),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
               ],
             ),
           ),
-          ), // Cierre del bloqueador de scroll vertical (GestureDetector)
         ],
       ),
     );
@@ -968,40 +868,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
   }
 
   Widget _buildAnimatedPageIndicator(int count) {
-    final scheme = Theme.of(context).colorScheme;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(count, (index) {
-        final isActive = _selectedImageIndex == index;
-        return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 4.0),
-          width: isActive ? 28.0 : 8.0,
-          height: 6.0,
-          decoration: BoxDecoration(
-            color: scheme.outline.withValues(alpha: 0.35),
-            borderRadius: BorderRadius.circular(4.0),
-          ),
-          child: isActive
-              ? AnimatedBuilder(
-                  animation: _progressController,
-                  builder: (context, child) {
-                    return Align(
-                      alignment: Alignment.centerLeft,
-                      child: FractionallySizedBox(
-                        widthFactor: _progressController.value,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary,
-                            borderRadius: BorderRadius.circular(4.0),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                )
-              : null,
-        );
-      }),
+    return EvetaCarouselSegmentIndicator(
+      count: count,
+      selectedIndex: _selectedImageIndex,
+      progressController: _progressController,
     );
   }
 

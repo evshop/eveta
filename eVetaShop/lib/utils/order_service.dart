@@ -88,7 +88,8 @@ class OrderService {
           'product_id': c.productId,
           'seller_id': sellerId,
           'name_snapshot': (p['name'] ?? c.name).toString(),
-          'price_unit': price,
+          // Columna en Postgres suele ser `unit_price` (no `price_unit`).
+          'unit_price': price,
           'quantity': c.quantity,
           'line_total': line,
           'image_url': _firstImage(p['images']),
@@ -106,7 +107,8 @@ class OrderService {
             'delivery_fee': feeEach,
             'total': total,
             'distance_km': distanceKm,
-            'status': 'placed',
+            // Portal / tienda usan `pending` para pedidos nuevos.
+            'status': 'pending',
             'delivery_status': 'awaiting_driver',
             'dropoff_address': dropoffAddress,
             'dropoff_lat': dropoffLat,
@@ -131,6 +133,16 @@ class OrderService {
     await CartService.clearCart();
     debugPrint('Pedidos creados: $createdOrderIds');
     return createdOrderIds;
+  }
+
+  static String humanizeOrderError(Object e) {
+    if (e is PostgrestException) {
+      final m = e.message.trim();
+      final h = (e.hint ?? '').trim();
+      if (m.isNotEmpty && h.isNotEmpty) return '$m\n$h';
+      if (m.isNotEmpty) return m;
+    }
+    return e.toString();
   }
 
   static Future<List<Map<String, dynamic>>> fetchMyOrders() async {

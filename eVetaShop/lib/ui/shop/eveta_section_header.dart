@@ -23,43 +23,59 @@ class EvetaSectionHeader extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         EvetaShopDimens.spaceLg,
-        EvetaShopDimens.space2xl,
         EvetaShopDimens.spaceLg,
-        EvetaShopDimens.spaceMd,
+        EvetaShopDimens.spaceLg,
+        EvetaShopDimens.spaceSm,
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.3)),
-                if (subtitle != null && subtitle!.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(subtitle!, style: tt.bodyMedium),
-                ],
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.35, height: 1.15),
+                ),
+              ),
+              if (actionLabel != null && onAction != null) ...[
+                const SizedBox(width: EvetaShopDimens.spaceMd),
+                TextButton(
+                  onPressed: onAction,
+                  style: TextButton.styleFrom(
+                    foregroundColor: scheme.primary,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    minimumSize: const Size(0, 40),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(EvetaShopDimens.radiusSm)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        actionLabel!,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                          letterSpacing: -0.2,
+                          color: scheme.primary,
+                        ),
+                      ),
+                      Icon(Icons.arrow_forward_rounded, size: 18, color: scheme.primary),
+                    ],
+                  ),
+                ),
               ],
-            ),
+            ],
           ),
-          if (actionLabel != null && onAction != null)
-            TextButton(
-              onPressed: onAction,
-              style: TextButton.styleFrom(
-                foregroundColor: scheme.primary,
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(actionLabel!, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                  const SizedBox(width: 2),
-                  Icon(Icons.chevron_right_rounded, size: 20, color: scheme.primary),
-                ],
-              ),
+          if (subtitle != null && subtitle!.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              subtitle!,
+              style: tt.bodyMedium?.copyWith(color: scheme.onSurfaceVariant, height: 1.25),
             ),
+          ],
         ],
       ),
     );

@@ -66,5 +66,9 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Permite tomar fotos para el banner o el icono de tu tienda.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Permite elegir fotos para el banner o el icono de tu tienda.</string>
 </dict>
 </plist>

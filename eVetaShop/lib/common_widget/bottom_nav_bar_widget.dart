@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:eveta/theme/shop_system_ui.dart';
 import 'package:eveta/utils/cart_service.dart';
 
 class BottomNavBarWidget extends StatefulWidget {
@@ -47,7 +49,9 @@ class _BottomNavBarWidgetState extends State<BottomNavBarWidget> {
     final rawLeft = tabW * (widget.currentIndex + 0.5) - lineW / 2;
     final left = rawLeft.clamp(6.0, width - lineW - 6.0);
 
-    return Container(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: evetaShopShellOverlayStyle(scheme),
+      child: Container(
       height: 65 + MediaQuery.of(context).padding.bottom,
       decoration: BoxDecoration(
         color: scheme.surfaceContainerHighest,
@@ -175,6 +179,7 @@ class _BottomNavBarWidgetState extends State<BottomNavBarWidget> {
           ],
         ),
       ),
+    ),
     );
   }
 }

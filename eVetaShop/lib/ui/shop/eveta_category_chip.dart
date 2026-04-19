@@ -31,12 +31,13 @@ class EvetaCategoryChip extends StatelessWidget {
       horizontalPadding: EvetaShopDimens.spaceLg,
       verticalPadding: 10,
       fontSize: 13,
-      borderRadius: 100,
+      borderRadius: EvetaShopDimens.radiusXl + 6,
+      minInnerWidth: 72,
     );
   }
 }
 
-/// Subcategorías: misma cápsula iOS que [EvetaCategoryChip], más compacta.
+/// Subcategorías: píldora baja (lista horizontal en pantalla de categoría).
 class SubcategoryChip extends StatelessWidget {
   const SubcategoryChip({
     super.key,
@@ -49,7 +50,7 @@ class SubcategoryChip extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
-  /// Cápsula más baja (p. ej. pantalla productos por categoría).
+  /// Listado secundario: aún más compacto en altura.
   final bool dense;
 
   @override
@@ -58,10 +59,11 @@ class SubcategoryChip extends StatelessWidget {
       label: label,
       selected: selected,
       onTap: onTap,
-      horizontalPadding: dense ? 10 : 12,
-      verticalPadding: dense ? 4 : 6,
-      fontSize: dense ? 11 : 11.5,
-      borderRadius: 100,
+      horizontalPadding: dense ? 12 : 14,
+      verticalPadding: dense ? 4 : 8,
+      fontSize: dense ? 12.5 : 13.5,
+      borderRadius: 999,
+      minInnerWidth: dense ? 44 : 56,
     );
   }
 }
@@ -76,6 +78,7 @@ class _CategoryChipBase extends StatelessWidget {
     required this.verticalPadding,
     required this.fontSize,
     required this.borderRadius,
+    this.minInnerWidth = 72,
   });
 
   final String label;
@@ -86,11 +89,12 @@ class _CategoryChipBase extends StatelessWidget {
   final double verticalPadding;
   final double fontSize;
   final double borderRadius;
+  final double minInnerWidth;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final r = BorderRadius.circular(borderRadius);
+    final r = BorderRadius.circular(borderRadius.clamp(0.0, 999.0));
     final iosBorder = evetaIosCapsuleBorder(context);
     final borderColor = selected ? scheme.primary : iosBorder;
     final textColor = selected ? scheme.primary : scheme.onSurface;
@@ -114,25 +118,28 @@ class _CategoryChipBase extends StatelessWidget {
                 width: selected ? 1.5 : 1,
               ),
             ),
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: verticalPadding),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (icon != null) ...[
-                    Icon(icon, size: 18, color: textColor),
-                    const SizedBox(width: 6),
-                  ],
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: fontSize,
-                      fontWeight: weight,
-                      color: textColor,
-                      letterSpacing: -0.2,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: minInnerWidth),
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: verticalPadding),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (icon != null) ...[
+                      Icon(icon, size: 18, color: textColor),
+                      const SizedBox(width: 6),
+                    ],
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: fontSize,
+                        fontWeight: weight,
+                        color: textColor,
+                        letterSpacing: -0.2,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
