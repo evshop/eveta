@@ -39,7 +39,9 @@ class CategoriesScreenState extends State<CategoriesScreen> {
   @override
   void initState() {
     super.initState();
-    _loadData();
+    // En esta pantalla queremos reflejar cambios del Admin Web rápido.
+    // Mostramos el caché solo si está fresco; con TTL corto, el refresh es barato.
+    _loadData(forceRefresh: true);
   }
 
   @override

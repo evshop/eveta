@@ -11,7 +11,7 @@ class CatalogCacheService {
   CatalogCacheService._();
 
   /// Tras este tiempo se vuelve a pedir al servidor (si la app lo intenta).
-  static const Duration ttl = Duration(hours: 6);
+  static const Duration ttl = Duration(minutes: 10);
 
   static const String _prefix = 'eveta_catalog_v1_';
 

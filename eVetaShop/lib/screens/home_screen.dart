@@ -103,7 +103,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<_HomeData> _load() async {
     final products = await CatalogCacheService.getProducts();
-    final categories = await CatalogCacheService.getCategories();
+    // Las categorías cambian desde el panel admin; refresh más frecuente.
+    final categories = await CatalogCacheService.getCategories(forceRefresh: true);
     final sellers = await SupabaseService.getFeaturedSellers();
     return _HomeData(products: products, categories: categories, sellers: sellers);
   }
