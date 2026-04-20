@@ -7,7 +7,7 @@ import 'package:eveta/auth/widgets/auth_primary_button.dart';
 import 'package:eveta/screens/verify_code_screen.dart';
 import 'package:eveta/utils/auth_service.dart';
 
-/// Recuperación: correo → enlace de Supabase; teléfono → OTP SMS.
+/// Recuperación: correo → OTP por Gmail; teléfono → OTP SMS.
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
 
@@ -39,12 +39,21 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     try {
       if (!_usePhone) {
         final raw = _email.text.trim();
-        await AuthService.sendPasswordResetEmail(raw);
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Revisa tu correo para el enlace de recuperación.')),
+        await AuthService.sendEmailOtp(
+          email: raw,
+          purpose: EmailOtpPurpose.passwordReset,
         );
-        Navigator.pop(context);
+        if (!mounted) return;
+        await Navigator.push<void>(
+          context,
+          evetaAuthFadeRoute(
+            VerifyCodeScreen(
+              mode: VerifyMode.recoveryEmail,
+              emailOrPhone: raw.toLowerCase(),
+              isPhone: false,
+            ),
+          ),
+        );
       } else {
         final err = AuthValidators.boliviaEightDigits(_phone8.text);
         if (err != null) {
@@ -87,40 +96,55 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
           child: Form(
             key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text('¿Olvidaste tu contraseña?', style: Theme.of(context).textTheme.headlineLarge),
-                const SizedBox(height: 12),
-                Text(
-                  'Ingresa tu correo o número de teléfono. Te enviaremos un enlace o un código por SMS.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: scheme.onSurface.withValues(alpha: 0.65),
+            child: Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.35)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('¿Olvidaste tu contraseña?', style: Theme.of(context).textTheme.headlineLarge),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Ingresa tu correo o número de teléfono. Te enviaremos un código de 6 dígitos.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: scheme.onSurface.withValues(alpha: 0.65),
+                        ),
+                  ),
+                  const SizedBox(height: 24),
+                  AuthIdentifierModeSwitch(
+                    phoneMode: _usePhone,
+                    onChanged: (phone) {
+                      setState(() {
+                        _usePhone = phone;
+                        _error = null;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 24),
+                  if (_error != null) ...[
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: scheme.errorContainer.withValues(alpha: 0.45),
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                ),
-                const SizedBox(height: 24),
-                AuthIdentifierModeSwitch(
-                  phoneMode: _usePhone,
-                  onChanged: (phone) {
-                    setState(() {
-                      _usePhone = phone;
-                      _error = null;
-                    });
-                  },
-                ),
-                const SizedBox(height: 24),
-                if (_error != null) ...[
-                  Text(_error!, style: TextStyle(color: scheme.error, fontSize: 14)),
-                  const SizedBox(height: 16),
+                      child: Text(_error!, style: TextStyle(color: scheme.error, fontSize: 14)),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  AuthAnimatedEmailPhoneField(
+                    phoneMode: _usePhone,
+                    emailController: _email,
+                    phoneController: _phone8,
+                  ),
+                  const SizedBox(height: 28),
+                  AuthPrimaryButton(label: 'Enviar', onPressed: _send, loading: _loading),
                 ],
-                AuthAnimatedEmailPhoneField(
-                  phoneMode: _usePhone,
-                  emailController: _email,
-                  phoneController: _phone8,
-                ),
-                const SizedBox(height: 28),
-                AuthPrimaryButton(label: 'Enviar', onPressed: _send, loading: _loading),
-              ],
+              ),
             ),
           ),
         ),

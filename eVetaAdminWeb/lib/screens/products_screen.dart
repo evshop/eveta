@@ -4,8 +4,10 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/product_form_data.dart';
+import '../services/auth_service.dart';
 import '../services/cloudinary_service.dart';
 import '../utils/cloudinary_image_url.dart';
 import '../services/products_service.dart';
@@ -91,7 +93,10 @@ String _specBlockHeadingForCategory(String catId, List<Map<String, dynamic>> cat
 }
 
 class ProductsScreen extends StatefulWidget {
-  const ProductsScreen({super.key});
+  const ProductsScreen({super.key, this.managedSellerId});
+
+  /// Si se indica, lista y crea productos para esa tienda (requiere ser admin o que coincida con tu usuario).
+  final String? managedSellerId;
 
   @override
   State<ProductsScreen> createState() => _ProductsScreenState();
@@ -250,8 +255,27 @@ class _ProductsScreenState extends State<ProductsScreen> {
   Future<void> _refresh() async {
     setState(() => _loading = true);
     try {
-      final products = await ProductsService.fetchMyProducts()
-          .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Productos'));
+      final scope = widget.managedSellerId?.trim();
+      final uid = Supabase.instance.client.auth.currentUser?.id;
+      if (scope != null && scope.isNotEmpty) {
+        if (scope != uid && !await AuthService.isCurrentUserAdmin()) {
+          if (!mounted) return;
+          setState(() {
+            _products = [];
+            _categories = [];
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No tienes permiso para gestionar esa tienda.')),
+          );
+          return;
+        }
+      }
+
+      final products = (scope == null || scope.isEmpty)
+          ? await ProductsService.fetchMyProducts()
+              .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Productos'))
+          : await ProductsService.fetchProductsForSeller(scope)
+              .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Productos'));
       final categories = await ProductsService.fetchCategories()
           .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Categorías'));
       if (!mounted) return;
@@ -812,7 +836,10 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
                         try {
                           if (existing == null) {
-                            await ProductsService.createProduct(form);
+                            await ProductsService.createProduct(
+                              form,
+                              sellerIdOverride: widget.managedSellerId,
+                            );
                           } else {
                             await ProductsService.updateProduct(existing['id'].toString(), form);
                           }
@@ -864,6 +891,32 @@ class _ProductsScreenState extends State<ProductsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (widget.managedSellerId != null && widget.managedSellerId!.trim().isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: scheme.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(AdminTokens.radiusSm),
+                border: Border.all(color: scheme.outline.withValues(alpha: 0.2)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                child: Row(
+                  children: [
+                    Icon(Icons.storefront_outlined, size: 20, color: scheme.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Gestionando el catálogo de esta tienda (subir, editar o borrar productos).',
+                        style: TextStyle(fontSize: 12.5, height: 1.35, color: scheme.onSurfaceVariant),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         Align(
           alignment: Alignment.centerRight,
           child: FilledButton.icon(

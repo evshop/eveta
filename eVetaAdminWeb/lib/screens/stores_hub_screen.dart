@@ -150,6 +150,52 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
     ctrl.dispose();
   }
 
+  Future<void> _confirmDeletePartner(Map<String, dynamic> p) async {
+    final id = p['id']?.toString() ?? '';
+    final name = p['shop_name']?.toString().trim();
+    final label = (name != null && name.isNotEmpty) ? name : 'esta tienda';
+    if (id.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar tienda'),
+        content: Text(
+          'Se borrarán todos los productos de «$label», la tienda dejará de aparecer como verificada '
+          'y se limpiarán los datos de escaparate. La cuenta en Auth sigue existiendo: '
+          'puedes borrarla en Supabase → Authentication si lo necesitas.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+              foregroundColor: Theme.of(ctx).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await AuthService.deletePartnerStoreForAdmin(id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          content: const Text('Tienda eliminada del panel.'),
+        ),
+      );
+      await _refresh();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
+  }
+
   Future<void> _showCreatePartnerDialog() async {
     final emailCtrl = TextEditingController();
     final passCtrl = TextEditingController();
@@ -495,6 +541,7 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
                               hasPortalNote: note != null && note.isNotEmpty,
                               onTap: id.isEmpty ? null : () => _openPartner(p),
                               onPortalNote: id.isEmpty ? null : () => _editPortalNote(p),
+                              onDelete: id.isEmpty ? null : () => _confirmDeletePartner(p),
                             );
                           },
                         );
@@ -520,6 +567,7 @@ class _StoreCard extends StatelessWidget {
     this.hasPortalNote = false,
     this.onTap,
     this.onPortalNote,
+    this.onDelete,
   });
 
   final String title;
@@ -530,6 +578,7 @@ class _StoreCard extends StatelessWidget {
   final bool hasPortalNote;
   final VoidCallback? onTap;
   final VoidCallback? onPortalNote;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -627,6 +676,12 @@ class _StoreCard extends StatelessWidget {
                     Icons.vpn_key_rounded,
                     color: hasPortalNote ? scheme.primary : scheme.onSurfaceVariant,
                   ),
+                ),
+              if (onDelete != null)
+                IconButton(
+                  tooltip: 'Eliminar tienda del panel',
+                  onPressed: onDelete,
+                  icon: Icon(Icons.delete_outline_rounded, color: scheme.error),
                 ),
               Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
             ],

@@ -12,10 +12,12 @@ import 'package:eveta/screens/product_detail_screen.dart';
 import 'package:eveta/screens/search_screen.dart';
 import 'package:eveta/screens/categories_screen.dart';
 import 'package:eveta/screens/wish_list_screen.dart';
+import 'package:eveta/screens/complete_profile_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:eveta/utils/cart_service.dart';
 import 'package:eveta/utils/catalog_local_sync.dart';
 import 'package:eveta/utils/favorites_service.dart';
+import 'package:eveta/utils/auth_service.dart';
 import 'package:eveta/theme/eveta_shop_theme.dart';
 import 'package:eveta/theme/eveta_theme_controller.dart';
 import 'package:eveta/theme/shop_system_ui.dart';
@@ -98,14 +100,27 @@ class _SplashScreenState extends State<SplashScreen> {
 
     final supabaseSession = Supabase.instance.client.auth.currentUser;
     final prefs = await SharedPreferences.getInstance();
-    final savedSession = prefs.getBool('isLoggedIn') ?? false;
+    if (supabaseSession == null) {
+      // Evita entrar por una preferencia vieja sin sesión real.
+      await prefs.remove('isLoggedIn');
+      await prefs.remove('userEmail');
+    }
 
     if (mounted) {
-      if (supabaseSession != null || savedSession) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const MyHomePage()),
-        );
+      if (supabaseSession != null) {
+        final needsCompletion = await AuthService.profileNeedsCompletion();
+        if (!mounted) return;
+        if (needsCompletion) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const CompleteProfileScreen()),
+          );
+        } else {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const MyHomePage()),
+          );
+        }
       } else {
         Navigator.pushReplacement(
           context,

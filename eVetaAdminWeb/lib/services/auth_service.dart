@@ -354,4 +354,59 @@ class AuthService {
     }
     return null;
   }
+
+  /// Quita la tienda del listado de verificadas, borra sus productos y limpia datos de tienda.
+  /// No elimina el usuario en Auth (hace falta borrarlo en Supabase Dashboard si lo necesitas).
+  static Future<void> deletePartnerStoreForAdmin(String profileId) async {
+    if (!await isCurrentUserAdmin()) {
+      throw AuthException('Sin permisos de administrador.');
+    }
+    final me = _client.auth.currentUser?.id;
+    if (me != null && me == profileId) {
+      throw AuthException('No puedes eliminar tu propia cuenta desde aquí.');
+    }
+    await _client.from('products').delete().eq('seller_id', profileId);
+
+    Future<void> patchProfile(Map<String, dynamic> row) async {
+      final updated = await _client.from('profiles').update(row).eq('id', profileId).select('id');
+      if ((updated as List).isEmpty) {
+        throw AuthException('No se actualizó el perfil (0 filas). Revisa RLS en profiles.');
+      }
+    }
+
+    final core = <String, dynamic>{
+      'is_partner_verified': false,
+      'is_seller': false,
+      'shop_name': '',
+      'shop_description': '',
+      'shop_logo_url': null,
+    };
+
+    try {
+      await patchProfile({
+        ...core,
+        'shop_banner_url': null,
+        'admin_portal_note': null,
+      });
+    } catch (e) {
+      if (e is AuthException) rethrow;
+      final msg = e.toString().toLowerCase();
+      if (msg.contains('admin_portal_note')) {
+        try {
+          await patchProfile({...core, 'shop_banner_url': null});
+        } catch (e2) {
+          if (e2 is AuthException) rethrow;
+          if (e2.toString().toLowerCase().contains('shop_banner_url')) {
+            await patchProfile({...core, 'avatar_url': null});
+          } else {
+            rethrow;
+          }
+        }
+      } else if (msg.contains('shop_banner_url')) {
+        await patchProfile({...core, 'avatar_url': null});
+      } else {
+        rethrow;
+      }
+    }
+  }
 }

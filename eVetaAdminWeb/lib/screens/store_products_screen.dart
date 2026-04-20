@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/auth_service.dart';
 import '../services/products_service.dart';
 import '../widgets/admin_shop_product_card.dart';
 import 'official_store_screen.dart';
 import 'partner_store_edit_screen.dart';
+import 'products_screen.dart';
 
 /// Vista de catálogo de una tienda (cards estilo eVetaShop).
 class StoreProductsScreen extends StatefulWidget {
@@ -29,6 +31,7 @@ class StoreProductsScreen extends StatefulWidget {
 
 class _StoreProductsScreenState extends State<StoreProductsScreen> {
   bool _loading = true;
+  bool _canManageCatalog = false;
   List<Map<String, dynamic>> _products = [];
   String? _error;
 
@@ -36,6 +39,38 @@ class _StoreProductsScreenState extends State<StoreProductsScreen> {
   void initState() {
     super.initState();
     _load();
+    _loadCanManage();
+  }
+
+  Future<void> _loadCanManage() async {
+    final uid = Supabase.instance.client.auth.currentUser?.id;
+    final admin = await AuthService.isCurrentUserAdmin();
+    if (!mounted) return;
+    setState(() {
+      _canManageCatalog = admin || (uid != null && uid == widget.sellerId);
+    });
+  }
+
+  void _openCatalogEditor() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (ctx) {
+          final scheme = Theme.of(ctx).colorScheme;
+          return Scaffold(
+            backgroundColor: scheme.surface,
+            appBar: AppBar(
+              title: Text('Catálogo · ${widget.storeTitle}'),
+              backgroundColor: scheme.surfaceContainerHighest,
+              foregroundColor: scheme.onSurface,
+            ),
+            body: Padding(
+              padding: const EdgeInsets.all(12),
+              child: ProductsScreen(managedSellerId: widget.sellerId),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _load() async {
@@ -251,16 +286,29 @@ class _StoreProductsScreenState extends State<StoreProductsScreen> {
                       SliverPadding(
                         padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                         sliver: SliverToBoxAdapter(
-                          child: Row(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              Text(
-                                '${_products.length} productos',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: scheme.onSurfaceVariant,
-                                ),
+                              Row(
+                                children: [
+                                  Text(
+                                    '${_products.length} productos',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
                               ),
+                              if (_canManageCatalog) ...[
+                                const SizedBox(height: 12),
+                                FilledButton.icon(
+                                  onPressed: _openCatalogEditor,
+                                  icon: const Icon(Icons.inventory_2_outlined),
+                                  label: const Text('Editar, subir o eliminar productos'),
+                                ),
+                              ],
                             ],
                           ),
                         ),

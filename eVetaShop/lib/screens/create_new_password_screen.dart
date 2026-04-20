@@ -1,14 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:eveta/auth/auth_validators.dart';
 import 'package:eveta/auth/widgets/auth_primary_button.dart';
 import 'package:eveta/auth/widgets/auth_text_field.dart';
 import 'package:eveta/utils/auth_service.dart';
 
 class CreateNewPasswordScreen extends StatefulWidget {
-  const CreateNewPasswordScreen({super.key, this.phoneForSignupProfile});
+  const CreateNewPasswordScreen({
+    super.key,
+    this.phoneForSignupProfile,
+    this.emailForOtpReset,
+    this.emailOtpResetToken,
+  });
 
   /// Si viene de registro por SMS, guarda perfil con teléfono. Si es null, solo cambia contraseña (recovery / email link).
   final String? phoneForSignupProfile;
+  final String? emailForOtpReset;
+  final String? emailOtpResetToken;
 
   @override
   State<CreateNewPasswordScreen> createState() => _CreateNewPasswordScreenState();
@@ -42,6 +50,16 @@ class _CreateNewPasswordScreenState extends State<CreateNewPasswordScreen> {
           phoneE164: widget.phoneForSignupProfile!,
           password: _p1.text,
         );
+      } else if (widget.emailForOtpReset != null && widget.emailOtpResetToken != null) {
+        await AuthService.completeEmailOtpPasswordReset(
+          email: widget.emailForOtpReset!,
+          resetToken: widget.emailOtpResetToken!,
+          newPassword: _p1.text,
+        );
+        await AuthService.signInWithEmail(
+          email: widget.emailForOtpReset!,
+          password: _p1.text,
+        );
       } else {
         await AuthService.updatePassword(_p1.text);
       }
@@ -54,7 +72,11 @@ class _CreateNewPasswordScreenState extends State<CreateNewPasswordScreen> {
       if (!mounted) return;
       Navigator.of(context).pushNamedAndRemoveUntil('/home', (_) => false);
     } catch (e) {
-      setState(() => _error = '$e');
+      if (e is AuthException) {
+        setState(() => _error = e.message);
+      } else {
+        setState(() => _error = 'No se pudo guardar. Intenta de nuevo.');
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -80,6 +102,15 @@ class _CreateNewPasswordScreenState extends State<CreateNewPasswordScreen> {
               children: [
                 Text('Nueva contraseña', style: Theme.of(context).textTheme.headlineLarge),
                 const SizedBox(height: 12),
+                if (widget.emailForOtpReset != null) ...[
+                  Text(
+                    'Cuenta: ${widget.emailForOtpReset!.trim().toLowerCase()}',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
                 Text(
                   'Elige una contraseña segura para tu cuenta.',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(

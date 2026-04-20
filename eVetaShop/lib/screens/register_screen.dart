@@ -157,7 +157,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
           }
         } else {
           try {
-            await AuthService.resendSignupEmailOtp(raw);
+            await AuthService.sendEmailOtp(
+              email: raw,
+              purpose: EmailOtpPurpose.signup,
+            );
           } catch (_) {}
           if (!mounted) return;
           await Navigator.push<void>(
@@ -167,6 +170,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 mode: VerifyMode.signupEmail,
                 emailOrPhone: raw.toLowerCase(),
                 isPhone: false,
+                signupPassword: _password.text,
               ),
             ),
           );

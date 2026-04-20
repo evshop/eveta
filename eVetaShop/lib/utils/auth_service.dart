@@ -89,10 +89,34 @@ class AuthService {
     await persistSessionUser(email.trim());
   }
 
+  static bool _isGoogleSession(User user) {
+    final provider = user.appMetadata['provider']?.toString().toLowerCase();
+    if (provider == 'google') return true;
+    final providers = user.appMetadata['providers'];
+    if (providers is List) {
+      return providers.map((e) => e.toString().toLowerCase()).contains('google');
+    }
+    return false;
+  }
+
+  static bool _hasEmailProvider(User user) {
+    final provider = user.appMetadata['provider']?.toString().toLowerCase();
+    if (provider == 'email') return true;
+    final providers = user.appMetadata['providers'];
+    if (providers is List) {
+      return providers.map((e) => e.toString().toLowerCase()).contains('email');
+    }
+    return false;
+  }
+
   /// Comprueba si el perfil actual necesita completar datos (username, phone).
   static Future<bool> profileNeedsCompletion() async {
     final user = _client.auth.currentUser;
     if (user == null) return false;
+    // Solo forzamos "Completa tu cuenta" para sesiones OAuth de Google.
+    if (!_isGoogleSession(user)) return false;
+    // Si la cuenta ya tiene proveedor email, asumimos cuenta existente (no forzar completar).
+    if (_hasEmailProvider(user)) return false;
 
     final profile = await _client
         .from('profiles')
@@ -100,7 +124,35 @@ class AuthService {
         .eq('id', user.id)
         .maybeSingle();
 
-    if (profile == null) return true;
+    if (profile == null) {
+      final email = user.email?.trim().toLowerCase();
+      if (email == null || email.isEmpty) return true;
+      // Si existe un perfil previo con el mismo correo, reutiliza datos para no bloquear.
+      final existing = await _client
+          .from('profiles')
+          .select('id, username, phone, full_name')
+          .ilike('email', email)
+          .neq('id', user.id)
+          .maybeSingle();
+      if (existing != null) {
+        final username = existing['username']?.toString().trim();
+        final phone = existing['phone']?.toString().trim();
+        if (username != null && username.isNotEmpty && phone != null && phone.isNotEmpty) {
+          await _client.from('profiles').upsert({
+            'id': user.id,
+            'email': email,
+            'username': username,
+            'full_name': existing['full_name']?.toString().trim().isNotEmpty == true
+                ? existing['full_name']
+                : username,
+            'phone': phone,
+            'updated_at': DateTime.now().toIso8601String(),
+          });
+          return false;
+        }
+      }
+      return true;
+    }
     final username = profile['username']?.toString().trim();
     final phone = profile['phone']?.toString().trim();
     return username == null ||
@@ -234,25 +286,120 @@ class AuthService {
   }
 
   static Future<void> resendSignupEmailOtp(String email) async {
-    await _client.auth.resend(
-      type: OtpType.signup,
-      email: email.trim().toLowerCase(),
+    await sendEmailOtp(
+      email: email,
+      purpose: EmailOtpPurpose.signup,
     );
   }
 
-  static Future<AuthResponse> verifySignupEmailOtp({
+  static Future<Map<String, dynamic>> verifySignupEmailOtp({
     required String email,
     required String token,
   }) async {
-    return _client.auth.verifyOTP(
-      email: email.trim().toLowerCase(),
-      token: token.trim(),
-      type: OtpType.signup,
+    return verifyEmailOtp(
+      email: email,
+      token: token,
+      purpose: EmailOtpPurpose.signup,
     );
   }
 
   static Future<void> updatePassword(String newPassword) async {
     await _client.auth.updateUser(UserAttributes(password: newPassword));
+  }
+
+  static Future<void> sendEmailOtp({
+    required String email,
+    required EmailOtpPurpose purpose,
+  }) async {
+    final e = email.trim().toLowerCase();
+    final response = await _client.functions.invoke(
+      'send-email-otp',
+      body: {
+        'email': e,
+        'purpose': purpose.value,
+      },
+    );
+    if (response.status != 200) {
+      final msg = response.data is Map<String, dynamic>
+          ? (response.data['error']?.toString() ?? 'No se pudo enviar el código por correo.')
+          : 'No se pudo enviar el código por correo.';
+      throw AuthException(msg);
+    }
+  }
+
+  static Future<Map<String, dynamic>> verifyEmailOtp({
+    required String email,
+    required String token,
+    required EmailOtpPurpose purpose,
+  }) async {
+    final e = email.trim().toLowerCase();
+    final response = await _client.functions.invoke(
+      'verify-email-otp',
+      body: {
+        'email': e,
+        'code': token.trim(),
+        'purpose': purpose.value,
+      },
+    );
+    if (response.status != 200) {
+      final msg = response.data is Map<String, dynamic>
+          ? (response.data['error']?.toString() ??
+              response.data['reason']?.toString() ??
+              'Código inválido.')
+          : 'Código inválido.';
+      throw AuthException(msg);
+    }
+    final data = response.data;
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    return const <String, dynamic>{};
+  }
+
+  static String? _edgeFunctionErrorMessage(Object e) {
+    try {
+      final dynamic ex = e;
+      final details = ex.details;
+      if (details is Map && details['error'] != null) {
+        return details['error'].toString();
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  static Future<void> completeEmailOtpPasswordReset({
+    required String email,
+    required String resetToken,
+    required String newPassword,
+  }) async {
+    try {
+      final response = await _client.functions.invoke(
+        'complete-email-otp-password-reset',
+        body: {
+          'email': email.trim().toLowerCase(),
+          'reset_token': resetToken.trim(),
+          'new_password': newPassword,
+        },
+      );
+      if (response.status != 200) {
+        final msg = response.data is Map<String, dynamic>
+            ? (response.data['error']?.toString() ?? 'No se pudo restablecer la contraseña.')
+            : 'No se pudo restablecer la contraseña.';
+        throw AuthException(msg);
+      }
+    } catch (e) {
+      if (e is AuthException) rethrow;
+      final fromBody = _edgeFunctionErrorMessage(e);
+      if (fromBody != null && fromBody.isNotEmpty) {
+        throw AuthException(fromBody);
+      }
+      final s = e.toString().toLowerCase();
+      if (s.contains('404') || s.contains('functionexception')) {
+        throw AuthException(
+          'No hay cuenta con ese correo o el servicio no respondió. Verifica el correo e intenta de nuevo.',
+        );
+      }
+      throw AuthException('No se pudo guardar la contraseña. Intenta de nuevo.');
+    }
   }
 
   /// Registro solo con email (username derivado del correo).
@@ -285,4 +432,12 @@ class AuthService {
     final username = 'user_${phoneE164.replaceAll(RegExp(r'\D'), '')}';
     await _upsertCurrentProfile(username: username, phone: phoneE164.trim());
   }
+}
+
+enum EmailOtpPurpose {
+  signup('signup'),
+  passwordReset('password_reset');
+
+  const EmailOtpPurpose(this.value);
+  final String value;
 }

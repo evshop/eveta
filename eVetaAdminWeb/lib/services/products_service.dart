@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/product_form_data.dart';
+import 'auth_service.dart';
 
 class ProductsService {
   static SupabaseClient get _client => Supabase.instance.client;
@@ -199,6 +200,64 @@ class ProductsService {
     return fetchProductsForSeller(user.id);
   }
 
+  static const _profilesEmbed = ', seller_id, categories(name, parent_id), profiles(shop_name, email)';
+
+  /// Todos los productos (solo administrador). Requiere RLS que permita SELECT a filas de cualquier `seller_id`.
+  static Future<List<Map<String, dynamic>>> fetchAllProductsForAdmin() async {
+    if (!await AuthService.isCurrentUserAdmin()) {
+      throw AuthException('Sin permisos de administrador.');
+    }
+
+    Future<List<Map<String, dynamic>>> query(String columns) async {
+      final data = await _client.from('products').select(columns).order('created_at', ascending: false);
+      return List<Map<String, dynamic>>.from(data);
+    }
+
+    Future<List<Map<String, dynamic>>> withProfilesOrNot(String baseCols) async {
+      try {
+        return await query('$baseCols$_profilesEmbed');
+      } catch (e) {
+        final msg = e.toString().toLowerCase();
+        if (msg.contains('profiles') || msg.contains('relationship')) {
+          try {
+            return await query('$baseCols, seller_id, categories(name, parent_id)');
+          } catch (_) {
+            rethrow;
+          }
+        }
+        rethrow;
+      }
+    }
+
+    try {
+      return await withProfilesOrNot(
+        'id, name, description, category_id, price, stock, images, images_layout, specs_json, tags, is_active, is_featured, unit',
+      );
+    } catch (e) {
+      final msg = e.toString().toLowerCase();
+      if (msg.contains('specs_json')) {
+        try {
+          return await withProfilesOrNot(
+            'id, name, description, category_id, price, stock, images, images_layout, tags, is_active, is_featured, unit',
+          );
+        } catch (e2) {
+          if (e2.toString().toLowerCase().contains('images_layout')) {
+            return await withProfilesOrNot(
+              'id, name, description, category_id, price, stock, images, tags, is_active, is_featured, unit',
+            );
+          }
+          rethrow;
+        }
+      }
+      if (msg.contains('images_layout')) {
+        return await withProfilesOrNot(
+          'id, name, description, category_id, price, stock, images, tags, is_active, is_featured, unit',
+        );
+      }
+      rethrow;
+    }
+  }
+
   /// Productos de una tienda (mismo `seller_id` que en `profiles.id`).
   static Future<List<Map<String, dynamic>>> fetchProductsForSeller(String sellerId) async {
     if (sellerId.isEmpty) return [];
@@ -233,12 +292,23 @@ class ProductsService {
     }
   }
 
-  static Future<void> createProduct(ProductFormData form) async {
+  /// [sellerIdOverride]: solo administradores pueden crear para otro [seller_id].
+  static Future<void> createProduct(ProductFormData form, {String? sellerIdOverride}) async {
     final user = _client.auth.currentUser;
     if (user == null) throw AuthException('No hay sesión activa');
+    var sid = user.id;
+    final o = sellerIdOverride?.trim();
+    if (o != null && o.isNotEmpty) {
+      if (o != user.id) {
+        if (!await AuthService.isCurrentUserAdmin()) {
+          throw AuthException('Solo un administrador puede crear productos para otra tienda.');
+        }
+        sid = o;
+      }
+    }
     try {
       await _client.from('products').insert({
-        'seller_id': user.id,
+        'seller_id': sid,
         'category_id': form.categoryId,
         'name': form.name,
         'description': form.description,
@@ -255,7 +325,7 @@ class ProductsService {
     } catch (e) {
       if (e.toString().toLowerCase().contains('specs_json')) {
         await _client.from('products').insert({
-          'seller_id': user.id,
+          'seller_id': sid,
           'category_id': form.categoryId,
           'name': form.name,
           'description': form.description,

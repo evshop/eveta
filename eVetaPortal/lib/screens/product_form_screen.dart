@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/cloudinary_service.dart';
 import '../widgets/portal/eveta_portal_image_picker_sheet.dart';
 import '../widgets/portal/portal_haptics.dart';
+import '../widgets/portal/portal_notice.dart';
 import '../widgets/portal/portal_section_header.dart';
 import '../widgets/portal/portal_tokens.dart';
 import '../widgets/product_form_images_grid.dart';
@@ -320,9 +321,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
 
   Future<void> _pickAndUploadImage() async {
     if (_images.length >= 10) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Puedes subir un máximo de 10 imágenes.')),
-      );
+      showPortalNotice(context, 'Puedes subir un maximo de 10 imagenes.', type: PortalNoticeType.info);
       return;
     }
 
@@ -368,19 +367,16 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
         added++;
       }
       if (mounted && added > 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            behavior: SnackBarBehavior.floating,
-            content: Text(added == 1 ? 'Foto añadida.' : '$added fotos añadidas.'),
-          ),
+        showPortalNotice(
+          context,
+          added == 1 ? 'Foto anadida.' : '$added fotos anadidas.',
+          type: PortalNoticeType.success,
         );
       }
     } catch (e) {
       debugPrint('Error uploading images: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al subir fotos: $e')),
-        );
+        showPortalNotice(context, 'Error al subir fotos. Intenta otra vez.', type: PortalNoticeType.error);
       }
     } finally {
       if (mounted) setState(() => _isUploading = false);
@@ -417,11 +413,14 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   Future<void> _saveProduct() async {
     if (!_formKey.currentState!.validate()) return;
 
+    if (_images.isEmpty) {
+      showPortalNotice(context, 'Debes subir al menos una foto del producto.', type: PortalNoticeType.error);
+      return;
+    }
+
     final categoryId = _resolvedCategoryId;
     if (categoryId == null || categoryId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Por favor, selecciona una categoría.')),
-      );
+      showPortalNotice(context, 'Por favor, selecciona una categoria.', type: PortalNoticeType.error);
       return;
     }
 
@@ -473,7 +472,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
         // Create new
         await Supabase.instance.client.from('products').insert(productData);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Producto creado con éxito')));
+          showPortalNotice(context, 'Producto creado con exito.', type: PortalNoticeType.success);
         }
       } else {
         // Update existing
@@ -482,7 +481,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
             .update(productData)
             .eq('id', widget.product!['id'].toString());
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Producto actualizado')));
+          showPortalNotice(context, 'Producto actualizado.', type: PortalNoticeType.success);
         }
       }
       
@@ -492,9 +491,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     } catch (e) {
       debugPrint('Error saving product: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error al guardar el producto.')),
-        );
+        showPortalNotice(context, 'Error al guardar el producto.', type: PortalNoticeType.error);
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

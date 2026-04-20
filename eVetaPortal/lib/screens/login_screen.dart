@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'forgot_password_otp_screen.dart';
 import '../widgets/portal_auth_logo.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -68,7 +69,14 @@ class _LoginScreenState extends State<LoginScreen> {
         if (mounted) Navigator.pushReplacementNamed(context, '/home');
       }
     } on AuthException catch (e) {
-      setState(() => _errorMessage = e.message);
+      final msg = e.message.toLowerCase();
+      if (msg.contains('invalid login credentials') ||
+          msg.contains('invalid_credentials') ||
+          msg.contains('invalid credentials')) {
+        setState(() => _errorMessage = 'Datos incorrectos. Revisa tu correo y contraseña.');
+      } else {
+        setState(() => _errorMessage = e.message);
+      }
     } catch (e) {
       setState(() => _errorMessage = 'Error de conexión. Intenta de nuevo.');
     } finally {
@@ -188,6 +196,23 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         )
                       : const Text('Iniciar sesión'),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: _isLoading
+                      ? null
+                      : () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => const ForgotPasswordOtpScreen(),
+                            ),
+                          ),
+                  child: Text(
+                    '¿Olvidaste tu contraseña?',
+                    style: TextStyle(
+                      color: scheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ],
             ),

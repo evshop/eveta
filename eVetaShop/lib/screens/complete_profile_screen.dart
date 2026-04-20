@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:eveta/screens/privacy_screen.dart';
 import 'package:eveta/screens/terms_screen.dart';
+import 'package:eveta/screens/login_screen.dart';
 import 'package:eveta/utils/auth_service.dart';
 
 /// Pantalla para completar el perfil después de iniciar sesión con Google.
@@ -100,31 +101,66 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
     }
   }
 
+  Future<void> _confirmExitWithoutCompleting() async {
+    final shouldExit = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Salir sin completar'),
+            content: const Text(
+              'Si sales ahora, cerraremos tu sesion para proteger tu cuenta.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Salir'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!shouldExit || !mounted) return;
+    await AuthService.signOut();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
+      (_) => false,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Completa tu cuenta'),
-        backgroundColor: const Color(0xFF09CB6B),
-        foregroundColor: Colors.white,
-        automaticallyImplyLeading: false,
-        leading: const EvetaCircularBackButton(
-          variant: EvetaCircularBackVariant.onDarkBackground,
+    final scheme = Theme.of(context).colorScheme;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) _confirmExitWithoutCompleting();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Completa tu cuenta'),
+          automaticallyImplyLeading: false,
+          leading: EvetaCircularBackButton(
+            onPressed: _confirmExitWithoutCompleting,
+            variant: EvetaCircularBackVariant.tonalSurface,
+          ),
+          leadingWidth: 56,
         ),
-        leadingWidth: 56,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Form(
-          key: _formKey,
-          child: Column(
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Form(
+            key: _formKey,
+            child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
                 'Vinculaste tu cuenta de Google. Completa estos datos para poder iniciar sesión también con correo o número y contraseña.',
                 style: TextStyle(
                   fontSize: 14,
-                  color: Colors.grey.shade700,
+                  color: scheme.onSurface.withValues(alpha: 0.72),
                   height: 1.5,
                 ),
               ),
@@ -134,9 +170,9 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
                 readOnly: true,
                 decoration: InputDecoration(
                   labelText: 'Correo (de Google)',
-                  labelStyle: TextStyle(color: Colors.grey.shade600),
+                  labelStyle: TextStyle(color: scheme.onSurfaceVariant),
                   filled: true,
-                  fillColor: Colors.grey.shade100,
+                  fillColor: scheme.surfaceContainerHighest,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
@@ -147,8 +183,8 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
                 controller: _usernameController,
                 decoration: InputDecoration(
                   labelText: 'Nombre de usuario',
-                  labelStyle: TextStyle(color: Colors.grey.shade600),
-                  prefixIcon: const Icon(Icons.person_outline, color: Color(0xFF09CB6B)),
+                  labelStyle: TextStyle(color: scheme.onSurfaceVariant),
+                  prefixIcon: Icon(Icons.person_outline, color: scheme.primary),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
@@ -167,8 +203,8 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
                 decoration: InputDecoration(
                   labelText: 'Número de teléfono',
                   prefixText: '+591 ',
-                  labelStyle: TextStyle(color: Colors.grey.shade600),
-                  prefixIcon: const Icon(Icons.phone_outlined, color: Color(0xFF09CB6B)),
+                  labelStyle: TextStyle(color: scheme.onSurfaceVariant),
+                  prefixIcon: Icon(Icons.phone_outlined, color: scheme.primary),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
@@ -185,12 +221,12 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
                 obscureText: _obscure,
                 decoration: InputDecoration(
                   labelText: 'Contraseña (para iniciar con correo/número después)',
-                  labelStyle: TextStyle(color: Colors.grey.shade600),
-                  prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF09CB6B)),
+                  labelStyle: TextStyle(color: scheme.onSurfaceVariant),
+                  prefixIcon: Icon(Icons.lock_outline, color: scheme.primary),
                   suffixIcon: IconButton(
                     icon: Icon(
                       _obscure ? Icons.visibility_off : Icons.visibility,
-                      color: Colors.grey.shade600,
+                      color: scheme.onSurfaceVariant,
                     ),
                     onPressed: () => setState(() => _obscure = !_obscure),
                   ),
@@ -207,12 +243,12 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
                 obscureText: _obscureConfirm,
                 decoration: InputDecoration(
                   labelText: 'Confirmar contraseña',
-                  labelStyle: TextStyle(color: Colors.grey.shade600),
-                  prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF09CB6B)),
+                  labelStyle: TextStyle(color: scheme.onSurfaceVariant),
+                  prefixIcon: Icon(Icons.lock_outline, color: scheme.primary),
                   suffixIcon: IconButton(
                     icon: Icon(
                       _obscureConfirm ? Icons.visibility_off : Icons.visibility,
-                      color: Colors.grey.shade600,
+                      color: scheme.onSurfaceVariant,
                     ),
                     onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
                   ),
@@ -228,17 +264,17 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.red.shade50,
+                    color: scheme.errorContainer.withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.error_outline, color: Colors.red.shade700, size: 20),
+                      Icon(Icons.error_outline, color: scheme.error, size: 20),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           _error!,
-                          style: TextStyle(color: Colors.red.shade700, fontSize: 13),
+                          style: TextStyle(color: scheme.error, fontSize: 13),
                         ),
                       ),
                     ],
@@ -249,13 +285,13 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
               RichText(
                 textAlign: TextAlign.center,
                 text: TextSpan(
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                  style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
                   children: [
                     const TextSpan(text: 'Al completar aceptas nuestros '),
                     TextSpan(
                       text: 'Términos y Condiciones',
-                      style: const TextStyle(
-                        color: Color(0xFF09CB6B),
+                      style: TextStyle(
+                        color: scheme.primary,
                         fontWeight: FontWeight.w600,
                         decoration: TextDecoration.underline,
                       ),
@@ -270,8 +306,8 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
                     const TextSpan(text: ' y '),
                     TextSpan(
                       text: 'Política de Privacidad',
-                      style: const TextStyle(
-                        color: Color(0xFF09CB6B),
+                      style: TextStyle(
+                        color: scheme.primary,
                         fontWeight: FontWeight.w600,
                         decoration: TextDecoration.underline,
                       ),
@@ -293,19 +329,19 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
                 child: ElevatedButton(
                   onPressed: _isLoading ? null : _handleComplete,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF09CB6B),
-                    foregroundColor: Colors.white,
+                    backgroundColor: scheme.primary,
+                    foregroundColor: scheme.onPrimary,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
                   ),
                   child: _isLoading
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 24,
                           height: 24,
                           child: CircularProgressIndicator(
                             strokeWidth: 2.5,
-                            color: Colors.white,
+                          color: scheme.onPrimary,
                           ),
                         )
                       : const Text(
@@ -318,6 +354,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
                 ),
               ),
             ],
+            ),
           ),
         ),
       ),
