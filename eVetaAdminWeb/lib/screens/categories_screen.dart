@@ -696,6 +696,18 @@ String? _categoryImageUrl(dynamic raw) {
   return s;
 }
 
+bool _looksLikeAssetPath(String? s) {
+  if (s == null) return false;
+  final v = s.trim();
+  return v.startsWith('assets/') || v.startsWith('asset:') || v.startsWith('packages/');
+}
+
+bool _looksLikeDefaultAppIcon(String? s) {
+  if (s == null) return false;
+  final v = s.trim().toLowerCase();
+  return v.contains('ic_app_icon') || v.contains('eveta');
+}
+
 String _cacheBustImageUrl(String raw) {
   final s = raw.trim();
   if (s.isEmpty) return s;
@@ -715,25 +727,43 @@ class _CategoryPreview extends StatelessWidget {
   final String? logoUrl;
   final String? bannerUrl;
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _imageThumb(BuildContext context, String raw, {required BoxFit fit}) {
     final scheme = Theme.of(context).colorScheme;
-    final logo = _categoryImageUrl(logoUrl) ?? _categoryImageUrl(bannerUrl);
-    final banner = _categoryImageUrl(bannerUrl);
-    final hasLogo = logo != null && logo.isNotEmpty;
-    final hasBanner = banner != null && banner.isNotEmpty;
-    final bg = scheme.surfaceContainerHighest.withValues(alpha: 0.9);
-
-    /// Vista previa pequeña: URL directa evita fallos por transform Cloudinary mal encadenada.
-    Widget thumb(String url) {
-      return Image.network(
-        url,
-        fit: BoxFit.cover,
+    final s = raw.trim();
+    if (s.isEmpty) {
+      return Icon(Icons.broken_image_outlined, size: 14, color: scheme.onSurfaceVariant);
+    }
+    if (_looksLikeAssetPath(s)) {
+      final asset = s.replaceFirst(RegExp(r'^asset:\s*', caseSensitive: false), '');
+      return Image.asset(
+        asset,
+        fit: fit,
         filterQuality: FilterQuality.medium,
-        errorBuilder: (context, error, stackTrace) =>
+        errorBuilder: (_, _, _) =>
             Icon(Icons.broken_image_outlined, size: 14, color: scheme.onSurfaceVariant),
       );
     }
+    // Por defecto intentamos red (Cloudinary o cualquier CDN).
+    return Image.network(
+      _cacheBustImageUrl(s),
+      fit: fit,
+      filterQuality: FilterQuality.medium,
+      errorBuilder: (_, _, _) =>
+          Icon(Icons.broken_image_outlined, size: 14, color: scheme.onSurfaceVariant),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    // Si icon viene como asset/default (o vacío), usamos image_url para que coincida con eVetaShop.
+    final icon = _categoryImageUrl(logoUrl);
+    final banner = _categoryImageUrl(bannerUrl);
+    final iconIsBad = icon == null || icon.isEmpty || _looksLikeAssetPath(icon) || _looksLikeDefaultAppIcon(icon);
+    final logo = iconIsBad ? banner : icon;
+    final hasLogo = logo != null && logo.isNotEmpty;
+    final hasBanner = banner != null && banner.isNotEmpty;
+    final bg = scheme.surfaceContainerHighest.withValues(alpha: 0.9);
 
     return SizedBox(
       width: 72,
@@ -748,7 +778,7 @@ class _CategoryPreview extends StatelessWidget {
             ),
             clipBehavior: Clip.antiAlias,
             child: hasLogo
-                ? thumb(logo)
+                ? _imageThumb(context, logo, fit: BoxFit.cover)
                 : Icon(Icons.image_outlined, size: 14, color: scheme.onSurfaceVariant),
           ),
           const SizedBox(width: 4),
@@ -761,7 +791,7 @@ class _CategoryPreview extends StatelessWidget {
             ),
             clipBehavior: Clip.antiAlias,
             child: hasBanner
-                ? thumb(banner)
+                ? _imageThumb(context, banner, fit: BoxFit.cover)
                 : Icon(Icons.photo_outlined, size: 14, color: scheme.onSurfaceVariant),
           ),
         ],
