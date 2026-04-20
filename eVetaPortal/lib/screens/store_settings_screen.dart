@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -25,6 +27,8 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
 
   String? _logoUrl;
   String? _bannerUrl;
+  Uint8List? _logoBytes;
+  Uint8List? _bannerBytes;
 
   String? _email;
   String? _shopId;
@@ -143,7 +147,6 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
         bytes: cropped,
         fileName: fileName,
         folder: folder,
-        publicId: isLogo ? 'logo_${_shopId ?? 'unknown'}' : 'banner_${_shopId ?? 'unknown'}',
       );
       final url = _cacheBustImageUrl(rawUrl);
 
@@ -151,8 +154,10 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
       setState(() {
         if (isLogo) {
           _logoUrl = url;
+          _logoBytes = cropped;
         } else {
           _bannerUrl = url;
+          _bannerBytes = cropped;
         }
       });
       if (mounted) {
@@ -235,6 +240,31 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
         return;
       }
 
+      final check = await Supabase.instance.client
+          .from('profiles')
+          .select('shop_logo_url, shop_banner_url, avatar_url')
+          .eq('id', user.id)
+          .maybeSingle();
+      final savedLogo = check?['shop_logo_url']?.toString().trim();
+      final savedBanner = check?['shop_banner_url']?.toString().trim();
+      final intendedLogo = _logoUrl?.toString().trim();
+      final intendedBanner = _bannerUrl?.toString().trim();
+      final logoOk = (intendedLogo == null || intendedLogo.isEmpty) || savedLogo == intendedLogo;
+      final bannerOk =
+          (intendedBanner == null || intendedBanner.isEmpty) || savedBanner == intendedBanner;
+      if (!logoOk || !bannerOk) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No se reflejaron los cambios en la BD. Parece un tema de permisos/RLS en profiles. Ejecuta el script 019 en Supabase y vuelve a intentar.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Tienda guardada.')),
       );
@@ -632,6 +662,8 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
                     child: StoreFrontPreviewHeader(
                       bannerUrl: _bannerUrl,
                       logoUrl: _logoUrl,
+                      bannerBytes: _bannerBytes,
+                      logoBytes: _logoBytes,
                       shopName: _nameCtrl.text.trim(),
                       shopDescription: _descCtrl.text.trim(),
                       scale: scale,

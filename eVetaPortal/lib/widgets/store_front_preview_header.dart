@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import 'portal_cached_image.dart';
@@ -8,6 +10,8 @@ class StoreFrontPreviewHeader extends StatelessWidget {
     super.key,
     required this.bannerUrl,
     required this.logoUrl,
+    this.bannerBytes,
+    this.logoBytes,
     required this.shopName,
     required this.shopDescription,
     required this.scale,
@@ -18,6 +22,8 @@ class StoreFrontPreviewHeader extends StatelessWidget {
 
   final String? bannerUrl;
   final String? logoUrl;
+  final Uint8List? bannerBytes;
+  final Uint8List? logoBytes;
   final String shopName;
   final String shopDescription;
   final double scale;
@@ -33,6 +39,8 @@ class StoreFrontPreviewHeader extends StatelessWidget {
     final surface = scheme.surface;
     final b = bannerUrl?.trim() ?? '';
     final l = logoUrl?.trim() ?? '';
+    final hasBannerBytes = bannerBytes != null && bannerBytes!.isNotEmpty;
+    final hasLogoBytes = logoBytes != null && logoBytes!.isNotEmpty;
 
     return SizedBox(
       height: headerH,
@@ -51,13 +59,19 @@ class StoreFrontPreviewHeader extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    b.isNotEmpty
-                        ? PortalCachedImage(
-                            imageUrl: b,
+                    hasBannerBytes
+                        ? Image.memory(
+                            bannerBytes!,
                             fit: BoxFit.cover,
-                            memCacheWidth: 1280,
+                            filterQuality: FilterQuality.medium,
                           )
-                        : ColoredBox(color: scheme.surfaceContainerHigh),
+                        : (b.isNotEmpty
+                            ? PortalCachedImage(
+                                imageUrl: b,
+                                fit: BoxFit.cover,
+                                memCacheWidth: 1280,
+                              )
+                            : ColoredBox(color: scheme.surfaceContainerHigh)),
                     IgnorePointer(
                       child: DecoratedBox(
                         decoration: BoxDecoration(
@@ -118,11 +132,17 @@ class StoreFrontPreviewHeader extends StatelessWidget {
                               ],
                             ),
                             child: ClipOval(
-                              child: PortalCachedImage(
-                                imageUrl: l,
-                                fit: BoxFit.cover,
-                                memCacheWidth: 300,
-                              ),
+                              child: hasLogoBytes
+                                  ? Image.memory(
+                                      logoBytes!,
+                                      fit: BoxFit.cover,
+                                      filterQuality: FilterQuality.medium,
+                                    )
+                                  : PortalCachedImage(
+                                      imageUrl: l,
+                                      fit: BoxFit.cover,
+                                      memCacheWidth: 300,
+                                    ),
                             ),
                           )
                         : Container(
