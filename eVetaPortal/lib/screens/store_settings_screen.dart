@@ -162,15 +162,30 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
 
     setState(() => _saving = true);
     try {
-      await Supabase.instance.client.from('profiles').update({
-        'shop_name': name,
-        'shop_description': _descCtrl.text.trim(),
-        'shop_logo_url': _logoUrl,
-        'shop_banner_url': _bannerUrl,
-        'is_seller': true,
-      }).eq('id', user.id);
+      final updated = await Supabase.instance.client
+          .from('profiles')
+          .update({
+            'shop_name': name,
+            'shop_description': _descCtrl.text.trim(),
+            'shop_logo_url': _logoUrl,
+            'shop_banner_url': _bannerUrl,
+            'is_seller': true,
+          })
+          .eq('id', user.id)
+          .select('id');
 
       if (!mounted) return;
+      if (updated.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No se aplicaron los cambios (permisos). Ejecuta en Supabase eVetaAdminWeb/scripts/019_rls_profiles_portal_seller.sql (vendedor: UPDATE propio; admin: UPDATE cualquier tienda) o revisa RLS en profiles.',
+            ),
+          ),
+        );
+        return;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Tienda guardada.')),
       );
@@ -178,7 +193,14 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No se pudo guardar: $e')),
+        SnackBar(
+          content: Text(
+            e.toString().toLowerCase().contains('row-level security') ||
+                    e.toString().toLowerCase().contains('rls')
+                ? 'Sin permiso para guardar la tienda. Un admin debe habilitar políticas RLS para vendedores (script 019).'
+                : 'No se pudo guardar: $e',
+          ),
+        ),
       );
     } finally {
       if (mounted) setState(() => _saving = false);

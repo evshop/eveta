@@ -22,13 +22,31 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { email, purpose } = await req.json();
+    const { email, purpose, require_portal_access: requirePortalAccess } = await req.json();
     const normalizedEmail = normalizeEmail(email ?? '');
     if (!normalizedEmail || !normalizedEmail.includes('@')) {
       return json({ error: 'Correo inválido.' }, 400);
     }
     if (purpose !== 'signup' && purpose !== 'password_reset') {
       return json({ error: 'Propósito inválido.' }, 400);
+    }
+    if (purpose === 'password_reset' && requirePortalAccess === true) {
+      const { data: portalProfile, error: portalErr } = await supabaseAdmin
+        .from('profiles')
+        .select('is_admin, is_seller')
+        .ilike('email', normalizedEmail)
+        .maybeSingle();
+      if (portalErr) {
+        return json({ error: `No se pudo validar el acceso al portal: ${portalErr.message}` }, 500);
+      }
+      if (portalProfile == null) {
+        return json({ error: 'No existe una cuenta con ese correo en el portal.' }, 400);
+      }
+      const ok =
+        portalProfile.is_admin === true || portalProfile.is_seller === true;
+      if (!ok) {
+        return json({ error: 'Ese correo no tiene acceso al portal.' }, 403);
+      }
     }
     if (!GMAIL_USER || !GMAIL_APP_PASSWORD) {
       return json({ error: 'Faltan secrets de Gmail en Supabase.' }, 500);

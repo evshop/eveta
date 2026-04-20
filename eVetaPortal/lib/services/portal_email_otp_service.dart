@@ -11,26 +11,12 @@ class PortalEmailOtpService {
       throw AuthException('Correo inválido.');
     }
 
-    final profile = await _client
-        .from('profiles')
-        .select('id,is_admin,is_seller')
-        .ilike('email', normalized)
-        .maybeSingle();
-
-    if (profile == null) {
-      throw AuthException('No existe una cuenta con ese correo en el portal.');
-    }
-    final isAdmin = profile['is_admin'] == true;
-    final isSeller = profile['is_seller'] == true;
-    if (!isAdmin && !isSeller) {
-      throw AuthException('Ese correo no tiene acceso al portal.');
-    }
-
     final response = await _client.functions.invoke(
       'send-email-otp',
       body: {
         'email': normalized,
         'purpose': 'password_reset',
+        'require_portal_access': true,
       },
     );
     if (response.status != 200) {

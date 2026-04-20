@@ -688,6 +688,13 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
   }
 }
 
+String? _categoryImageUrl(dynamic raw) {
+  if (raw == null) return null;
+  final s = raw.toString().trim();
+  if (s.isEmpty || s == 'null') return null;
+  return s;
+}
+
 class _CategoryPreview extends StatelessWidget {
   const _CategoryPreview({
     required this.logoUrl,
@@ -700,9 +707,23 @@ class _CategoryPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final hasLogo = logoUrl != null && logoUrl!.isNotEmpty;
-    final hasBanner = bannerUrl != null && bannerUrl!.isNotEmpty;
+    final logo = _categoryImageUrl(logoUrl);
+    final banner = _categoryImageUrl(bannerUrl);
+    final hasLogo = logo != null && logo.isNotEmpty;
+    final hasBanner = banner != null && banner.isNotEmpty;
     final bg = scheme.surfaceContainerHighest.withValues(alpha: 0.9);
+
+    /// Vista previa pequeña: URL directa evita fallos por transform Cloudinary mal encadenada.
+    Widget thumb(String url) {
+      return Image.network(
+        url,
+        fit: BoxFit.cover,
+        filterQuality: FilterQuality.medium,
+        errorBuilder: (context, error, stackTrace) =>
+            Icon(Icons.broken_image_outlined, size: 14, color: scheme.onSurfaceVariant),
+      );
+    }
+
     return SizedBox(
       width: 72,
       child: Row(
@@ -716,12 +737,7 @@ class _CategoryPreview extends StatelessWidget {
             ),
             clipBehavior: Clip.antiAlias,
             child: hasLogo
-                ? Image.network(
-                    evetaImageDeliveryUrl(logoUrl!, EvetaImageDelivery.thumb),
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) =>
-                        Icon(Icons.image_not_supported, size: 14, color: scheme.onSurfaceVariant),
-                  )
+                ? thumb(logo!)
                 : Icon(Icons.image_outlined, size: 14, color: scheme.onSurfaceVariant),
           ),
           const SizedBox(width: 4),
@@ -734,12 +750,7 @@ class _CategoryPreview extends StatelessWidget {
             ),
             clipBehavior: Clip.antiAlias,
             child: hasBanner
-                ? Image.network(
-                    evetaImageDeliveryUrl(bannerUrl!, EvetaImageDelivery.thumb),
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) =>
-                        Icon(Icons.photo_outlined, size: 14, color: scheme.onSurfaceVariant),
-                  )
+                ? thumb(banner!)
                 : Icon(Icons.photo_outlined, size: 14, color: scheme.onSurfaceVariant),
           ),
         ],

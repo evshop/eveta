@@ -412,8 +412,8 @@ class _DesktopShell extends StatelessWidget {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 20, 24, 24),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
                   color: scheme.surfaceContainerHighest.withValues(
                     alpha: Theme.of(context).brightness == Brightness.dark ? 0.45 : 0.65,
                   ),
@@ -519,11 +519,11 @@ class _TabletShell extends StatelessWidget {
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(12, 16, 12, 8),
-                  child: Text(
-                    'eVeta',
+                    child: Text(
+                      'eVeta',
                     textAlign: extended ? TextAlign.left : TextAlign.center,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
                       fontSize: extended ? 18 : 14,
                       letterSpacing: -0.4,
                       color: scheme.primary,
@@ -540,40 +540,40 @@ class _TabletShell extends StatelessWidget {
                         : NavigationRailLabelType.none,
                     selectedIndex: selectedIndex,
                     onDestinationSelected: onSelect,
-                    destinations: const [
-                      NavigationRailDestination(
-                        icon: Icon(Icons.dashboard_outlined),
-                        selectedIcon: Icon(Icons.dashboard_rounded),
-                        label: Text('Dashboard'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Icon(Icons.campaign_outlined),
-                        selectedIcon: Icon(Icons.campaign_rounded),
-                        label: Text('Promos'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Icon(Icons.inventory_2_outlined),
-                        selectedIcon: Icon(Icons.inventory_2_rounded),
-                        label: Text('Categorías'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Icon(Icons.shopping_basket_outlined),
-                        selectedIcon: Icon(Icons.shopping_basket_rounded),
+                  destinations: const [
+                    NavigationRailDestination(
+                      icon: Icon(Icons.dashboard_outlined),
+                      selectedIcon: Icon(Icons.dashboard_rounded),
+                      label: Text('Dashboard'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.campaign_outlined),
+                      selectedIcon: Icon(Icons.campaign_rounded),
+                      label: Text('Promos'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.inventory_2_outlined),
+                      selectedIcon: Icon(Icons.inventory_2_rounded),
+                      label: Text('Categorías'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.shopping_basket_outlined),
+                      selectedIcon: Icon(Icons.shopping_basket_rounded),
                         label: Text('Productos'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Icon(Icons.storefront_outlined),
-                        selectedIcon: Icon(Icons.storefront_rounded),
-                        label: Text('Tiendas'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Icon(Icons.receipt_long_outlined),
-                        selectedIcon: Icon(Icons.receipt_long_rounded),
-                        label: Text('Pedidos'),
-                      ),
-                    ],
-                  ),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.storefront_outlined),
+                      selectedIcon: Icon(Icons.storefront_rounded),
+                      label: Text('Tiendas'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.receipt_long_outlined),
+                      selectedIcon: Icon(Icons.receipt_long_rounded),
+                      label: Text('Pedidos'),
+                    ),
+                  ],
                 ),
+              ),
                 const Divider(height: 1),
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
@@ -592,10 +592,10 @@ class _TabletShell extends StatelessWidget {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
                     children: [
                       Expanded(
                         child: Column(
