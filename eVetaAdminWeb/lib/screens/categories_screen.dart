@@ -705,7 +705,11 @@ bool _looksLikeAssetPath(String? s) {
 bool _looksLikeDefaultAppIcon(String? s) {
   if (s == null) return false;
   final v = s.trim().toLowerCase();
-  return v.contains('ic_app_icon') || v.contains('eveta');
+  // Solo detecta assets/defaults, no carpetas Cloudinary tipo ".../eveta/...".
+  return v.contains('ic_app_icon') ||
+      v.contains('auth_logo') ||
+      v.contains('logo_light') ||
+      v.contains('logo_dark');
 }
 
 String _cacheBustImageUrl(String raw) {
@@ -756,11 +760,14 @@ class _CategoryPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    // Si icon viene como asset/default (o vacío), usamos image_url para que coincida con eVetaShop.
     final icon = _categoryImageUrl(logoUrl);
     final banner = _categoryImageUrl(bannerUrl);
-    final iconIsBad = icon == null || icon.isEmpty || _looksLikeAssetPath(icon) || _looksLikeDefaultAppIcon(icon);
-    final logo = iconIsBad ? banner : icon;
+    // Logo 1:1 debe venir de `icon`. Solo caemos al banner si no hay icon.
+    final iconIsBad = icon == null ||
+        icon.isEmpty ||
+        _looksLikeAssetPath(icon) ||
+        _looksLikeDefaultAppIcon(icon);
+    final logo = iconIsBad ? null : icon;
     final hasLogo = logo != null && logo.isNotEmpty;
     final hasBanner = banner != null && banner.isNotEmpty;
     final bg = scheme.surfaceContainerHighest.withValues(alpha: 0.9);
