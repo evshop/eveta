@@ -175,9 +175,12 @@ class _StoreProductsScreenState extends State<StoreProductsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F5F7),
+      backgroundColor: scheme.surface,
       appBar: AppBar(
+        backgroundColor: scheme.surfaceContainerHighest,
+        foregroundColor: scheme.onSurface,
         titleSpacing: 0,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -186,7 +189,7 @@ class _StoreProductsScreenState extends State<StoreProductsScreen> {
             if (widget.subtitle != null && widget.subtitle!.isNotEmpty)
               Text(
                 widget.subtitle!,
-                style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.85), fontWeight: FontWeight.w400),
+                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant, fontWeight: FontWeight.w400),
               ),
           ],
         ),
@@ -255,7 +258,7 @@ class _StoreProductsScreenState extends State<StoreProductsScreen> {
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,
-                                  color: Colors.grey.shade700,
+                                  color: scheme.onSurfaceVariant,
                                 ),
                               ),
                             ],
@@ -268,7 +271,7 @@ class _StoreProductsScreenState extends State<StoreProductsScreen> {
                           child: Center(
                             child: Text(
                               'Esta tienda aún no tiene productos.',
-                              style: TextStyle(color: Colors.grey.shade600),
+                              style: TextStyle(color: scheme.onSurfaceVariant),
                             ),
                           ),
                         )

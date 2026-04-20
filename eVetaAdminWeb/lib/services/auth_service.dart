@@ -109,28 +109,94 @@ class AuthService {
     }
   }
 
+  static const _partnerColsBase =
+      'id,email,full_name,shop_name,shop_description,shop_logo_url,shop_banner_url,is_partner_verified,partner_display_order';
+
   /// Otras tiendas verificadas (excluye al usuario actual).
+  /// Incluye [admin_portal_note] si existe la columna en `profiles`.
   static Future<List<Map<String, dynamic>>> fetchVerifiedPartnerStores() async {
     final me = _client.auth.currentUser?.id;
     if (me == null) return [];
     try {
       final rows = await _client
           .from('profiles')
-          .select(
-            'id,email,full_name,shop_name,shop_description,shop_logo_url,shop_banner_url,is_partner_verified,partner_display_order',
-          )
+          .select('$_partnerColsBase,admin_portal_note')
           .eq('is_partner_verified', true)
           .neq('id', me)
           .order('partner_display_order', ascending: true)
           .order('shop_name', ascending: true);
       return List<Map<String, dynamic>>.from(rows as List);
     } catch (e) {
-      if (e.toString().toLowerCase().contains('partner_display_order') ||
-          e.toString().toLowerCase().contains('is_partner_verified')) {
-        // Ejecuta scripts/015_profiles_partner_stores.sql para listar solo partners.
+      final s = e.toString().toLowerCase();
+      if (s.contains('admin_portal_note')) {
+        try {
+          final rows = await _client
+              .from('profiles')
+              .select(_partnerColsBase)
+              .eq('is_partner_verified', true)
+              .neq('id', me)
+              .order('partner_display_order', ascending: true)
+              .order('shop_name', ascending: true);
+          return List<Map<String, dynamic>>.from(rows as List);
+        } catch (e2) {
+          if (e2.toString().toLowerCase().contains('partner_display_order') ||
+              e2.toString().toLowerCase().contains('is_partner_verified')) {
+            return [];
+          }
+          rethrow;
+        }
+      }
+      if (s.contains('partner_display_order') || s.contains('is_partner_verified')) {
         return [];
       }
       rethrow;
+    }
+  }
+
+  /// Nota interna solo para admins (p. ej. contraseña o pista). Requiere columna `admin_portal_note` en Supabase.
+  static Future<void> updateAdminPortalNoteForAdmin({
+    required String profileId,
+    required String? note,
+  }) async {
+    if (!await isCurrentUserAdmin()) {
+      throw AuthException('Sin permisos de administrador.');
+    }
+    final trimmed = note?.trim();
+    final value = (trimmed == null || trimmed.isEmpty) ? null : trimmed;
+    try {
+      final updated = await _client
+          .from('profiles')
+          .update({'admin_portal_note': value})
+          .eq('id', profileId)
+          .select('id');
+      if ((updated as List).isEmpty) {
+        throw AuthException('No se actualizó la nota (0 filas).');
+      }
+    } catch (e) {
+      if (e is AuthException) rethrow;
+      if (e.toString().toLowerCase().contains('admin_portal_note')) {
+        throw AuthException(
+          'Falta la columna admin_portal_note en profiles. Ejecuta scripts/016_profiles_admin_portal_note.sql en Supabase.',
+        );
+      }
+      rethrow;
+    }
+  }
+
+  /// Tras crear partner: guarda contraseña inicial en nota admin (opcional, si la columna existe).
+  static Future<void> trySaveInitialPortalNote({
+    required String userId,
+    required String email,
+    required String password,
+  }) async {
+    if (!await isCurrentUserAdmin()) return;
+    try {
+      await _client.from('profiles').update({
+        'admin_portal_note':
+            'Contraseña definida al crear la cuenta ($email): $password',
+      }).eq('id', userId);
+    } catch (_) {
+      // Columna ausente o política: ignorar.
     }
   }
 

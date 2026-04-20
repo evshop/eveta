@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/auth_service.dart';
+import '../theme/admin_theme.dart';
+import '../utils/cloudinary_image_url.dart';
 import 'store_products_screen.dart';
 
 /// Listado estilo secciones: primero "Mi tienda", luego tiendas verificadas.
@@ -17,67 +19,6 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
   bool _loading = true;
   Map<String, dynamic>? _myProfile;
   List<Map<String, dynamic>> _partners = [];
-
-  Widget _minimalStoreTile({
-    required Widget leading,
-    required String title,
-    required String subtitle,
-    VoidCallback? onTap,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Ink(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFE5E8EC)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            child: Row(
-              children: [
-                leading,
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (subtitle.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          subtitle,
-                          style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 
   @override
   void initState() {
@@ -100,7 +41,11 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
       if (!mounted) return;
       setState(() => _loading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al cargar tiendas: $e')),
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          content: Text('Error al cargar tiendas: $e'),
+        ),
       );
     }
   }
@@ -143,6 +88,68 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
     _refresh();
   }
 
+  Future<void> _editPortalNote(Map<String, dynamic> p) async {
+    final id = p['id']?.toString() ?? '';
+    if (id.isEmpty) return;
+    final ctrl = TextEditingController(text: p['admin_portal_note']?.toString() ?? '');
+    final scheme = Theme.of(context).colorScheme;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Nota de acceso al portal'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Guarda aquí la contraseña o una pista solo para tu equipo (requiere columna admin_portal_note en Supabase). '
+                'Supabase Auth no permite leer la contraseña real del usuario.',
+                style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant, height: 1.35),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: ctrl,
+                minLines: 3,
+                maxLines: 8,
+                decoration: const InputDecoration(
+                  labelText: 'Texto (visible solo para admins)',
+                  alignLabelWithHint: true,
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Guardar')),
+        ],
+      ),
+    );
+    if (ok == true && mounted) {
+      try {
+        await AuthService.updateAdminPortalNoteForAdmin(profileId: id, note: ctrl.text);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              content: const Text('Nota guardada'),
+            ),
+          );
+        }
+        await _refresh();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$e')),
+          );
+        }
+      }
+    }
+    ctrl.dispose();
+  }
+
   Future<void> _showCreatePartnerDialog() async {
     final emailCtrl = TextEditingController();
     final passCtrl = TextEditingController();
@@ -167,8 +174,8 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'Se creará una cuenta para el portal eVeta. Anota la contraseña: solo se muestra una vez aquí.',
-                    style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+                    'Se creará una cuenta para el portal eVeta. La contraseña quedará copiada en la nota interna si configuraste la columna en la base.',
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13),
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -203,8 +210,7 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
                       suffixIcon: IconButton(
                         tooltip: showPass2 ? 'Ocultar' : 'Mostrar',
                         onPressed: () => setDlg(() => showPass2 = !showPass2),
-                        icon:
-                            Icon(showPass2 ? Icons.visibility_off : Icons.visibility),
+                        icon: Icon(showPass2 ? Icons.visibility_off : Icons.visibility),
                       ),
                     ),
                   ),
@@ -272,7 +278,7 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
                       }
                       setDlg(() => busy = true);
                       try {
-                        await AuthService.createPartnerSellerAccount(
+                        final r = await AuthService.createPartnerSellerAccount(
                           email: email,
                           password: p1,
                           fullName: full,
@@ -283,6 +289,7 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
                           Navigator.pop(dialogContext, <String, String>{
                             'email': email,
                             'password': p1,
+                            'userId': r.userId,
                           });
                         }
                       } catch (e) {
@@ -302,8 +309,6 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
       ),
     );
 
-    // Evita el crash: Flutter puede reconstruir una última vez el dialog
-    // después de que `showDialog` retorna. Disponer al siguiente frame es seguro.
     if (mounted) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         emailCtrl.dispose();
@@ -318,6 +323,15 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
     if (created != null && mounted) {
       final em = created['email'] ?? '';
       final pw = created['password'] ?? '';
+      final newUid = created['userId'] ?? '';
+      if (newUid.isNotEmpty) {
+        await AuthService.trySaveInitialPortalNote(
+          userId: newUid,
+          email: em,
+          password: pw,
+        );
+      }
+      if (!mounted) return;
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -328,9 +342,8 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'La cuenta puede iniciar sesión en el portal eVeta. Las contraseñas no se guardan en texto claro: '
-                  'esta es la única vez que verás la contraseña aquí; cópiala o envía recuperación si se pierde.',
-                  style: TextStyle(color: Colors.grey.shade700, fontSize: 13, height: 1.35),
+                  'La cuenta puede iniciar sesión en el portal eVeta. Si añadiste la columna admin_portal_note, la contraseña inicial también quedó en la nota de la tienda.',
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13, height: 1.35),
                 ),
                 const SizedBox(height: 14),
                 SelectableText('Correo: $em', style: const TextStyle(fontSize: 14)),
@@ -345,7 +358,7 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
                 await Clipboard.setData(ClipboardData(text: 'Correo: $em\nContraseña: $pw'));
                 if (ctx.mounted) {
                   ScaffoldMessenger.of(ctx).showSnackBar(
-                    const SnackBar(content: Text('Credenciales copiadas al portapapeles')),
+                    const SnackBar(content: Text('Credenciales copiadas')),
                   );
                 }
               },
@@ -364,6 +377,8 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -380,7 +395,7 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
         child: Align(
           alignment: Alignment.topLeft,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 920),
+            constraints: const BoxConstraints(maxWidth: 1100),
             child: Padding(
               padding: const EdgeInsets.only(bottom: 24),
               child: Column(
@@ -389,38 +404,42 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
                   Text(
                     'Mi tienda',
                     style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.4,
-                      color: Colors.grey.shade600,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.1,
+                      color: scheme.onSurfaceVariant,
                     ),
                   ),
                   const SizedBox(height: 10),
-                  _minimalStoreTile(
-                    onTap: _openMyStore,
-                    leading: CircleAvatar(
-                      radius: 22,
-                      backgroundColor: const Color(0xFF09CB6B).withValues(alpha: 0.12),
-                      child: const Icon(Icons.storefront_rounded, color: Color(0xFF09CB6B)),
-                    ),
+                  _StoreCard(
                     title: (myName != null && myName.isNotEmpty) ? myName : 'Ver mi catálogo',
                     subtitle: myEmail.isNotEmpty ? myEmail : 'Tu cuenta administrador',
+                    verified: true,
+                    isMine: true,
+                    logoUrl: _myProfile?['shop_logo_url']?.toString(),
+                    onTap: _openMyStore,
                   ),
                   const SizedBox(height: 28),
                   Row(
                     children: [
                       Expanded(
                         child: Text(
-                          'Tiendas verificadas',
+                          'TIENDAS VERIFICADAS',
                           style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.4,
-                            color: Colors.grey.shade600,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.1,
+                            color: scheme.onSurfaceVariant,
                           ),
                         ),
                       ),
                       FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(AdminTokens.radiusSm),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                        ),
                         onPressed: _showCreatePartnerDialog,
                         icon: const Icon(Icons.add_business_rounded, size: 20),
                         label: const Text('Nueva tienda'),
@@ -429,43 +448,188 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Toca una tienda para ver sus productos como en la app. El ícono de ajustes abre la edición de datos de la tienda.',
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 13, height: 1.35),
+                    'Toca la tarjeta para ver el catálogo. El candado guarda o muestra la nota de acceso (contraseña o pista).',
+                    style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13, height: 1.35),
                   ),
                   const SizedBox(height: 14),
                   if (_partners.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 28),
-                      child: Center(
-                        child: Text(
-                          'Aún no hay otras tiendas. Pulsa «Nueva tienda» para crear una cuenta de vendedor.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey.shade600, height: 1.4),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(28),
+                        child: Center(
+                          child: Text(
+                            'Aún no hay otras tiendas. Pulsa «Nueva tienda» para crear una cuenta de vendedor.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: scheme.onSurfaceVariant, height: 1.4),
+                          ),
                         ),
                       ),
                     )
                   else
-                    ..._partners.map((p) {
-                      final id = p['id']?.toString() ?? '';
-                      final name = p['shop_name']?.toString().trim();
-                      final sub = p['email']?.toString() ?? '';
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: _minimalStoreTile(
-                          onTap: id.isEmpty ? null : () => _openPartner(p),
-                          leading: CircleAvatar(
-                            radius: 22,
-                            backgroundColor: Colors.grey.shade100,
-                            child: const Icon(Icons.verified_rounded, color: Color(0xFF09CB6B)),
+                    LayoutBuilder(
+                      builder: (context, c) {
+                        final w = c.maxWidth;
+                        final cross = w > 900 ? 2 : 1;
+                        return GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: cross,
+                            mainAxisSpacing: 14,
+                            crossAxisSpacing: 14,
+                            childAspectRatio: w > 900 ? 1.85 : 1.55,
                           ),
-                          title: (name != null && name.isNotEmpty) ? name : 'Sin nombre',
-                          subtitle: sub,
-                        ),
-                      );
-                    }),
+                          itemCount: _partners.length,
+                          itemBuilder: (context, i) {
+                            final p = _partners[i];
+                            final id = p['id']?.toString() ?? '';
+                            final name = p['shop_name']?.toString().trim();
+                            final email = p['email']?.toString() ?? '';
+                            final note = p['admin_portal_note']?.toString();
+                            return _StoreCard(
+                              title: (name != null && name.isNotEmpty) ? name : 'Sin nombre',
+                              subtitle: email,
+                              verified: true,
+                              isMine: false,
+                              logoUrl: p['shop_logo_url']?.toString(),
+                              hasPortalNote: note != null && note.isNotEmpty,
+                              onTap: id.isEmpty ? null : () => _openPartner(p),
+                              onPortalNote: id.isEmpty ? null : () => _editPortalNote(p),
+                            );
+                          },
+                        );
+                      },
+                    ),
                 ],
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StoreCard extends StatelessWidget {
+  const _StoreCard({
+    required this.title,
+    required this.subtitle,
+    required this.verified,
+    required this.isMine,
+    this.logoUrl,
+    this.hasPortalNote = false,
+    this.onTap,
+    this.onPortalNote,
+  });
+
+  final String title;
+  final String subtitle;
+  final bool verified;
+  final bool isMine;
+  final String? logoUrl;
+  final bool hasPortalNote;
+  final VoidCallback? onTap;
+  final VoidCallback? onPortalNote;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    Widget avatar;
+    final u = logoUrl?.trim();
+    if (u != null && u.isNotEmpty) {
+      avatar = CircleAvatar(
+        radius: 26,
+        backgroundColor: scheme.surfaceContainerHighest,
+        backgroundImage: NetworkImage(evetaImageDeliveryUrl(u, EvetaImageDelivery.thumb)),
+      );
+    } else {
+      avatar = CircleAvatar(
+        radius: 26,
+        backgroundColor: isMine ? scheme.primary.withValues(alpha: 0.15) : scheme.surfaceContainerHighest,
+        child: Icon(
+          isMine ? Icons.storefront_rounded : Icons.verified_rounded,
+          color: isMine ? scheme.primary : scheme.primary,
+        ),
+      );
+    }
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              avatar,
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                          ),
+                        ),
+                        if (verified)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: scheme.primary.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(99),
+                            ),
+                            child: Text(
+                              'Verificada',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: scheme.primary,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+                    ),
+                    if (hasPortalNote)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Row(
+                          children: [
+                            Icon(Icons.key_rounded, size: 14, color: scheme.primary),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Nota de acceso guardada',
+                              style: TextStyle(fontSize: 11, color: scheme.primary, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (onPortalNote != null)
+                IconButton(
+                  tooltip: 'Nota de acceso (contraseña / pista)',
+                  onPressed: onPortalNote,
+                  icon: Icon(
+                    Icons.vpn_key_rounded,
+                    color: hasPortalNote ? scheme.primary : scheme.onSurfaceVariant,
+                  ),
+                ),
+              Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+            ],
           ),
         ),
       ),

@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import '../services/cloudinary_service.dart';
 import '../services/products_service.dart';
 import '../utils/cloudinary_image_url.dart';
+import '../theme/admin_theme.dart';
 import '../widgets/category_image_crop_dialog.dart';
 
 class CategoriesScreen extends StatefulWidget {
@@ -511,78 +512,173 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             FilledButton.icon(
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AdminTokens.radiusSm)),
+              ),
               onPressed: () => _openCategoryDialog(),
-              icon: const Icon(Icons.add),
+              icon: const Icon(Icons.add_rounded),
               label: const Text('Nueva categoría'),
             ),
-            const SizedBox(width: 8),
             OutlinedButton.icon(
               onPressed: _clearSeedCategories,
               icon: const Icon(Icons.delete_sweep_outlined),
-              label: const Text('Borrar categorías actuales'),
+              label: const Text('Borrar todas'),
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
         Expanded(
           child: _categories.isEmpty
-              ? const Center(child: Text('No hay categorías registradas.'))
-              : ListView.separated(
-                  itemCount: _categories.length,
-                  separatorBuilder: (_, index) => const Divider(height: 1),
-                  itemBuilder: (context, index) {
-                    final c = _categories[index];
-                    final pid = c['parent_id']?.toString();
-                    Map<String, dynamic>? parent;
-                    if (pid != null) {
-                      for (final x in _categories) {
-                        if (x['id'].toString() == pid) {
-                          parent = x;
-                          break;
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.category_outlined, size: 48, color: scheme.onSurfaceVariant),
+                      const SizedBox(height: 12),
+                      Text(
+                        'No hay categorías registradas.',
+                        style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 15),
+                      ),
+                    ],
+                  ),
+                )
+              : LayoutBuilder(
+                  builder: (context, c) {
+                    final w = c.maxWidth;
+                    final cross = w > 1280
+                        ? 4
+                        : w > 900
+                            ? 3
+                            : w > 520
+                                ? 2
+                                : 1;
+                    // Mayor ratio = tarjetas más bajas (más compactas).
+                    final ratio = w > 1000 ? 1.72 : (w > 560 ? 1.48 : 1.28);
+                    return GridView.builder(
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: cross,
+                        mainAxisSpacing: 10,
+                        crossAxisSpacing: 10,
+                        childAspectRatio: ratio,
+                      ),
+                      itemCount: _categories.length,
+                      itemBuilder: (context, index) {
+                        final cat = _categories[index];
+                        final pid = cat['parent_id']?.toString();
+                        Map<String, dynamic>? parent;
+                        if (pid != null) {
+                          for (final x in _categories) {
+                            if (x['id'].toString() == pid) {
+                              parent = x;
+                              break;
+                            }
+                          }
                         }
-                      }
-                    }
-                    final specOn = c['spec_template_enabled'] == true;
-                    final rawL = c['spec_field_labels'];
-                    var specHint = '';
-                    if (specOn && rawL is List && rawL.isNotEmpty) {
-                      final names = rawL.map((e) => e.toString()).take(3).join(', ');
-                      final gt = c['spec_group_title']?.toString().trim();
-                      final block = (gt != null && gt.isNotEmpty) ? gt : 'Campos extra';
-                      specHint = ' · $block: $names${rawL.length > 3 ? '…' : ''}';
-                    }
-                    final subline = parent != null
-                        ? 'slug: ${c['slug']} · ${parent['name']} › ${c['name']}$specHint'
-                        : 'slug: ${c['slug']} · Categoría principal$specHint';
-                    return ListTile(
-                      leading: _CategoryPreview(
-                        logoUrl: c['icon']?.toString(),
-                        bannerUrl: c['image_url']?.toString(),
-                      ),
-                      title: Text(c['name'].toString()),
-                      subtitle: Text(subline),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            onPressed: () => _openCategoryDialog(existing: c),
-                            icon: const Icon(Icons.edit_outlined),
+                        final specOn = cat['spec_template_enabled'] == true;
+                        final rawL = cat['spec_field_labels'];
+                        var specHint = '';
+                        if (specOn && rawL is List && rawL.isNotEmpty) {
+                          final names = rawL.map((e) => e.toString()).take(2).join(', ');
+                          final gt = cat['spec_group_title']?.toString().trim();
+                          final block = (gt != null && gt.isNotEmpty) ? gt : 'Campos extra';
+                          specHint = '$block: $names${rawL.length > 2 ? '…' : ''}';
+                        }
+                        final slugLine = 'slug: ${cat['slug']}';
+                        final treeLine = parent != null
+                            ? '${parent['name']} › ${cat['name']}'
+                            : 'Categoría principal';
+                        return Card(
+                          clipBehavior: Clip.antiAlias,
+                          child: InkWell(
+                            onTap: () => _openCategoryDialog(existing: cat),
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(10, 8, 8, 10),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      _CategoryPreview(
+                                        logoUrl: cat['icon']?.toString(),
+                                        bannerUrl: cat['image_url']?.toString(),
+                                      ),
+                                      const Spacer(),
+                                      IconButton(
+                                        tooltip: 'Editar',
+                                        visualDensity: VisualDensity.compact,
+                                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                        padding: EdgeInsets.zero,
+                                        onPressed: () => _openCategoryDialog(existing: cat),
+                                        icon: const Icon(Icons.edit_outlined, size: 18),
+                                      ),
+                                      IconButton(
+                                        tooltip: 'Eliminar',
+                                        visualDensity: VisualDensity.compact,
+                                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                        padding: EdgeInsets.zero,
+                                        onPressed: () => _deleteCategory(cat),
+                                        icon: Icon(Icons.delete_outline, color: scheme.error, size: 18),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    cat['name'].toString(),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    slugLine,
+                                    style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    treeLine,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+                                  ),
+                                  if (specHint.isNotEmpty) ...[
+                                    const SizedBox(height: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: scheme.primary.withValues(alpha: 0.08),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        specHint,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(fontSize: 10, color: scheme.onSurfaceVariant),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
                           ),
-                          IconButton(
-                            onPressed: () => _deleteCategory(c),
-                            icon: const Icon(Icons.delete_outline, color: Colors.red),
-                          ),
-                        ],
-                      ),
+                        );
+                      },
                     );
                   },
                 ),
@@ -603,18 +699,20 @@ class _CategoryPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final hasLogo = logoUrl != null && logoUrl!.isNotEmpty;
     final hasBanner = bannerUrl != null && bannerUrl!.isNotEmpty;
+    final bg = scheme.surfaceContainerHighest.withValues(alpha: 0.9);
     return SizedBox(
-      width: 84,
+      width: 72,
       child: Row(
         children: [
           Container(
-            width: 32,
-            height: 32,
+            width: 28,
+            height: 28,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(6),
-              color: Colors.grey.shade200,
+              color: bg,
             ),
             clipBehavior: Clip.antiAlias,
             child: hasLogo
@@ -622,17 +720,17 @@ class _CategoryPreview extends StatelessWidget {
                     evetaImageDeliveryUrl(logoUrl!, EvetaImageDelivery.thumb),
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) =>
-                        const Icon(Icons.image_not_supported, size: 16),
+                        Icon(Icons.image_not_supported, size: 14, color: scheme.onSurfaceVariant),
                   )
-                : const Icon(Icons.image_outlined, size: 16),
+                : Icon(Icons.image_outlined, size: 14, color: scheme.onSurfaceVariant),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 4),
           Container(
-            width: 42,
-            height: 32,
+            width: 36,
+            height: 28,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(6),
-              color: Colors.grey.shade200,
+              color: bg,
             ),
             clipBehavior: Clip.antiAlias,
             child: hasBanner
@@ -640,9 +738,9 @@ class _CategoryPreview extends StatelessWidget {
                     evetaImageDeliveryUrl(bannerUrl!, EvetaImageDelivery.thumb),
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) =>
-                        const Icon(Icons.photo_outlined, size: 16),
+                        Icon(Icons.photo_outlined, size: 14, color: scheme.onSurfaceVariant),
                   )
-                : const Icon(Icons.photo_outlined, size: 16),
+                : Icon(Icons.photo_outlined, size: 14, color: scheme.onSurfaceVariant),
           ),
         ],
       ),

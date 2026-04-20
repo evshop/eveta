@@ -9,6 +9,7 @@ import '../models/product_form_data.dart';
 import '../services/cloudinary_service.dart';
 import '../utils/cloudinary_image_url.dart';
 import '../services/products_service.dart';
+import '../theme/admin_theme.dart';
 
 final ImagePicker _imagePicker = ImagePicker();
 
@@ -857,73 +858,161 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     if (_loading) return const Center(child: CircularProgressIndicator());
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Align(
           alignment: Alignment.centerRight,
           child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AdminTokens.radiusSm)),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            ),
             onPressed: () => _openForm(),
-            icon: const Icon(Icons.add),
+            icon: const Icon(Icons.add_rounded),
             label: const Text('Subir producto'),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
         Expanded(
           child: _products.isEmpty
-              ? const Center(child: Text('No hay productos cargados.'))
-              : ListView.separated(
-                  itemCount: _products.length,
-                  separatorBuilder: (_, index) => const Divider(height: 1),
-                  itemBuilder: (context, index) {
-                    final p = _products[index];
-                    final catLine = _productListCategorySubtitle(p);
-                    final thumbUrl = _firstProductImageUrl(p);
-                    final active = p['is_active'] == true;
-                    return ListTile(
-                      leading: _ProductListThumbnail(imageUrl: thumbUrl),
-                      title: Row(
-                        children: [
-                          Expanded(child: Text(p['name']?.toString() ?? 'Sin nombre')),
-                          if (!active)
-                            Container(
-                              margin: const EdgeInsets.only(left: 8),
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.orange.shade50,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: Colors.orange.shade200),
-                              ),
-                              child: Text(
-                                'Inactivo',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.orange.shade800,
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.inventory_2_outlined, size: 48, color: scheme.onSurfaceVariant),
+                      const SizedBox(height: 12),
+                      Text(
+                        'No hay productos cargados.',
+                        style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 15),
+                      ),
+                    ],
+                  ),
+                )
+              : LayoutBuilder(
+                  builder: (context, c) {
+                    final w = c.maxWidth;
+                    final cross = w > 1300
+                        ? 4
+                        : w > 960
+                            ? 3
+                            : w > 520
+                                ? 2
+                                : 1;
+                    // Ratio ancho/alto: valores ~1.0–1.12 = tarjetas más bajas que con ~0.9.
+                    final ratio = w > 900 ? 1.06 : 0.96;
+                    return GridView.builder(
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: cross,
+                        mainAxisSpacing: 10,
+                        crossAxisSpacing: 10,
+                        childAspectRatio: ratio,
+                      ),
+                      itemCount: _products.length,
+                      itemBuilder: (context, index) {
+                        final p = _products[index];
+                        final catLine = _productListCategorySubtitle(p);
+                        final thumbUrl = _firstProductImageUrl(p);
+                        final active = p['is_active'] == true;
+                        return Card(
+                          clipBehavior: Clip.antiAlias,
+                          child: InkWell(
+                            onTap: () => _openForm(existing: p),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                AspectRatio(
+                                  // Más ancho que alto → miniatura menos alta.
+                                  aspectRatio: 1.75,
+                                  child: _ProductGridThumb(imageUrl: thumbUrl),
                                 ),
-                              ),
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              p['name']?.toString() ?? 'Sin nombre',
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                                            ),
+                                          ),
+                                          if (!active)
+                                            Container(
+                                              margin: const EdgeInsets.only(left: 6),
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFFF9800).withValues(alpha: 0.18),
+                                                borderRadius: BorderRadius.circular(6),
+                                              ),
+                                              child: Text(
+                                                'Inactivo',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: isDark ? Colors.orange.shade200 : Colors.orange.shade900,
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        catLine,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Bs ${p['price']} · Stock ${p['stock']}',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          color: scheme.primary,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Divider(height: 1),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    IconButton(
+                                      tooltip: 'Editar',
+                                      visualDensity: VisualDensity.compact,
+                                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                      padding: EdgeInsets.zero,
+                                      onPressed: () => _openForm(existing: p),
+                                      icon: const Icon(Icons.edit_outlined, size: 18),
+                                    ),
+                                    IconButton(
+                                      tooltip: 'Eliminar',
+                                      visualDensity: VisualDensity.compact,
+                                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                      padding: EdgeInsets.zero,
+                                      onPressed: () async {
+                                        await ProductsService.deleteProduct(p['id'].toString());
+                                        await _refresh();
+                                      },
+                                      icon: Icon(Icons.delete_outline, color: scheme.error, size: 18),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
-                        ],
-                      ),
-                      subtitle: Text(
-                        '$catLine | Bs ${p['price']} | Stock: ${p['stock']}',
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            onPressed: () => _openForm(existing: p),
-                            icon: const Icon(Icons.edit_outlined),
                           ),
-                          IconButton(
-                            onPressed: () async {
-                              await ProductsService.deleteProduct(p['id'].toString());
-                              await _refresh();
-                            },
-                            icon: const Icon(Icons.delete_outline, color: Colors.red),
-                          ),
-                        ],
-                      ),
+                        );
+                      },
                     );
                   },
                 ),
@@ -933,39 +1022,28 @@ class _ProductsScreenState extends State<ProductsScreen> {
   }
 }
 
-/// Miniatura alineada con la tienda: primera URL de `images`, recorte tipo card (`cover`).
-class _ProductListThumbnail extends StatelessWidget {
-  const _ProductListThumbnail({required this.imageUrl});
+/// Miniatura para grid de productos.
+class _ProductGridThumb extends StatelessWidget {
+  const _ProductGridThumb({required this.imageUrl});
 
   final String? imageUrl;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final url = imageUrl?.trim();
     if (url == null || url.isEmpty) {
-      return Container(
-        width: 56,
-        height: 56,
-        decoration: BoxDecoration(
-          color: Colors.grey.shade200,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(Icons.image_outlined, size: 28, color: Colors.grey.shade500),
+      return ColoredBox(
+        color: scheme.surfaceContainerHighest,
+        child: Icon(Icons.image_outlined, size: 40, color: scheme.onSurfaceVariant),
       );
     }
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: Image.network(
-        evetaImageDeliveryUrl(url, EvetaImageDelivery.thumb),
-        width: 56,
-        height: 56,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => Container(
-          width: 56,
-          height: 56,
-          color: Colors.grey.shade200,
-          child: Icon(Icons.broken_image_outlined, color: Colors.grey.shade500),
-        ),
+    return Image.network(
+      evetaImageDeliveryUrl(url, EvetaImageDelivery.card),
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => ColoredBox(
+        color: scheme.surfaceContainerHighest,
+        child: Icon(Icons.broken_image_outlined, color: scheme.onSurfaceVariant),
       ),
     );
   }
