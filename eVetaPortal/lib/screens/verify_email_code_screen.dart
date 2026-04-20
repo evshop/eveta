@@ -1,11 +1,10 @@
-import 'dart:ui';
-
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:pinput/pinput.dart';
 
 import 'package:eveta_portal/services/portal_email_otp_service.dart';
+import 'package:eveta_portal/widgets/portal/portal_auth_flow.dart';
 import 'package:eveta_portal/widgets/portal/portal_notice.dart';
+import 'package:eveta_portal/widgets/portal_auth_logo.dart';
 
 import 'reset_password_otp_screen.dart';
 
@@ -83,10 +82,14 @@ class _VerifyEmailCodeScreenState extends State<VerifyEmailCodeScreen> with Tick
       );
       if (!mounted) return;
       await Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(
-          builder: (_) => ResetPasswordOtpScreen(
-            email: widget.email,
-            resetToken: resetToken,
+        PageRouteBuilder<void>(
+          transitionDuration: const Duration(milliseconds: 320),
+          pageBuilder: (_, a, _) => FadeTransition(
+            opacity: a,
+            child: ResetPasswordOtpScreen(
+              email: widget.email,
+              resetToken: resetToken,
+            ),
           ),
         ),
       );
@@ -157,137 +160,110 @@ class _VerifyEmailCodeScreenState extends State<VerifyEmailCodeScreen> with Tick
     );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Verificar codigo')),
-      body: SafeArea(
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: isDark
-                        ? [const Color(0xFF111318), const Color(0xFF171A20), const Color(0xFF1B2028)]
-                        : [const Color(0xFFF7F8FA), const Color(0xFFFFFFFF), const Color(0xFFF3F5F8)],
-                  ),
-                ),
-              ),
-            ),
-            Positioned.fill(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
-                child: const SizedBox(),
-              ),
-            ),
-            FadeTransition(
-              opacity: _fade,
-              child: SlideTransition(
-                position: _slide,
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const SizedBox(height: 8),
-                      Text(
-                        'Codigo de verificacion',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        'Ingresa los 6 digitos que enviamos a ${widget.email}',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              color: scheme.onSurface.withValues(alpha: 0.75),
-                            ),
-                      ),
-                      const SizedBox(height: 26),
-                      AnimatedBuilder(
-                        animation: _shakeController,
-                        builder: (context, child) {
-                          return Transform.translate(
-                            offset: Offset(_shake.value, 0),
-                            child: child,
-                          );
-                        },
-                        child: Pinput(
-                          controller: _pinController,
-                          focusNode: _pinFocusNode,
-                          length: 6,
-                          defaultPinTheme: pinTheme,
-                          focusedPinTheme: focusedPinTheme,
-                          submittedPinTheme: submittedPinTheme,
-                          keyboardType: TextInputType.number,
-                          autofocus: true,
-                          pinputAutovalidateMode: PinputAutovalidateMode.onSubmit,
-                          onCompleted: (_) => _verifyCode(),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 220),
-                        child: _error == null
-                            ? const SizedBox(height: 20)
-                            : Text(
-                                _error!,
-                                key: ValueKey(_error),
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Colors.red.shade300,
-                                  fontWeight: FontWeight.w600,
+      appBar: AppBar(
+        title: const Text('Verificar codigo'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+      ),
+      extendBodyBehindAppBar: true,
+      body: PortalAuthFlowBackground(
+        child: SafeArea(
+          child: FadeTransition(
+            opacity: _fade,
+            child: SlideTransition(
+              position: _slide,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const SizedBox(height: 8),
+                          const PortalAuthLogo(size: 72),
+                          const SizedBox(height: 20),
+                          Text(
+                            'Codigo de verificacion',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
                                 ),
-                              ),
-                      ),
-                      const Spacer(),
-                      Container(
-                        height: 54,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF17C17A), Color(0xFF0EA866)],
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFF10B86F).withValues(alpha: 0.28),
-                              blurRadius: 14,
-                              offset: const Offset(0, 6),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Ingresa los 6 digitos que enviamos a ${widget.email}',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                  color: scheme.onSurface.withValues(alpha: 0.75),
+                                ),
+                          ),
+                          const SizedBox(height: 26),
+                          AnimatedBuilder(
+                            animation: _shakeController,
+                            builder: (context, child) {
+                              return Transform.translate(
+                                offset: Offset(_shake.value, 0),
+                                child: child,
+                              );
+                            },
+                            child: Pinput(
+                              controller: _pinController,
+                              focusNode: _pinFocusNode,
+                              length: 6,
+                              defaultPinTheme: pinTheme,
+                              focusedPinTheme: focusedPinTheme,
+                              submittedPinTheme: submittedPinTheme,
+                              keyboardType: TextInputType.number,
+                              autofocus: true,
+                              pinputAutovalidateMode: PinputAutovalidateMode.onSubmit,
+                              onCompleted: (_) => _verifyCode(),
                             ),
-                          ],
-                        ),
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.transparent,
-                            shadowColor: Colors.transparent,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                           ),
+                          const SizedBox(height: 16),
+                          if (_error != null) portalAuthErrorBanner(context, _error!),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        PortalAuthGradientButton(
                           onPressed: _loading ? null : _verifyCode,
-                          child: _loading
-                              ? const CupertinoActivityIndicator(color: Colors.white)
-                              : const Text(
-                                  'Verificar',
+                          loading: _loading,
+                          label: 'Verificar',
+                        ),
+                        const SizedBox(height: 6),
+                        TextButton(
+                          onPressed: _resending ? null : _resend,
+                          child: _resending
+                              ? Text(
+                                  'Reenviando...',
                                   style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 17,
-                                    fontWeight: FontWeight.w700,
+                                    color: scheme.primary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                )
+                              : Text(
+                                  'Reenviar codigo',
+                                  style: TextStyle(
+                                    color: scheme.primary,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextButton(
-                        onPressed: _resending ? null : _resend,
-                        child: _resending ? const Text('Reenviando...') : const Text('Reenviar codigo'),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
+                ],
               ),
             ),
-          ],
+          ),
         ),
       ),
     );

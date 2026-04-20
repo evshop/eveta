@@ -29,6 +29,16 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
   String? _email;
   String? _shopId;
 
+  String _cacheBustImageUrl(String url) {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return trimmed;
+    final uri = Uri.tryParse(trimmed);
+    if (uri == null) return '$trimmed?v=${DateTime.now().millisecondsSinceEpoch}';
+    final qp = Map<String, String>.from(uri.queryParameters)
+      ..['v'] = DateTime.now().millisecondsSinceEpoch.toString();
+    return uri.replace(queryParameters: qp).toString();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -51,13 +61,26 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
       _email = user.email;
       _shopId = user.id;
 
-      final row = await Supabase.instance.client
-          .from('profiles')
-          .select(
-            'id, shop_name, shop_description, shop_logo_url, shop_banner_url',
-          )
-          .eq('id', user.id)
-          .maybeSingle();
+      Map<String, dynamic>? row;
+      try {
+        row = await Supabase.instance.client
+            .from('profiles')
+            .select(
+              'id, shop_name, shop_description, shop_logo_url, shop_banner_url, avatar_url',
+            )
+            .eq('id', user.id)
+            .maybeSingle();
+      } catch (e) {
+        if (e.toString().toLowerCase().contains('shop_banner_url')) {
+          row = await Supabase.instance.client
+              .from('profiles')
+              .select('id, shop_name, shop_description, shop_logo_url, avatar_url')
+              .eq('id', user.id)
+              .maybeSingle();
+        } else {
+          rethrow;
+        }
+      }
 
       if (!mounted) return;
       if (row == null) {
@@ -67,8 +90,11 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
 
       _nameCtrl.text = row['shop_name']?.toString().trim() ?? '';
       _descCtrl.text = row['shop_description']?.toString().trim() ?? '';
-      _logoUrl = row['shop_logo_url']?.toString();
-      _bannerUrl = row['shop_banner_url']?.toString();
+      final legacyAvatar = row['avatar_url']?.toString().trim();
+      final logo = row['shop_logo_url']?.toString().trim();
+      final banner = row['shop_banner_url']?.toString().trim();
+      _logoUrl = (logo == null || logo.isEmpty) ? legacyAvatar : logo;
+      _bannerUrl = (banner == null || banner.isEmpty) ? legacyAvatar : banner;
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -113,12 +139,13 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
           ? 'eveta/portal_store/logo/${_shopId ?? 'unknown'}'
           : 'eveta/portal_store/banner/${_shopId ?? 'unknown'}';
 
-      final url = await CloudinaryService.uploadImage(
+      final rawUrl = await CloudinaryService.uploadImage(
         bytes: cropped,
         fileName: fileName,
         folder: folder,
         publicId: isLogo ? 'logo_${_shopId ?? 'unknown'}' : 'banner_${_shopId ?? 'unknown'}',
       );
+      final url = _cacheBustImageUrl(rawUrl);
 
       if (!mounted) return;
       setState(() {
@@ -162,17 +189,39 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
 
     setState(() => _saving = true);
     try {
-      final updated = await Supabase.instance.client
-          .from('profiles')
-          .update({
-            'shop_name': name,
-            'shop_description': _descCtrl.text.trim(),
-            'shop_logo_url': _logoUrl,
-            'shop_banner_url': _bannerUrl,
-            'is_seller': true,
-          })
-          .eq('id', user.id)
-          .select('id');
+      List<dynamic> updated;
+      try {
+        updated = await Supabase.instance.client
+            .from('profiles')
+            .upsert({
+              'id': user.id,
+              'email': user.email,
+              'shop_name': name,
+              'shop_description': _descCtrl.text.trim(),
+              'shop_logo_url': _logoUrl,
+              'shop_banner_url': _bannerUrl,
+              'is_seller': true,
+            }, onConflict: 'id')
+            .select('id');
+      } catch (e) {
+        if (e.toString().toLowerCase().contains('shop_banner_url')) {
+          updated = await Supabase.instance.client
+              .from('profiles')
+              .upsert({
+                'id': user.id,
+                'email': user.email,
+                'shop_name': name,
+                'shop_description': _descCtrl.text.trim(),
+                'shop_logo_url': _logoUrl,
+                // Fallback legacy: usar avatar_url si aún no existe shop_banner_url.
+                'avatar_url': _bannerUrl,
+                'is_seller': true,
+              }, onConflict: 'id')
+              .select('id');
+        } else {
+          rethrow;
+        }
+      }
 
       if (!mounted) return;
       if (updated.isEmpty) {

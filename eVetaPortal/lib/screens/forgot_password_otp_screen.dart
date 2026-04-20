@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import 'package:eveta_portal/services/portal_email_otp_service.dart';
+import 'package:eveta_portal/widgets/portal/portal_auth_flow.dart';
 import 'package:eveta_portal/widgets/portal/portal_notice.dart';
+import 'package:eveta_portal/widgets/portal_auth_logo.dart';
 
 import 'verify_email_code_screen.dart';
 
@@ -77,85 +79,81 @@ class _ForgotPasswordOtpScreenState extends State<ForgotPasswordOtpScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Recuperar acceso'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      extendBodyBehindAppBar: true,
+      body: PortalAuthFlowBackground(
+        child: SafeArea(
           child: FadeTransition(
             opacity: _fade,
             child: SlideTransition(
               position: _slide,
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const SizedBox(height: 8),
-                    Icon(Icons.mark_email_read_outlined, color: scheme.primary, size: 34),
-                    const SizedBox(height: 10),
-                    Text(
-                      'Te enviaremos un codigo de 6 digitos',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Ingresa el correo de tu cuenta Portal para verificar primero que exista.',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: scheme.onSurface.withValues(alpha: 0.72),
-                          ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 22),
-                    if (_error != null) ...[
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: scheme.error.withValues(alpha: 0.14),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Text(
-                          _error!,
-                          style: TextStyle(color: scheme.error, fontWeight: FontWeight.w600),
-                        ),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SizedBox(height: 8),
+                      const PortalAuthLogo(size: 72),
+                      const SizedBox(height: 20),
+                      Text(
+                        'Te enviaremos un codigo de 6 digitos',
+                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                        textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Ingresa el correo de tu cuenta Portal para verificar primero que exista.',
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                              color: scheme.onSurface.withValues(alpha: 0.75),
+                            ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 24),
+                      if (_error != null) ...[
+                        portalAuthErrorBanner(context, _error!),
+                        const SizedBox(height: 16),
+                      ],
+                      TextFormField(
+                        controller: _emailCtrl,
+                        keyboardType: TextInputType.emailAddress,
+                        textInputAction: TextInputAction.done,
+                        autofillHints: const [AutofillHints.email],
+                        onFieldSubmitted: (_) => _sendCode(),
+                        style: TextStyle(
+                          color: scheme.onSurface,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        decoration: InputDecoration(
+                          labelText: 'Correo electronico',
+                          hintText: 'tu@correo.com',
+                          prefixIcon: Icon(
+                            Icons.mail_outline_rounded,
+                            color: scheme.onSurface.withValues(alpha: 0.45),
+                          ),
+                        ),
+                        validator: (v) {
+                          final value = v?.trim() ?? '';
+                          if (value.isEmpty) return 'Ingresa un correo';
+                          if (!value.contains('@')) return 'Correo no valido';
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 28),
+                      PortalAuthGradientButton(
+                        onPressed: _loading ? null : _sendCode,
+                        loading: _loading,
+                        label: 'Enviar codigo',
+                      ),
                     ],
-                    TextFormField(
-                      controller: _emailCtrl,
-                      keyboardType: TextInputType.emailAddress,
-                      textInputAction: TextInputAction.done,
-                      onFieldSubmitted: (_) => _sendCode(),
-                      decoration: const InputDecoration(
-                        labelText: 'Correo',
-                        hintText: 'tu@correo.com',
-                        prefixIcon: Icon(Icons.alternate_email_rounded),
-                      ),
-                      validator: (v) {
-                        final value = v?.trim() ?? '';
-                        if (value.isEmpty) return 'Ingresa un correo';
-                        if (!value.contains('@')) return 'Correo no valido';
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 18),
-                    ElevatedButton(
-                      onPressed: _loading ? null : _sendCode,
-                      child: _loading
-                          ? SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: scheme.onPrimary,
-                              ),
-                            )
-                          : const Text('Enviar codigo'),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),

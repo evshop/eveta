@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:eveta/auth/auth_error_messages.dart';
 import 'package:eveta/auth/auth_routes.dart';
 import 'package:eveta/auth/auth_validators.dart';
 import 'package:eveta/auth/widgets/auth_animated_email_phone_field.dart';
+import 'package:eveta/auth/widgets/auth_flow_shell.dart';
 import 'package:eveta/auth/widgets/auth_identifier_mode_switch.dart';
-import 'package:eveta/auth/widgets/auth_primary_button.dart';
+import 'package:eveta/auth/widgets/auth_login_logo.dart';
 import 'package:eveta/screens/verify_code_screen.dart';
 import 'package:eveta/utils/auth_service.dart';
 
@@ -15,7 +17,8 @@ class ForgotPasswordScreen extends StatefulWidget {
   State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
 }
 
-class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
+class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
+    with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _email = TextEditingController();
   final _phone8 = TextEditingController();
@@ -23,8 +26,24 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   bool _usePhone = false;
   String? _error;
 
+  late final AnimationController _anim;
+  late final Animation<double> _fade;
+  late final Animation<Offset> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+    _anim = AnimationController(vsync: this, duration: const Duration(milliseconds: 620));
+    _fade = CurvedAnimation(parent: _anim, curve: Curves.easeOutCubic);
+    _slide = Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero).animate(
+      CurvedAnimation(parent: _anim, curve: Curves.easeOutCubic),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) => _anim.forward());
+  }
+
   @override
   void dispose() {
+    _anim.dispose();
     _email.dispose();
     _phone8.dispose();
     super.dispose();
@@ -57,7 +76,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       } else {
         final err = AuthValidators.boliviaEightDigits(_phone8.text);
         if (err != null) {
-          setState(() => _error = err);
+          setState(() {
+            _error = err;
+            _loading = false;
+          });
           return;
         }
         final phone = AuthValidators.e164FromEightDigits(_phone8.text);
@@ -75,7 +97,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         );
       }
     } catch (e) {
-      setState(() => _error = '$e');
+      setState(() => _error = friendlyAuthError(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -90,60 +112,72 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           icon: Icon(Icons.arrow_back_ios_new_rounded, color: scheme.onSurface, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
+        title: const Text('Recuperar acceso'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-          child: Form(
-            key: _formKey,
-            child: Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.35)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text('¿Olvidaste tu contraseña?', style: Theme.of(context).textTheme.headlineLarge),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Ingresa tu correo o número de teléfono. Te enviaremos un código de 6 dígitos.',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: scheme.onSurface.withValues(alpha: 0.65),
-                        ),
-                  ),
-                  const SizedBox(height: 24),
-                  AuthIdentifierModeSwitch(
-                    phoneMode: _usePhone,
-                    onChanged: (phone) {
-                      setState(() {
-                        _usePhone = phone;
-                        _error = null;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 24),
-                  if (_error != null) ...[
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: scheme.errorContainer.withValues(alpha: 0.45),
-                        borderRadius: BorderRadius.circular(10),
+      extendBodyBehindAppBar: true,
+      body: AuthFlowBackground(
+        child: SafeArea(
+          child: FadeTransition(
+            opacity: _fade,
+            child: SlideTransition(
+              position: _slide,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SizedBox(height: 8),
+                      const AuthLoginLogo(size: 72),
+                      const SizedBox(height: 20),
+                      Text(
+                        '¿Olvidaste tu contraseña?',
+                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                        textAlign: TextAlign.center,
                       ),
-                      child: Text(_error!, style: TextStyle(color: scheme.error, fontSize: 14)),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                  AuthAnimatedEmailPhoneField(
-                    phoneMode: _usePhone,
-                    emailController: _email,
-                    phoneController: _phone8,
+                      const SizedBox(height: 10),
+                      Text(
+                        'Ingresa tu correo o número. Te enviaremos un código de 6 dígitos.',
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                              color: scheme.onSurface.withValues(alpha: 0.75),
+                            ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 24),
+                      AuthIdentifierModeSwitch(
+                        phoneMode: _usePhone,
+                        onChanged: (phone) {
+                          setState(() {
+                            _usePhone = phone;
+                            _error = null;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 20),
+                      if (_error != null) ...[
+                        authFlowErrorBanner(context, _error!),
+                        const SizedBox(height: 16),
+                      ],
+                      AuthAnimatedEmailPhoneField(
+                        phoneMode: _usePhone,
+                        emailController: _email,
+                        phoneController: _phone8,
+                      ),
+                      const SizedBox(height: 28),
+                      AuthFlowGradientButton(
+                        onPressed: _loading ? null : _send,
+                        loading: _loading,
+                        label: 'Enviar código',
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 28),
-                  AuthPrimaryButton(label: 'Enviar', onPressed: _send, loading: _loading),
-                ],
+                ),
               ),
             ),
           ),

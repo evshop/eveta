@@ -3,7 +3,6 @@ import 'package:file_picker/file_picker.dart';
 
 import '../services/cloudinary_service.dart';
 import '../services/products_service.dart';
-import '../utils/cloudinary_image_url.dart';
 import '../theme/admin_theme.dart';
 import '../widgets/category_image_crop_dialog.dart';
 
@@ -42,8 +41,8 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
   Future<void> _openCategoryDialog({Map<String, dynamic>? existing}) async {
     final parentContext = context;
     final controller = TextEditingController(text: existing?['name']?.toString() ?? '');
-    String? logoUrl = existing?['icon']?.toString();
-    String? bannerUrl = existing?['image_url']?.toString();
+    String? logoUrl = _categoryImageUrl(existing?['icon']);
+    String? bannerUrl = _categoryImageUrl(existing?['image_url']);
     bool uploading = false;
     var parentId = existing?['parent_id']?.toString();
     var specTemplateEnabled = existing?['spec_template_enabled'] == true;
@@ -258,7 +257,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(8),
                       child: Image.network(
-                        evetaImageDeliveryUrl(logoUrl!, EvetaImageDelivery.card),
+                        logoUrl!,
                         height: 56,
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
@@ -288,11 +287,12 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                             );
                             if (cropped == null) return;
                             if (!parentContext.mounted) return;
-                            logoUrl = await CloudinaryService.uploadImage(
+                            final uploaded = await CloudinaryService.uploadImage(
                               bytes: cropped,
                               fileName: 'category_logo.png',
                               folder: 'eveta/categories/logo',
                             );
+                            logoUrl = _cacheBustImageUrl(uploaded);
                             setDialogState(() {});
                           } finally {
                             setDialogState(() => uploading = false);
@@ -312,7 +312,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(8),
                       child: Image.network(
-                        evetaImageDeliveryUrl(bannerUrl!, EvetaImageDelivery.card),
+                        bannerUrl!,
                         height: 70,
                         width: double.infinity,
                         fit: BoxFit.cover,
@@ -343,11 +343,12 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                             );
                             if (cropped == null) return;
                             if (!parentContext.mounted) return;
-                            bannerUrl = await CloudinaryService.uploadImage(
+                            final uploaded = await CloudinaryService.uploadImage(
                               bytes: cropped,
                               fileName: 'category_banner.png',
                               folder: 'eveta/categories/banner',
                             );
+                            bannerUrl = _cacheBustImageUrl(uploaded);
                             setDialogState(() {});
                           } finally {
                             setDialogState(() => uploading = false);
@@ -695,6 +696,16 @@ String? _categoryImageUrl(dynamic raw) {
   return s;
 }
 
+String _cacheBustImageUrl(String raw) {
+  final s = raw.trim();
+  if (s.isEmpty) return s;
+  final uri = Uri.tryParse(s);
+  if (uri == null) return '$s?v=${DateTime.now().millisecondsSinceEpoch}';
+  final qp = Map<String, String>.from(uri.queryParameters)
+    ..['v'] = DateTime.now().millisecondsSinceEpoch.toString();
+  return uri.replace(queryParameters: qp).toString();
+}
+
 class _CategoryPreview extends StatelessWidget {
   const _CategoryPreview({
     required this.logoUrl,
@@ -707,7 +718,7 @@ class _CategoryPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final logo = _categoryImageUrl(logoUrl);
+    final logo = _categoryImageUrl(logoUrl) ?? _categoryImageUrl(bannerUrl);
     final banner = _categoryImageUrl(bannerUrl);
     final hasLogo = logo != null && logo.isNotEmpty;
     final hasBanner = banner != null && banner.isNotEmpty;
@@ -737,7 +748,7 @@ class _CategoryPreview extends StatelessWidget {
             ),
             clipBehavior: Clip.antiAlias,
             child: hasLogo
-                ? thumb(logo!)
+                ? thumb(logo)
                 : Icon(Icons.image_outlined, size: 14, color: scheme.onSurfaceVariant),
           ),
           const SizedBox(width: 4),
@@ -750,7 +761,7 @@ class _CategoryPreview extends StatelessWidget {
             ),
             clipBehavior: Clip.antiAlias,
             child: hasBanner
-                ? thumb(banner!)
+                ? thumb(banner)
                 : Icon(Icons.photo_outlined, size: 14, color: scheme.onSurfaceVariant),
           ),
         ],
