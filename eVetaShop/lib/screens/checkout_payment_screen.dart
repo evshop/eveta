@@ -5,6 +5,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import 'package:eveta/screens/my_orders_screen.dart';
 import 'package:eveta/theme/eveta_shop_theme.dart';
+import 'package:eveta/utils/order_service.dart';
 
 /// Pago único por QR tras confirmar el pedido; luego pantalla de éxito y acceso a pedidos.
 class CheckoutPaymentScreen extends StatefulWidget {
@@ -54,7 +55,9 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> with Sing
     return jsonEncode(map);
   }
 
-  void _onMarkPaid() {
+  Future<void> _onMarkPaid() async {
+    await OrderService.issueTicketsForOrders(widget.orderIds);
+    if (!mounted) return;
     setState(() => _paymentDone = true);
     _celebrateCtrl.forward(from: 0);
   }
@@ -108,7 +111,7 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> with Sing
                 orderCount: widget.orderIds.length,
                 scheme: scheme,
                 tt: tt,
-                onPaid: _onMarkPaid,
+                onPaid: () => _onMarkPaid(),
               ),
       ),
     );

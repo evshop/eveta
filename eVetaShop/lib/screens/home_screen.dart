@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:eveta/common_widget/product_card_skeleton.dart';
 import 'package:eveta/common_widget/promo_carousel_widget.dart';
 import 'package:eveta/screens/location_onboarding_screen.dart';
+import 'package:eveta/screens/events_screen.dart';
 import 'package:eveta/screens/category_products_screen.dart';
 import 'package:eveta/screens/search_screen.dart';
 import 'package:eveta/screens/seller_store_screen.dart';
@@ -21,6 +22,7 @@ import 'package:eveta/ui/shop/premium/eveta_new_arrival_card.dart';
 import 'package:eveta/ui/shop/premium/horizontal_new_arrivals_list.dart';
 import 'package:eveta/ui/shop/sticky_category_header.dart';
 import 'package:eveta/utils/delivery_location_prefs.dart';
+import 'package:eveta/utils/feature_flags.dart';
 import 'package:eveta/utils/catalog_cache_service.dart';
 import 'package:eveta/utils/supabase_service.dart';
 import 'package:eveta/ui/shop/product_map_ui.dart';
@@ -96,7 +98,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      setState(() => _homeFuture = _load());
+      setState(() {
+        _homeFuture = _load();
+      });
       _refreshLocationLine();
     }
   }
@@ -591,6 +595,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       child: const PromoCarouselWidget(),
                     ),
                   ),
+                  if (FeatureFlags.eventsModuleEnabled)
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          EvetaShopDimens.spaceLg,
+                          EvetaShopDimens.spaceMd,
+                          EvetaShopDimens.spaceLg,
+                          0,
+                        ),
+                        child: Card(
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            leading: CircleAvatar(
+                              backgroundColor: scheme.primary.withValues(alpha: 0.14),
+                              child: Icon(Icons.confirmation_number_outlined, color: scheme.primary),
+                            ),
+                            title: const Text(
+                              'Eventos',
+                              style: TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                            subtitle: const Text('Entradas digitales con QR disponibles'),
+                            trailing: const Icon(Icons.chevron_right_rounded),
+                            onTap: () {
+                              Navigator.push<void>(
+                                context,
+                                MaterialPageRoute<void>(builder: (_) => const EventsScreen()),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
                   if (topCats.isNotEmpty) ...[
                     SliverToBoxAdapter(
                       child: EvetaSectionHeader(

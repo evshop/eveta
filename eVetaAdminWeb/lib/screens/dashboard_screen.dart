@@ -159,57 +159,85 @@ class _MetricCardState extends State<_MetricCard> {
     }
   }
 
+  Color _softTone(String t, ColorScheme scheme) {
+    switch (t) {
+      case 'Pedidos':
+        return const Color(0xFFFDA4AF);
+      case 'Categorías':
+        return const Color(0xFF93C5FD);
+      case 'Tiendas':
+        return const Color(0xFF86EFAC);
+      default:
+        return scheme.primary;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final tone = _softTone(widget.title, scheme);
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: AnimatedSlide(
-        duration: const Duration(milliseconds: 200),
+        duration: const Duration(milliseconds: 240),
         curve: Curves.easeOutCubic,
         offset: Offset(0, _hover ? -0.01 : 0),
-        child: Card(
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: () {},
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(AdminTokens.radiusSm),
-                          color: scheme.primary.withValues(alpha: 0.12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeOutCubic,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AdminTokens.radiusMd),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF0B1736).withValues(alpha: _hover ? 0.1 : 0.05),
+                blurRadius: _hover ? 24 : 16,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Card(
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () {},
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(AdminTokens.radiusSm),
+                            color: tone.withValues(alpha: 0.18),
+                          ),
+                          child: Icon(_iconFor(widget.title), color: tone, size: 22),
                         ),
-                        child: Icon(_iconFor(widget.title), color: scheme.primary, size: 22),
-                      ),
-                      const Spacer(),
-                      Text(
-                        '${widget.value}',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.8,
-                          color: scheme.onSurface,
+                        const Spacer(),
+                        Text(
+                          '${widget.value}',
+                          style: TextStyle(
+                            fontSize: 30,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.9,
+                            color: scheme.onSurface,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const Spacer(),
-                  Text(
-                    widget.title,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                      color: scheme.onSurfaceVariant,
+                      ],
                     ),
-                  ),
-                ],
+                    const Spacer(),
+                    Text(
+                      widget.title,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

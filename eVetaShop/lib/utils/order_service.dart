@@ -158,4 +158,17 @@ class OrderService {
         .order('created_at', ascending: false);
     return List<Map<String, dynamic>>.from(rows as List);
   }
+
+  static Future<void> issueTicketsForOrders(List<String> orderIds) async {
+    if (orderIds.isEmpty) return;
+    for (final orderId in orderIds) {
+      try {
+        await _client.rpc('issue_tickets_on_order_paid', params: {
+          'p_order_id': orderId,
+        });
+      } catch (e) {
+        debugPrint('No se pudieron emitir tickets para orden $orderId: $e');
+      }
+    }
+  }
 }

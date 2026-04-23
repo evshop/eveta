@@ -6,6 +6,8 @@ import '../services/auth_service.dart';
 import '../theme/admin_theme.dart';
 import 'categories_screen.dart';
 import 'dashboard_screen.dart';
+import 'event_dashboard_screen.dart';
+import 'events_screen.dart';
 import 'home_promotion_banners_screen.dart';
 import 'stores_hub_screen.dart';
 import 'products_screen.dart';
@@ -28,6 +30,8 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
     'Subir productos',
     'Tiendas',
     'Pedidos',
+    'Gestión de Eventos',
+    'Dashboard Evento',
   ];
 
   static const _subtitles = [
@@ -37,6 +41,8 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
     'Catálogo de tu tienda oficial',
     'Tiendas verificadas y accesos',
     'Próximamente',
+    'CRUD de eventos, entradas y beneficios',
+    'Métricas de acceso y canjes por evento',
   ];
 
   List<Widget> get _sections => const [
@@ -46,6 +52,8 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
         ProductsScreen(),
         StoresHubScreen(),
         _OrdersPlaceholder(),
+        EventsScreen(),
+        EventDashboardScreen(),
       ];
 
   int _bottomNavSelected() {
@@ -131,6 +139,24 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
                 onTap: () {
                   Navigator.pop(ctx);
                   setState(() => _index = 5);
+                },
+              ),
+              _MoreTile(
+                icon: Icons.event_rounded,
+                label: 'Gestión de Eventos',
+                selected: _index == 6,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  setState(() => _index = 6);
+                },
+              ),
+              _MoreTile(
+                icon: Icons.insights_rounded,
+                label: 'Dashboard Evento',
+                selected: _index == 7,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  setState(() => _index = 7);
                 },
               ),
             ],
@@ -327,6 +353,8 @@ class _AdminDrawer extends StatelessWidget {
       (Icons.shopping_basket_rounded, 'Subir productos', 3),
       (Icons.storefront_rounded, 'Tiendas', 4),
       (Icons.receipt_long_rounded, 'Pedidos', 5),
+      (Icons.event_rounded, 'Gestión de Eventos', 6),
+      (Icons.insights_rounded, 'Dashboard Evento', 7),
     ];
     return Drawer(
       backgroundColor: scheme.surfaceContainerHighest,
@@ -400,6 +428,7 @@ class _DesktopShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       backgroundColor: scheme.surface,
       body: Row(
@@ -412,13 +441,20 @@ class _DesktopShell extends StatelessWidget {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 20, 24, 24),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                  color: scheme.surfaceContainerHighest.withValues(
-                    alpha: Theme.of(context).brightness == Brightness.dark ? 0.45 : 0.65,
-                  ),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.46 : 0.82),
                   borderRadius: BorderRadius.circular(AdminTokens.radiusLg),
-                  border: Border.all(color: scheme.outline.withValues(alpha: 0.12)),
+                  border: Border.all(color: scheme.outline.withValues(alpha: 0.08)),
+                  boxShadow: isDark
+                      ? null
+                      : [
+                          BoxShadow(
+                            color: const Color(0xFF0B1736).withValues(alpha: 0.05),
+                            blurRadius: 24,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(AdminTokens.radiusLg),
@@ -455,6 +491,19 @@ class _DesktopShell extends StatelessWidget {
                                 ],
                               ),
                             ),
+                            SizedBox(
+                              width: 260,
+                              child: TextField(
+                                decoration: InputDecoration(
+                                  hintText: 'Buscar en admin...',
+                                  isDense: true,
+                                  prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                                  filled: true,
+                                  fillColor: Colors.white.withValues(alpha: isDark ? 0.06 : 1),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
                             const _ThemeToggleIcon(),
                             const SizedBox(width: 4),
                             const _LogoutIconButton(),
@@ -571,6 +620,16 @@ class _TabletShell extends StatelessWidget {
                       selectedIcon: Icon(Icons.receipt_long_rounded),
                       label: Text('Pedidos'),
                     ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.event_outlined),
+                      selectedIcon: Icon(Icons.event_rounded),
+                      label: Text('Eventos'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.insights_outlined),
+                      selectedIcon: Icon(Icons.insights_rounded),
+                      label: Text('Dash Evento'),
+                    ),
                   ],
                 ),
               ),
@@ -656,18 +715,20 @@ class _Sidebar extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final items = [
-      (Icons.dashboard_rounded, 'Dashboard', 0),
-      (Icons.campaign_rounded, 'Promociones', 1),
-      (Icons.inventory_2_rounded, 'Categorías', 2),
-      (Icons.shopping_basket_rounded, 'Subir productos', 3),
-      (Icons.storefront_rounded, 'Tiendas', 4),
-      (Icons.receipt_long_rounded, 'Pedidos', 5),
+      (Icons.dashboard_outlined, 'Dashboard', 0),
+      (Icons.campaign_outlined, 'Promociones', 1),
+      (Icons.inventory_2_outlined, 'Categorías', 2),
+      (Icons.shopping_basket_outlined, 'Subir productos', 3),
+      (Icons.storefront_outlined, 'Tiendas', 4),
+      (Icons.receipt_long_outlined, 'Pedidos', 5),
+      (Icons.event_outlined, 'Gestión de Eventos', 6),
+      (Icons.insights_outlined, 'Dashboard Evento', 7),
     ];
     return Container(
       width: AdminTokens.sidebarWidth,
       padding: const EdgeInsets.fromLTRB(14, 20, 14, 16),
       decoration: BoxDecoration(
-        color: isDark ? AdminTokens.darkSurface : scheme.surfaceContainerHighest,
+        color: isDark ? AdminTokens.darkSurface : Colors.white.withValues(alpha: 0.88),
         border: Border(
           right: BorderSide(color: scheme.outline.withValues(alpha: 0.12)),
         ),
@@ -767,8 +828,8 @@ class _SidebarItemState extends State<_SidebarItem> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final bg = widget.selected
-        ? scheme.primary.withValues(alpha: 0.14)
-        : (_hover ? scheme.onSurface.withValues(alpha: 0.06) : Colors.transparent);
+        ? scheme.primary.withValues(alpha: 0.12)
+        : (_hover ? scheme.primary.withValues(alpha: 0.05) : Colors.transparent);
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
@@ -831,6 +892,9 @@ class _ThemeToggleIcon extends StatelessWidget {
       tooltip: tip,
       onPressed: () => settings.cycleTheme(),
       icon: Icon(icon),
+      style: IconButton.styleFrom(
+        foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
     );
   }
 }
@@ -865,10 +929,14 @@ class _LogoutIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return IconButton(
       tooltip: 'Salir',
       onPressed: () => AuthService.signOut(),
       icon: const Icon(Icons.logout_rounded),
+      style: IconButton.styleFrom(
+        foregroundColor: scheme.error,
+      ),
     );
   }
 }

@@ -2,13 +2,17 @@ import 'package:flutter/material.dart';
 
 /// Tokens y temas del panel eVeta Admin (estilo SaaS / iOS).
 abstract final class AdminTokens {
-  static const Color brand = Color(0xFF09CB6B);
+  static const Color brand = Color(0xFF3B82F6);
+  static const Color accent = Color(0xFF22C55E);
+  static const Color softDanger = Color(0xFFF87171);
+  static const Color canvas = Color(0xFFF5F7FB);
+  static const Color pureWhite = Color(0xFFFFFFFF);
   static const Color darkCanvas = Color(0xFF0F0F0F);
   static const Color darkSurface = Color(0xFF1A1A1C);
   static const Color darkElevated = Color(0xFF242428);
-  static const double radiusSm = 12;
-  static const double radiusMd = 16;
-  static const double radiusLg = 22;
+  static const double radiusSm = 14;
+  static const double radiusMd = 18;
+  static const double radiusLg = 24;
   static const double sidebarWidth = 260;
 }
 
@@ -17,19 +21,34 @@ ThemeData buildAdminLightTheme() {
   final scheme = ColorScheme.fromSeed(
     seedColor: seed,
     brightness: Brightness.light,
-    surface: const Color(0xFFF6F7F9),
-    surfaceContainerHighest: Colors.white,
+    surface: AdminTokens.canvas,
+    surfaceContainerHighest: AdminTokens.pureWhite,
+    secondary: const Color(0xFF7DD3FC),
+    tertiary: const Color(0xFF86EFAC),
+    error: AdminTokens.softDanger,
   );
   return ThemeData(
     useMaterial3: true,
     brightness: Brightness.light,
+    fontFamily: 'Inter',
     colorScheme: scheme,
-    scaffoldBackgroundColor: const Color(0xFFF6F7F9),
+    scaffoldBackgroundColor: AdminTokens.canvas,
     dividerColor: scheme.outline.withValues(alpha: 0.12),
-    splashFactory: InkSparkle.splashFactory,
+    splashFactory: InkRipple.splashFactory,
+    textTheme: Typography.blackMountainView.copyWith(
+      titleLarge: const TextStyle(fontWeight: FontWeight.w700, letterSpacing: -0.4),
+      titleMedium: const TextStyle(fontWeight: FontWeight.w700),
+      bodyMedium: TextStyle(
+        color: scheme.onSurface.withValues(alpha: 0.9),
+        height: 1.4,
+        fontWeight: FontWeight.w500,
+      ),
+      bodySmall: TextStyle(color: scheme.onSurfaceVariant, height: 1.35),
+    ),
     cardTheme: CardThemeData(
-      elevation: 0,
-      color: Colors.white,
+      elevation: 0.4,
+      shadowColor: const Color(0xFF0B17361A),
+      color: AdminTokens.pureWhite,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AdminTokens.radiusMd),
@@ -68,15 +87,31 @@ ThemeData buildAdminLightTheme() {
       style: FilledButton.styleFrom(
         elevation: 0,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        backgroundColor: seed,
+        foregroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AdminTokens.radiusSm)),
         textStyle: const TextStyle(fontWeight: FontWeight.w600, letterSpacing: 0.2),
+      ).copyWith(
+        overlayColor: WidgetStatePropertyAll(seed.withValues(alpha: 0.08)),
+        elevation: const WidgetStatePropertyAll(0),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AdminTokens.radiusSm)),
         side: BorderSide(color: scheme.outline.withValues(alpha: 0.35)),
+      ).copyWith(
+        overlayColor: WidgetStatePropertyAll(seed.withValues(alpha: 0.05)),
+      ),
+    ),
+    iconButtonTheme: IconButtonThemeData(
+      style: IconButton.styleFrom(
+        backgroundColor: Colors.white,
+        foregroundColor: scheme.onSurfaceVariant,
+        hoverColor: seed.withValues(alpha: 0.07),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
@@ -110,6 +145,22 @@ ThemeData buildAdminLightTheme() {
         fontWeight: FontWeight.w700,
         letterSpacing: -0.4,
       ),
+    ),
+    dataTableTheme: DataTableThemeData(
+      dividerThickness: 0.7,
+      headingTextStyle: TextStyle(
+        color: scheme.onSurfaceVariant,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.1,
+      ),
+      dataTextStyle: TextStyle(
+        color: scheme.onSurface.withValues(alpha: 0.95),
+        fontWeight: FontWeight.w500,
+      ),
+      headingRowColor: WidgetStatePropertyAll(scheme.surface.withValues(alpha: 0.75)),
+      dataRowColor: WidgetStatePropertyAll(AdminTokens.pureWhite),
+      horizontalMargin: 16,
+      columnSpacing: 16,
     ),
   );
 }
@@ -146,6 +197,7 @@ ThemeData buildAdminDarkTheme() {
   return ThemeData(
     useMaterial3: true,
     brightness: Brightness.dark,
+    fontFamily: 'Inter',
     colorScheme: scheme,
     scaffoldBackgroundColor: AdminTokens.darkCanvas,
     dividerColor: scheme.outline.withValues(alpha: 0.35),

@@ -4,10 +4,12 @@ import 'package:eveta/screens/appearance_settings_screen.dart';
 import 'package:eveta/screens/saved_addresses_screen.dart';
 import 'package:eveta/screens/login_screen.dart';
 import 'package:eveta/screens/my_orders_screen.dart';
+import 'package:eveta/screens/my_tickets_screen.dart';
 import 'package:eveta/theme/eveta_shop_theme.dart';
 import 'package:eveta/theme/eveta_theme_controller.dart';
 import 'package:eveta/ui/shop/eveta_ios_settings_group.dart';
 import 'package:eveta/utils/auth_service.dart';
+import 'package:eveta/utils/feature_flags.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class MenuScreen extends StatefulWidget {
@@ -210,6 +212,15 @@ class _MenuScreenState extends State<MenuScreen> {
                       Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const MyOrdersScreen()));
                     },
                   ),
+                  if (FeatureFlags.eventsModuleEnabled)
+                    EvetaIosSettingsTile(
+                      icon: Icons.confirmation_number_outlined,
+                      title: 'Mis entradas',
+                      showDividerAbove: true,
+                      onTap: () {
+                        Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const MyTicketsScreen()));
+                      },
+                    ),
                   EvetaIosSettingsTile(
                     icon: Icons.location_on_outlined,
                     title: 'Direcciones',
