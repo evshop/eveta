@@ -209,7 +209,11 @@ class ProductsService {
     }
 
     Future<List<Map<String, dynamic>>> query(String columns) async {
-      final data = await _client.from('products').select(columns).order('created_at', ascending: false);
+      final data = await _client
+          .from('products')
+          .select(columns)
+          .isFilter('event_ticket_type_id', null)
+          .order('created_at', ascending: false);
       return List<Map<String, dynamic>>.from(data);
     }
 
@@ -267,6 +271,7 @@ class ProductsService {
           .from('products')
           .select(columns)
           .eq('seller_id', sellerId)
+          .isFilter('event_ticket_type_id', null)
           .order('created_at', ascending: false);
       return List<Map<String, dynamic>>.from(data);
     }

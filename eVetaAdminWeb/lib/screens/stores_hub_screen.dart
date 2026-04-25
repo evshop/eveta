@@ -512,40 +512,31 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
                       ),
                     )
                   else
-                    LayoutBuilder(
-                      builder: (context, c) {
-                        final w = c.maxWidth;
-                        final cross = w > 900 ? 2 : 1;
-                        return GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: cross,
-                            mainAxisSpacing: 14,
-                            crossAxisSpacing: 14,
-                            childAspectRatio: w > 900 ? 1.85 : 1.55,
+                    Column(
+                      children: [
+                        for (final p in _partners) ...[
+                          Builder(
+                            builder: (context) {
+                              final id = p['id']?.toString() ?? '';
+                              final name = p['shop_name']?.toString().trim();
+                              final email = p['email']?.toString() ?? '';
+                              final note = p['admin_portal_note']?.toString();
+                              return _StoreCard(
+                                title: (name != null && name.isNotEmpty) ? name : 'Sin nombre',
+                                subtitle: email,
+                                verified: true,
+                                isMine: false,
+                                logoUrl: p['shop_logo_url']?.toString(),
+                                hasPortalNote: note != null && note.isNotEmpty,
+                                onTap: id.isEmpty ? null : () => _openPartner(p),
+                                onPortalNote: id.isEmpty ? null : () => _editPortalNote(p),
+                                onDelete: id.isEmpty ? null : () => _confirmDeletePartner(p),
+                              );
+                            },
                           ),
-                          itemCount: _partners.length,
-                          itemBuilder: (context, i) {
-                            final p = _partners[i];
-                            final id = p['id']?.toString() ?? '';
-                            final name = p['shop_name']?.toString().trim();
-                            final email = p['email']?.toString() ?? '';
-                            final note = p['admin_portal_note']?.toString();
-                            return _StoreCard(
-                              title: (name != null && name.isNotEmpty) ? name : 'Sin nombre',
-                              subtitle: email,
-                              verified: true,
-                              isMine: false,
-                              logoUrl: p['shop_logo_url']?.toString(),
-                              hasPortalNote: note != null && note.isNotEmpty,
-                              onTap: id.isEmpty ? null : () => _openPartner(p),
-                              onPortalNote: id.isEmpty ? null : () => _editPortalNote(p),
-                              onDelete: id.isEmpty ? null : () => _confirmDeletePartner(p),
-                            );
-                          },
-                        );
-                      },
+                          const SizedBox(height: 10),
+                        ],
+                      ],
                     ),
                 ],
               ),
@@ -604,86 +595,104 @@ class _StoreCard extends StatelessWidget {
 
     return Card(
       clipBehavior: Clip.antiAlias,
+      margin: EdgeInsets.zero,
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              avatar,
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+              Row(
+                children: [
+                  avatar,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: Text(
-                            title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                          ),
-                        ),
-                        if (verified)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: scheme.primary.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(99),
-                            ),
-                            child: Text(
-                              'Verificada',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: scheme.primary,
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
                               ),
+                            ),
+                            if (verified)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: scheme.primary.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(99),
+                                ),
+                                child: Text(
+                                  'Verificada',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: scheme.primary,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+                        ),
+                        if (hasPortalNote)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Row(
+                              children: [
+                                Icon(Icons.key_rounded, size: 14, color: scheme.primary),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Nota de acceso guardada',
+                                  style: TextStyle(fontSize: 11, color: scheme.primary, fontWeight: FontWeight.w600),
+                                ),
+                              ],
                             ),
                           ),
                       ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
-                    ),
-                    if (hasPortalNote)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Row(
-                          children: [
-                            Icon(Icons.key_rounded, size: 14, color: scheme.primary),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Nota de acceso guardada',
-                              style: TextStyle(fontSize: 11, color: scheme.primary, fontWeight: FontWeight.w600),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              if (onPortalNote != null)
-                IconButton(
-                  tooltip: 'Nota de acceso (contraseña / pista)',
-                  onPressed: onPortalNote,
-                  icon: Icon(
-                    Icons.vpn_key_rounded,
-                    color: hasPortalNote ? scheme.primary : scheme.onSurfaceVariant,
                   ),
-                ),
-              if (onDelete != null)
-                IconButton(
-                  tooltip: 'Eliminar tienda del panel',
-                  onPressed: onDelete,
-                  icon: Icon(Icons.delete_outline_rounded, color: scheme.error),
-                ),
-              Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilledButton.icon(
+                    onPressed: onTap,
+                    icon: const Icon(Icons.inventory_2_outlined, size: 18),
+                    label: const Text('Ver catálogo'),
+                  ),
+                  if (onPortalNote != null)
+                    OutlinedButton.icon(
+                      onPressed: onPortalNote,
+                      icon: Icon(
+                        Icons.vpn_key_rounded,
+                        size: 18,
+                        color: hasPortalNote ? scheme.primary : scheme.onSurfaceVariant,
+                      ),
+                      label: const Text('Acceso portal'),
+                    ),
+                  if (onDelete != null)
+                    OutlinedButton.icon(
+                      onPressed: onDelete,
+                      icon: Icon(Icons.delete_outline_rounded, size: 18, color: scheme.error),
+                      label: Text('Eliminar', style: TextStyle(color: scheme.error)),
+                    ),
+                ],
+              ),
             ],
           ),
         ),
