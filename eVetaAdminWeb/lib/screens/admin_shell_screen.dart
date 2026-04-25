@@ -441,22 +441,22 @@ class _DesktopShell extends StatelessWidget {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 20, 24, 24),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
                   color: scheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.46 : 0.82),
                   borderRadius: BorderRadius.circular(AdminTokens.radiusLg),
                   border: Border.all(color: scheme.outline.withValues(alpha: 0.08)),
                   boxShadow: isDark
                       ? null
                       : [
-                          BoxShadow(
+                  BoxShadow(
                             color: const Color(0xFF0B1736).withValues(alpha: 0.05),
                             blurRadius: 24,
                             offset: const Offset(0, 8),
-                          ),
-                        ],
-                ),
-                child: ClipRRect(
+                  ),
+                ],
+              ),
+              child: ClipRRect(
                   borderRadius: BorderRadius.circular(AdminTokens.radiusLg),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
