@@ -11,6 +11,7 @@ import 'events_screen.dart';
 import 'home_promotion_banners_screen.dart';
 import 'stores_hub_screen.dart';
 import 'products_screen.dart';
+import 'wallet_topups_screen.dart';
 
 class AdminShellScreen extends StatefulWidget {
   const AdminShellScreen({super.key});
@@ -32,6 +33,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
     'Pedidos',
     'Gestión de Eventos',
     'Dashboard Evento',
+    'Recargas Wallet',
   ];
 
   static const _subtitles = [
@@ -43,6 +45,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
     'Próximamente',
     'CRUD de eventos, entradas y beneficios',
     'Métricas de acceso y canjes por evento',
+    'Revisión manual de comprobantes',
   ];
 
   List<Widget> get _sections => const [
@@ -54,6 +57,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
         _OrdersPlaceholder(),
         EventsScreen(),
         EventDashboardScreen(),
+        WalletTopupsScreen(),
       ];
 
   int _bottomNavSelected() {
@@ -157,6 +161,15 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
                 onTap: () {
                   Navigator.pop(ctx);
                   setState(() => _index = 7);
+                },
+              ),
+              _MoreTile(
+                icon: Icons.account_balance_wallet_rounded,
+                label: 'Recargas Wallet',
+                selected: _index == 8,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  setState(() => _index = 8);
                 },
               ),
             ],
@@ -355,6 +368,7 @@ class _AdminDrawer extends StatelessWidget {
       (Icons.receipt_long_rounded, 'Pedidos', 5),
       (Icons.event_rounded, 'Gestión de Eventos', 6),
       (Icons.insights_rounded, 'Dashboard Evento', 7),
+      (Icons.account_balance_wallet_rounded, 'Recargas Wallet', 8),
     ];
     return Drawer(
       backgroundColor: scheme.surfaceContainerHighest,
@@ -630,6 +644,11 @@ class _TabletShell extends StatelessWidget {
                       selectedIcon: Icon(Icons.insights_rounded),
                       label: Text('Dash Evento'),
                     ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.account_balance_wallet_outlined),
+                      selectedIcon: Icon(Icons.account_balance_wallet_rounded),
+                      label: Text('Wallet'),
+                    ),
                   ],
                 ),
               ),
@@ -723,6 +742,7 @@ class _Sidebar extends StatelessWidget {
       (Icons.receipt_long_outlined, 'Pedidos', 5),
       (Icons.event_outlined, 'Gestión de Eventos', 6),
       (Icons.insights_outlined, 'Dashboard Evento', 7),
+      (Icons.account_balance_wallet_outlined, 'Recargas Wallet', 8),
     ];
     return Container(
       width: AdminTokens.sidebarWidth,
