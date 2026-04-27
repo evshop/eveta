@@ -19,7 +19,7 @@ class ProductsService {
       final data = await _client
           .from('categories')
           .select(
-            'id, name, slug, icon, image_url, parent_id, spec_template_enabled, spec_field_labels, spec_group_title',
+            'id, name, slug, icon, image_url, color_hex, parent_id, spec_template_enabled, spec_field_labels, spec_group_title',
           )
           .order('name');
       return List<Map<String, dynamic>>.from(data);
@@ -28,7 +28,7 @@ class ProductsService {
           e.toString().toLowerCase().contains('spec_field')) {
         final data = await _client
             .from('categories')
-            .select('id, name, slug, icon, image_url, parent_id')
+            .select('id, name, slug, icon, image_url, color_hex, parent_id')
             .order('name');
         return List<Map<String, dynamic>>.from(data);
       }
@@ -50,6 +50,7 @@ class ProductsService {
     String? parentId,
     String? logoUrl,
     String? bannerUrl,
+    String? colorHex,
     bool specTemplateEnabled = false,
     List<String> specFieldLabels = const [],
     String? specGroupTitle,
@@ -64,6 +65,7 @@ class ProductsService {
       'slug': slug,
       'icon': logoUrl,
       'image_url': bannerUrl,
+      'color_hex': colorHex,
       'parent_id': parentId,
       'spec_template_enabled': specTemplateEnabled && labels.isNotEmpty,
       'spec_field_labels': labels,
@@ -72,6 +74,11 @@ class ProductsService {
     try {
       await _client.from('categories').insert(row);
     } catch (e) {
+      if (e.toString().toLowerCase().contains('color_hex')) {
+        row.remove('color_hex');
+        await _client.from('categories').insert(row);
+        return;
+      }
       if (e.toString().toLowerCase().contains('spec_group_title')) {
         try {
           row.remove('spec_group_title');
@@ -84,6 +91,7 @@ class ProductsService {
               'slug': slug,
               'icon': logoUrl,
               'image_url': bannerUrl,
+              'color_hex': colorHex,
               'parent_id': parentId,
             });
           } else {
@@ -99,6 +107,7 @@ class ProductsService {
           'slug': slug,
           'icon': logoUrl,
           'image_url': bannerUrl,
+          'color_hex': colorHex,
           'parent_id': parentId,
         });
         return;
@@ -113,6 +122,7 @@ class ProductsService {
     String? parentId,
     String? logoUrl,
     String? bannerUrl,
+    String? colorHex,
     bool specTemplateEnabled = false,
     List<String> specFieldLabels = const [],
     String? specGroupTitle,
@@ -127,6 +137,7 @@ class ProductsService {
       'slug': slug,
       'icon': logoUrl,
       'image_url': bannerUrl,
+      'color_hex': colorHex,
       'parent_id': parentId,
       'spec_template_enabled': specTemplateEnabled && labels.isNotEmpty,
       'spec_field_labels': labels,
@@ -135,6 +146,11 @@ class ProductsService {
     try {
       await _client.from('categories').update(row).eq('id', categoryId);
     } catch (e) {
+      if (e.toString().toLowerCase().contains('color_hex')) {
+        row.remove('color_hex');
+        await _client.from('categories').update(row).eq('id', categoryId);
+        return;
+      }
       if (e.toString().toLowerCase().contains('spec_group_title')) {
         try {
           row.remove('spec_group_title');
@@ -147,6 +163,7 @@ class ProductsService {
               'slug': slug,
               'icon': logoUrl,
               'image_url': bannerUrl,
+              'color_hex': colorHex,
               'parent_id': parentId,
             }).eq('id', categoryId);
           } else {
@@ -162,6 +179,7 @@ class ProductsService {
           'slug': slug,
           'icon': logoUrl,
           'image_url': bannerUrl,
+          'color_hex': colorHex,
           'parent_id': parentId,
         }).eq('id', categoryId);
         return;

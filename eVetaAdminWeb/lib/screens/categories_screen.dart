@@ -45,6 +45,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     String? bannerUrl = _categoryImageUrl(existing?['image_url']);
     bool uploading = false;
     var parentId = existing?['parent_id']?.toString();
+    final colorCtrl = TextEditingController(text: existing?['color_hex']?.toString() ?? '');
     var specTemplateEnabled = existing?['spec_template_enabled'] == true;
     final specGroupController = TextEditingController(
       text: existing?['spec_group_title']?.toString() ?? '',
@@ -114,6 +115,15 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                     parentId = v;
                     if (v == null) specTemplateEnabled = false;
                   }),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: colorCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Color de borde (hex)',
+                    hintText: '#09CB6B o vacío para sin color',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
                 if (parentId != null) ...[
                   const SizedBox(height: 12),
@@ -389,12 +399,15 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                           .toList();
                       final labelsToSave = effectiveSpec ? specLabels : <String>[];
                       final groupRaw = specGroupController.text.trim();
+                      final rawColor = colorCtrl.text.trim();
+                      final colorHex = rawColor.isEmpty ? null : rawColor;
                       if (existing == null) {
                         await ProductsService.createCategory(
                           name,
                           parentId: parentId,
                           logoUrl: logoUrl,
                           bannerUrl: bannerUrl,
+                          colorHex: colorHex,
                           specTemplateEnabled: effectiveSpec,
                           specFieldLabels: labelsToSave,
                           specGroupTitle: effectiveSpec &&
@@ -410,6 +423,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                           parentId: parentId,
                           logoUrl: logoUrl,
                           bannerUrl: bannerUrl,
+                          colorHex: colorHex,
                           specTemplateEnabled: effectiveSpec,
                           specFieldLabels: labelsToSave,
                           specGroupTitle: effectiveSpec &&
@@ -428,6 +442,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       ),
     );
     specGroupController.dispose();
+    colorCtrl.dispose();
     for (final c in specLabelControllers) {
       c.dispose();
     }
