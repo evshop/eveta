@@ -9,6 +9,16 @@ import 'package:eveta/screens/product_detail_screen.dart';
 import 'package:eveta/screens/search_screen.dart';
 import 'package:eveta/theme/shop_system_ui.dart';
 
+Color? _hexToColor(String? raw) {
+  final s = (raw ?? '').trim().replaceAll('#', '');
+  if (s.isEmpty) return null;
+  final hex = s.length == 6 ? 'FF$s' : s;
+  if (hex.length != 8) return null;
+  final v = int.tryParse(hex, radix: 16);
+  if (v == null) return null;
+  return Color(v);
+}
+
 class SellerStoreScreen extends StatefulWidget {
   const SellerStoreScreen({super.key, required this.sellerId});
 
@@ -115,6 +125,7 @@ class _SellerStoreScreenState extends State<SellerStoreScreen> {
             final shopDescription = shop['shop_description']?.toString().trim() ?? '';
             final bannerUrl = shop['shop_banner_url']?.toString();
             final logoUrl = shop['shop_logo_url']?.toString();
+            final brandBorderColor = _hexToColor(shop['shop_border_color']?.toString()) ?? scheme.outline;
             final filteredProducts = _filterProducts(data.products, _query);
 
             return Stack(
@@ -132,6 +143,7 @@ class _SellerStoreScreenState extends State<SellerStoreScreen> {
                         logoUrl: logoUrl,
                         shopName: shopName,
                         shopDescription: shopDescription,
+                        brandBorderColor: brandBorderColor,
                         scale: scale,
                       ),
                     ),
@@ -191,6 +203,7 @@ class _SellerStoreScreenState extends State<SellerStoreScreen> {
                         borderRadius: BorderRadius.circular(999),
                         child: _StoreSearchField(
                           scale: scale,
+                          borderColor: brandBorderColor,
                           controller: _searchCtrl,
                           onChanged: (v) => setState(() => _query = v),
                         ),
@@ -281,11 +294,13 @@ class _SellerStoreScreenState extends State<SellerStoreScreen> {
 class _StoreSearchField extends StatelessWidget {
   const _StoreSearchField({
     required this.scale,
+    required this.borderColor,
     required this.controller,
     required this.onChanged,
   });
 
   final double scale;
+  final Color borderColor;
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
 
@@ -296,7 +311,7 @@ class _StoreSearchField extends StatelessWidget {
       height: 34 * scale,
       padding: const EdgeInsets.all(1.5),
       decoration: BoxDecoration(
-        color: scheme.primary,
+        color: borderColor,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Container(
@@ -343,6 +358,7 @@ class _StoreScrollHeader extends StatelessWidget {
     required this.logoUrl,
     required this.shopName,
     required this.shopDescription,
+    required this.brandBorderColor,
     required this.scale,
   });
 
@@ -350,6 +366,7 @@ class _StoreScrollHeader extends StatelessWidget {
   final String? logoUrl;
   final String shopName;
   final String shopDescription;
+  final Color brandBorderColor;
   final double scale;
 
   @override
@@ -424,7 +441,7 @@ class _StoreScrollHeader extends StatelessWidget {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: scheme.surfaceContainerHighest,
-                      border: Border.all(color: scheme.primary, width: 2),
+                      border: Border.all(color: brandBorderColor, width: 2),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withValues(alpha: 0.12),
@@ -449,7 +466,7 @@ class _StoreScrollHeader extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: scheme.surfaceContainerHighest,
                       shape: BoxShape.circle,
-                      border: Border.all(color: scheme.primary, width: 2),
+                      border: Border.all(color: brandBorderColor, width: 2),
                     ),
                     child: Icon(Icons.storefront_outlined, color: scheme.onSurfaceVariant),
                   ),

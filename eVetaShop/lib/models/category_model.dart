@@ -10,10 +10,12 @@ class CategoryModel {
   });
 
   factory CategoryModel.fromJson(Map<String, dynamic> json) {
+    final icon = json['icon']?.toString().trim() ?? '';
+    final banner = json['image_url']?.toString().trim() ?? '';
     return CategoryModel(
       name: json['name']?.toString() ?? '',
       slug: json['slug']?.toString() ?? '',
-      imageUrl: json['image_url']?.toString() ?? '',
+      imageUrl: icon.isNotEmpty ? icon : banner,
     );
   }
 

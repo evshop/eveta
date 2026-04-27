@@ -1,5 +1,4 @@
 import 'package:eveta/theme/eveta_shop_theme.dart';
-import 'package:eveta/utils/cart_service.dart';
 import 'package:eveta/utils/events_service.dart';
 import 'package:eveta/screens/my_tickets_screen.dart';
 import 'package:flutter/material.dart';
@@ -107,111 +106,80 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     );
   }
 
-  Future<void> _addTicketTypeToCart(
-    BuildContext context,
-    Map<String, dynamic> event,
-    Map<String, dynamic> ticketType,
-  ) async {
-    final client = Supabase.instance.client;
-    final product = await client
-        .from('products')
-        .select('id, name, price, images, stock')
-        .eq('event_ticket_type_id', ticketType['id'])
-        .maybeSingle();
-    if (!mounted) return;
-    if (product == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Entrada no disponible para compra aún.')),
-      );
-      return;
-    }
-
-    await CartService.addToCart(
-      CartItem(
-        productId: product['id'].toString(),
-        name: product['name']?.toString() ?? 'Entrada ${event['name']}',
-        price: product['price']?.toString() ?? ticketType['price']?.toString() ?? '0',
-        imageUrl: '',
-        quantity: 1,
-        stock: (product['stock'] as num?)?.toInt() ?? 999,
-      ),
-    );
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Entrada agregada al carrito')),
-    );
-  }
-
   Future<void> _openPurchaseOptions(
     BuildContext context,
     Map<String, dynamic> event,
     Map<String, dynamic> ticketType,
   ) async {
-    final choice = await showModalBottomSheet<String>(
+    int qty = 1;
+    final ok = await showModalBottomSheet<bool>(
       context: context,
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Comprar ${ticketType['name']}',
-                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 8),
-              const Text('Elige cómo quieres continuar con esta entrada.'),
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: () => Navigator.pop(ctx, 'test'),
-                icon: const Icon(Icons.check_circle_outline_rounded),
-                label: const Text('Confirmar compra (modo prueba sin pagar)'),
-              ),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: () => Navigator.pop(ctx, 'cart'),
-                icon: const Icon(Icons.shopping_cart_outlined),
-                label: const Text('Enviar al carrito normal'),
-              ),
-            ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setLocal) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Comprar ${ticketType['name']}',
+                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 8),
+                const Text('Checkout separado de productos. Pago con saldo eVeta.'),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    const Text('Cantidad'),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: qty > 1 ? () => setLocal(() => qty--) : null,
+                      icon: const Icon(Icons.remove_circle_outline_rounded),
+                    ),
+                    Text('$qty', style: const TextStyle(fontWeight: FontWeight.w700)),
+                    IconButton(
+                      onPressed: () => setLocal(() => qty++),
+                      icon: const Icon(Icons.add_circle_outline_rounded),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                FilledButton.icon(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  icon: const Icon(Icons.account_balance_wallet_rounded),
+                  label: const Text('Comprar con saldo'),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
-
-    if (!mounted || choice == null) return;
-    if (choice == 'cart') {
-      await _addTicketTypeToCart(context, event, ticketType);
-      return;
-    }
-    await _confirmTestPurchase(context, ticketType);
+    if (!mounted || ok != true) return;
+    await _confirmWalletPurchase(ticketType, quantity: qty);
   }
 
-  Future<void> _confirmTestPurchase(
-    BuildContext context,
+  Future<void> _confirmWalletPurchase(
     Map<String, dynamic> ticketType,
+    {int quantity = 1}
   ) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Confirmar compra de prueba'),
-        content: const Text(
-          'Esta acción genera tu entrada al instante sin pasar por pago. Solo para pruebas.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Confirmar')),
-        ],
-      ),
-    );
-    if (ok != true || !mounted) return;
-
     try {
-      await EventsService.testPurchaseTicketType(ticketType['id'].toString());
+      final result = await Supabase.instance.client.rpc(
+        'wallet_buy_event_ticket',
+        params: {
+          'p_ticket_type_id': ticketType['id'],
+          'p_quantity': quantity,
+        },
+      );
       if (!mounted) return;
+      final row = (result as List).first as Map<String, dynamic>;
+      final amount = row['charged_amount'];
+      final created = row['tickets_created'];
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Entrada creada con éxito (modo prueba).')),
+        SnackBar(
+          content: Text('Compra confirmada. Debitado Bs $amount · tickets: $created'),
+        ),
       );
       await Navigator.push<void>(
         context,
@@ -220,7 +188,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No se pudo confirmar la compra: $e')),
+        SnackBar(content: Text('No se pudo comprar con saldo: $e')),
       );
     }
   }

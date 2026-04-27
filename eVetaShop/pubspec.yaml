@@ -45,6 +45,9 @@ dependencies:
   path_provider: ^2.1.5
   qr_flutter: ^4.1.0
   pinput: ^5.0.1
+  webview_flutter: ^4.13.1
+  image_picker: ^1.2.1
+  app_links: ^6.3.2
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -71,20 +74,26 @@ flutter:
   assets:
     - .env
     - assets/images/ic_home.svg
+    - assets/images/home_white.svg
+    - assets/images/home_dark.svg
+    - assets/images/home_outline_thick.svg
     - assets/images/ic_wishlist.svg
     - assets/images/ic_cart.svg
     - assets/images/ic_cart_swipe_delete.svg
     - assets/images/ic_dashboard.svg
+    - assets/images/category.svg
+    - assets/images/category_select.svg
+    - assets/images/favorite_outline.svg
+    - assets/images/favorite_selected.svg
     - assets/images/ic_menu.svg
     - assets/images/ic_location.svg
     - assets/images/ic_add_cart.png
     - assets/images/ic_discount.png
-    - assets/images/promotion__one.png
     - assets/images/ic_app_icon.png
     - assets/images/eVeta.svg
+    - assets/images/telefono.svg
     - assets/images/auth_logo_light.svg
     - assets/images/auth_logo_dark.svg
-    - assets/images/ic_category_image.png
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/assets-and-images/#resolution-aware.
 

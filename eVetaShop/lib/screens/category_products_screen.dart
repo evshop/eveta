@@ -164,6 +164,12 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
     return (u == null || u.isEmpty) ? null : u;
   }
 
+  String? _categoryIconUrl() {
+    final icon = _categoryRow?['icon']?.toString().trim();
+    if (icon != null && icon.isNotEmpty) return icon;
+    return _categoryImageUrl();
+  }
+
   String _headerSubtitle(List<Map<String, dynamic>> filtered) {
     final desc = _categoryRow?['description']?.toString().trim();
     if (desc != null && desc.isNotEmpty) return desc;
@@ -281,7 +287,7 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
     final filtered = _filterProducts(_products, _query);
     final subsWithProducts = _subcategoriesWithProducts();
     final banner = _categoryImageUrl();
-    final logo = _categoryImageUrl();
+    final logo = _categoryIconUrl();
     final tt = Theme.of(context).textTheme;
     final barVariant = scheme.brightness == Brightness.dark
         ? EvetaCircularBackVariant.tonalSurface

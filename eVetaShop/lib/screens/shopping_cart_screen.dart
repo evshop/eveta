@@ -254,7 +254,7 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
   /// Altura máxima del panel (~ mitad de pantalla) + barra inferior: padding del listado del carrito.
   double _cartListBottomPadding(BuildContext context) {
     final h = MediaQuery.sizeOf(context).height;
-    return (h * 0.52).clamp(320.0, 620.0) + _bottomBarInset(context);
+    return (h * 0.62).clamp(360.0, 720.0) + _bottomBarInset(context);
   }
 
   /// [MyHomePage] usa `extendBody: true`; el cuerpo llega detrás de la barra — inset igual a [BottomNavBarWidget].
@@ -300,7 +300,7 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
                   padding: const EdgeInsets.fromLTRB(EvetaShopDimens.spaceLg, EvetaShopDimens.spaceLg, EvetaShopDimens.spaceLg, 8),
                   child: Row(
                     children: [
-                      Icon(Icons.place_outlined, color: scheme.primary, size: 22),
+                      Icon(Icons.place_outlined, color: scheme.onSurface, size: 22),
                       const SizedBox(width: EvetaShopDimens.spaceSm),
                       Expanded(
                         child: Text(
@@ -334,7 +334,7 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
                         final loc = saved[i];
                         final selected = loc.id == activeId;
                         return Material(
-                          color: selected ? scheme.primary.withValues(alpha: 0.12) : scheme.surfaceContainerHigh,
+                          color: selected ? scheme.surfaceContainerHighest : scheme.surfaceContainerHigh,
                           borderRadius: BorderRadius.circular(EvetaShopDimens.radiusLg),
                           child: InkWell(
                             borderRadius: BorderRadius.circular(EvetaShopDimens.radiusLg),
@@ -349,7 +349,7 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
                                 children: [
                                   Icon(
                                     selected ? Icons.check_circle_rounded : Icons.place_outlined,
-                                    color: selected ? scheme.primary : scheme.onSurfaceVariant,
+                                    color: selected ? scheme.onSurface : scheme.onSurfaceVariant,
                                     size: 22,
                                   ),
                                   const SizedBox(width: EvetaShopDimens.spaceMd),
@@ -381,10 +381,10 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
                         await Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const LocationOnboardingScreen()));
                         if (mounted) await _loadCart(showLoadingIndicator: false);
                       },
-                      icon: Icon(Icons.add_location_alt_outlined, color: scheme.primary, size: 20),
+                      icon: Icon(Icons.add_location_alt_outlined, color: scheme.onSurface, size: 20),
                       label: Text(
                         'Agregar otra ubicación',
-                        style: TextStyle(fontWeight: FontWeight.w700, color: scheme.primary),
+                        style: TextStyle(fontWeight: FontWeight.w700, color: scheme.onSurface),
                       ),
                     ),
                   ),
@@ -450,30 +450,31 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
     final hasDropoff = _distanceKm != null;
     final sheetBg = scheme.surfaceContainerHighest;
 
-    final topR = BorderRadius.vertical(top: Radius.circular(EvetaShopDimens.radiusLg + 6));
+    final topR = const BorderRadius.vertical(top: Radius.circular(28));
     final navInset = _bottomBarInset(context);
     final safeBottom = MediaQuery.paddingOf(context).bottom;
-    final contentBottomPad = navInset + safeBottom;
+    final screenH = MediaQuery.sizeOf(context).height;
+    const confirmH = 56.0;
+    final confirmBottomInset = navInset + 3.0;
+    final contentBottomPad = confirmBottomInset + confirmH + safeBottom + 10;
+    final dynamicMaxChildSize = ((screenH - (confirmBottomInset + confirmH + 118.0)) / screenH).clamp(0.50, 0.66);
 
     return DraggableScrollableSheet(
       controller: _checkoutSheetCtrl,
-      initialChildSize: 0.5,
+      initialChildSize: dynamicMaxChildSize,
       minChildSize: 0.34,
-      maxChildSize: 0.5,
+      maxChildSize: dynamicMaxChildSize,
       snap: true,
-      snapSizes: const [0.5],
+      snapSizes: [dynamicMaxChildSize],
       snapAnimationDuration: const Duration(milliseconds: 260),
       builder: (context, scrollController) {
         return ClipRRect(
           borderRadius: topR,
           child: Material(
             color: sheetBg,
-            elevation: 7,
-            shadowColor: Colors.black.withValues(alpha: isDark ? 0.42 : 0.1),
-            shape: RoundedRectangleBorder(
-              borderRadius: topR,
-              side: BorderSide(color: scheme.outline.withValues(alpha: isDark ? 0.5 : 0.38)),
-            ),
+            elevation: 10,
+            shadowColor: Colors.black.withValues(alpha: isDark ? 0.34 : 0.12),
+            shape: RoundedRectangleBorder(borderRadius: topR),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -481,6 +482,7 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
                 Expanded(
                   child: ListView(
                     controller: scrollController,
+                    physics: const NeverScrollableScrollPhysics(),
                     padding: EdgeInsets.fromLTRB(
                       EvetaShopDimens.spaceLg,
                       4,
@@ -562,37 +564,6 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
                       const SizedBox(height: EvetaShopDimens.spaceMd),
                       _buildTotalRow(context, total),
                       const SizedBox(height: EvetaShopDimens.spaceMd),
-                      SizedBox(
-                        height: 50,
-                        width: double.infinity,
-                        child: FilledButton(
-                          onPressed: _checkoutBusy ? null : _onCheckout,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: EvetaShopColors.brand,
-                            foregroundColor: Colors.white,
-                            disabledBackgroundColor: scheme.surfaceContainerHigh,
-                            disabledForegroundColor: scheme.onSurfaceVariant,
-                            elevation: 0,
-                          ),
-                          child: _checkoutBusy
-                              ? const SizedBox(
-                                  height: 22,
-                                  width: 22,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2.4,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : Text(
-                                  'Confirmar pedido',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 16,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                        ),
-                      ),
                     ],
                   ),
                 ),
@@ -712,6 +683,43 @@ class _ShoppingCartScreenState extends State<ShoppingCartScreen> {
                 if (_items.isNotEmpty)
                   Positioned.fill(
                     child: _buildCheckoutPanel(context),
+                  ),
+                if (_items.isNotEmpty)
+                  Positioned(
+                    left: EvetaShopDimens.spaceLg,
+                    right: EvetaShopDimens.spaceLg,
+                    bottom: (_bottomBarInset(context) - 4).clamp(0.0, 9999.0),
+                    child: SizedBox(
+                      height: 56,
+                      child: FilledButton(
+                        onPressed: _checkoutBusy ? null : _onCheckout,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: EvetaShopColors.brand,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: scheme.surfaceContainerHigh,
+                          disabledForegroundColor: scheme.onSurfaceVariant,
+                          elevation: 8,
+                          shape: const StadiumBorder(),
+                        ),
+                        child: _checkoutBusy
+                            ? const SizedBox(
+                                height: 22,
+                                width: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.4,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text(
+                                'Confirmar pedido',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 16,
+                                  color: Colors.white,
+                                ),
+                              ),
+                      ),
+                    ),
                   ),
               ],
             ),

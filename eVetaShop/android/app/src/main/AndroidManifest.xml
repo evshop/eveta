@@ -51,12 +51,18 @@
                     android:scheme="com.eveta.eveta"
                     android:host="login-callback" />
             </intent-filter>
-            <!-- Compartir: eveta://product/{id} — manejar en Flutter (go_router / app_links) cuando toque. -->
+            <!-- Compartir: com.eveta.eveta://product/{id} -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="eveta" android:host="product" android:pathPrefix="/" />
+                <data android:scheme="com.eveta.eveta" android:host="product" android:pathPrefix="/" />
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="eveta.app" android:pathPrefix="/p/" />
             </intent-filter>
         </activity>
 

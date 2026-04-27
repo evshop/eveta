@@ -14,6 +14,7 @@ class StoreFrontPreviewHeader extends StatelessWidget {
     this.logoBytes,
     required this.shopName,
     required this.shopDescription,
+    this.logoBorderColor,
     required this.scale,
     this.onBannerTap,
     this.onLogoTap,
@@ -26,6 +27,7 @@ class StoreFrontPreviewHeader extends StatelessWidget {
   final Uint8List? logoBytes;
   final String shopName;
   final String shopDescription;
+  final Color? logoBorderColor;
   final double scale;
   final VoidCallback? onBannerTap;
   final VoidCallback? onLogoTap;
@@ -34,6 +36,7 @@ class StoreFrontPreviewHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final borderColor = logoBorderColor ?? scheme.primary;
     final bannerH = 196.0 * scale;
     final headerH = 304.0 * scale;
     final surface = scheme.surface;
@@ -122,7 +125,7 @@ class StoreFrontPreviewHeader extends StatelessWidget {
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               color: scheme.surfaceContainerHighest,
-                              border: Border.all(color: scheme.primary, width: 2),
+                              border: Border.all(color: borderColor, width: 2),
                               boxShadow: [
                                 BoxShadow(
                                   color: Colors.black.withValues(alpha: 0.12),
@@ -151,7 +154,7 @@ class StoreFrontPreviewHeader extends StatelessWidget {
                             decoration: BoxDecoration(
                               color: scheme.surfaceContainerHighest,
                               shape: BoxShape.circle,
-                              border: Border.all(color: scheme.primary, width: 2),
+                              border: Border.all(color: borderColor, width: 2),
                             ),
                             child: Icon(Icons.storefront_outlined, color: scheme.onSurfaceVariant),
                           ),

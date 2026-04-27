@@ -5,6 +5,7 @@ import 'package:eveta/screens/saved_addresses_screen.dart';
 import 'package:eveta/screens/login_screen.dart';
 import 'package:eveta/screens/my_orders_screen.dart';
 import 'package:eveta/screens/my_tickets_screen.dart';
+import 'package:eveta/screens/wallet_screen.dart';
 import 'package:eveta/theme/eveta_shop_theme.dart';
 import 'package:eveta/theme/eveta_theme_controller.dart';
 import 'package:eveta/ui/shop/eveta_ios_settings_group.dart';
@@ -234,14 +235,13 @@ class _MenuScreenState extends State<MenuScreen> {
                   ),
                   EvetaIosSettingsTile(
                     icon: Icons.payment_outlined,
-                    title: 'Métodos de pago',
+                    title: 'Mi saldo eVeta',
                     showDividerAbove: true,
                     onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: const Text('Próximamente'),
-                          behavior: SnackBarBehavior.floating,
-                          backgroundColor: scheme.primary,
+                      Navigator.push<void>(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => const WalletScreen(),
                         ),
                       );
                     },

@@ -51,7 +51,7 @@ class _SavedAddressesScreenState extends State<SavedAddressesScreen> {
       SnackBar(
         content: Text('"${e.displayTitle}" es ahora tu dirección de entrega'),
         behavior: SnackBarBehavior.floating,
-        backgroundColor: Theme.of(context).colorScheme.primary,
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
       ),
     );
   }
@@ -92,12 +92,14 @@ class _SavedAddressesScreenState extends State<SavedAddressesScreen> {
         foregroundColor: scheme.onSurface,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        title: Text('Direcciones', style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+        title: Text('Tus ubicaciones', style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _openAdd,
         icon: const Icon(Icons.add_location_alt_outlined),
         label: const Text('Agregar'),
+        backgroundColor: scheme.surfaceContainerHigh,
+        foregroundColor: scheme.onSurface,
       ),
       body: _loading
           ? Center(child: CircularProgressIndicator(color: scheme.primary))
@@ -118,7 +120,7 @@ class _SavedAddressesScreenState extends State<SavedAddressesScreen> {
                     final active = e.id == _activeId;
                     final sub = e.address.trim().isNotEmpty ? e.address.trim() : e.geocodedLine.trim();
                     return Material(
-                      color: scheme.surfaceContainerHighest,
+                      color: active ? scheme.surfaceContainerHighest : scheme.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(EvetaShopDimens.radiusLg),
                       clipBehavior: Clip.antiAlias,
                       child: InkWell(
@@ -130,7 +132,7 @@ class _SavedAddressesScreenState extends State<SavedAddressesScreen> {
                             children: [
                               Icon(
                                 active ? Icons.check_circle_rounded : Icons.place_outlined,
-                                color: active ? scheme.primary : scheme.onSurfaceVariant,
+                                color: active ? scheme.onSurface : scheme.onSurfaceVariant,
                                 size: 26,
                               ),
                               const SizedBox(width: 12),
@@ -150,14 +152,15 @@ class _SavedAddressesScreenState extends State<SavedAddressesScreen> {
                                           Container(
                                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                             decoration: BoxDecoration(
-                                              color: scheme.primary.withValues(alpha: 0.15),
+                                              color: scheme.surface,
                                               borderRadius: BorderRadius.circular(999),
+                                              border: Border.all(color: scheme.outline.withValues(alpha: 0.25)),
                                             ),
                                             child: Text(
                                               'Activa',
                                               style: tt.labelSmall?.copyWith(
                                                 fontWeight: FontWeight.w800,
-                                                color: scheme.primary,
+                                                color: scheme.onSurface,
                                               ),
                                             ),
                                           ),

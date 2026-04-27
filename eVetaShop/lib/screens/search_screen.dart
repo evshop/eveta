@@ -412,6 +412,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Widget _buildProductTile(BuildContext context, Map<String, dynamic> product) {
     final scheme = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
     final images = product['images'];
     String imageUrl = '';
     if (images is List && images.isNotEmpty) {
@@ -425,7 +426,15 @@ class _SearchScreenState extends State<SearchScreen> {
     final price = double.tryParse(priceString) ?? 0;
     final category = product['categories']?['name']?.toString() ?? '';
 
-    return InkWell(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
+      child: Material(
+        color: scheme.surfaceContainerHighest,
+        elevation: 3,
+        shadowColor: Colors.black.withValues(alpha: scheme.brightness == Brightness.dark ? 0.30 : 0.10),
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
       onTap: () async {
         final id = product['id'].toString();
         await _recordSearchTap(product, name, imageUrl);
@@ -443,76 +452,80 @@ class _SearchScreenState extends State<SearchScreen> {
           );
         }
       },
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: scheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: scheme.outline.withValues(alpha: 0.25)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 64,
-              height: 64,
-              color: scheme.surfaceContainerHigh,
-              child: imageUrl.isEmpty
-                  ? Icon(
-                      Icons.image_not_supported,
-                      color: scheme.onSurfaceVariant,
-                    )
-                  : EvetaCachedImage(
-                      imageUrl: imageUrl,
-                      delivery: EvetaImageDelivery.card,
-                      fit: BoxFit.contain,
-                      memCacheWidth: 200,
-                      errorIconSize: 32,
-                    ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: scheme.onSurface,
-                    ),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    width: 66,
+                    height: 66,
+                    color: scheme.surfaceContainerHigh,
+                    child: imageUrl.isEmpty
+                        ? Icon(
+                            Icons.image_not_supported,
+                            color: scheme.onSurfaceVariant,
+                          )
+                        : EvetaCachedImage(
+                            imageUrl: imageUrl,
+                            delivery: EvetaImageDelivery.card,
+                            fit: BoxFit.cover,
+                            memCacheWidth: 220,
+                            errorIconSize: 32,
+                          ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Bs ${price.toStringAsFixed(0)}',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: scheme.primary,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  if (category.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      category,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: scheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: tt.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: scheme.onSurface,
+                          letterSpacing: -0.2,
+                        ),
                       ),
-                    ),
-                  ],
-                ],
-              ),
+                      if (category.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          category,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                        ),
+                      ],
+                      const SizedBox(height: 6),
+                      Text(
+                        'Bs ${price.toStringAsFixed(0)}',
+                        style: tt.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          color: scheme.primary,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: scheme.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(Icons.chevron_right_rounded, size: 20, color: scheme.onSurfaceVariant),
+                ),
+              ],
             ),
-            Icon(
-              Icons.arrow_forward_ios,
-              size: 14,
-              color: scheme.onSurfaceVariant,
-            ),
-          ],
+          ),
         ),
       ),
     );

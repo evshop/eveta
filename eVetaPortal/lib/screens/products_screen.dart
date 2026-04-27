@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../widgets/portal/portal_empty_state.dart';
@@ -17,6 +18,9 @@ class ProductsScreen extends StatefulWidget {
 }
 
 class _ProductsScreenState extends State<ProductsScreen> {
+  static const String _kCatalogSvgIcon =
+      'https://www.svgrepo.com/download/447829/shopping-bag.svg';
+
   List<dynamic> _products = [];
   bool _isLoading = true;
 
@@ -35,13 +39,19 @@ class _ProductsScreenState extends State<ProductsScreen> {
           .from('products')
           .select(
             'id, name, price, stock, images, category_id, description, unit, '
-            'tags, specs_json, is_active, is_featured',
+            'tags, specs_json, is_active, is_featured, event_ticket_type_id',
           )
           .eq('seller_id', user.id)
           .order('created_at', ascending: false);
 
       setState(() {
-        _products = response;
+        _products = List<Map<String, dynamic>>.from(response)
+            .where(
+              (p) =>
+                  p['event_ticket_type_id'] == null ||
+                  p['event_ticket_type_id'].toString().trim().isEmpty,
+            )
+            .toList();
         _isLoading = false;
       });
     } catch (e) {
@@ -65,12 +75,16 @@ class _ProductsScreenState extends State<ProductsScreen> {
           .from('products')
           .select(
             'id, name, price, stock, images, category_id, description, unit, '
-            'tags, specs_json, is_active, is_featured',
+            'tags, specs_json, is_active, is_featured, event_ticket_type_id',
           )
           .eq('id', id)
           .maybeSingle();
       if (row == null) return null;
       final m = Map<dynamic, dynamic>.from(row as Map);
+      final eventTicketTypeId = m['event_ticket_type_id']?.toString().trim();
+      if (eventTicketTypeId != null && eventTicketTypeId.isNotEmpty) {
+        return null;
+      }
       return Map<String, dynamic>.from(
         m.map((k, v) => MapEntry(k.toString(), v)),
       );
@@ -191,7 +205,16 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                 Navigator.of(ctx).pop();
                                 _navigateToForm();
                               },
-                              icon: const Icon(CupertinoIcons.plus_circle_fill, size: 22),
+                              icon: SvgPicture.network(
+                                _kCatalogSvgIcon,
+                                width: 22,
+                                height: 22,
+                                colorFilter: ColorFilter.mode(
+                                  scheme.onPrimary,
+                                  BlendMode.srcIn,
+                                ),
+                                placeholderBuilder: (_) => const Icon(CupertinoIcons.plus_circle_fill, size: 22),
+                              ),
                               label: const Padding(
                                 padding: EdgeInsets.symmetric(vertical: 4),
                                 child: Text(
@@ -278,23 +301,49 @@ class _ProductsScreenState extends State<ProductsScreen> {
         title: Text('Mis productos', style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.4)),
       ),
       body: SafeArea(
-        child: AnimatedSwitcher(
-          duration: PortalTokens.motionNormal,
-          child: _isLoading
-              ? Center(key: const ValueKey('l'), child: CircularProgressIndicator(color: scheme.primary))
-              : _products.isEmpty
-                  ? PortalEmptyState(
-                      key: const ValueKey('e'),
-                      icon: Icons.inventory_2_outlined,
-                      title: 'Sin productos aún',
-                      subtitle: 'Publica tu primer artículo y empieza a vender en eVeta.',
-                      action: FilledButton.icon(
-                        onPressed: _openPublishSheet,
-                        icon: const Icon(Icons.add_rounded),
-                        label: const Text('Subir producto'),
-                      ),
-                    )
-                  : ListView.builder(
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.fromLTRB(PortalTokens.space2, PortalTokens.space1, PortalTokens.space2, 0),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(PortalTokens.radiusLg),
+                border: Border.all(color: scheme.outline.withValues(alpha: 0.12)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline_rounded, size: 18, color: scheme.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Las entradas de eventos se gestionan en Eventos, no en productos.',
+                      style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: PortalTokens.motionNormal,
+                child: _isLoading
+                    ? Center(key: const ValueKey('l'), child: CircularProgressIndicator(color: scheme.primary))
+                    : _products.isEmpty
+                        ? PortalEmptyState(
+                            key: const ValueKey('e'),
+                            icon: Icons.inventory_2_outlined,
+                            title: 'Sin productos aún',
+                            subtitle: 'Publica tu primer artículo y empieza a vender en eVeta.',
+                            action: FilledButton.icon(
+                              onPressed: _openPublishSheet,
+                              icon: const Icon(Icons.add_rounded),
+                              label: const Text('Subir producto'),
+                            ),
+                          )
+                        : ListView.builder(
                       key: const ValueKey('list'),
                       padding: const EdgeInsets.fromLTRB(
                         PortalTokens.space2,
@@ -426,7 +475,10 @@ class _ProductsScreenState extends State<ProductsScreen> {
                           ),
                         );
                       },
-                    ),
+                        ),
+              ),
+            ),
+          ],
         ),
       ),
       floatingActionButton: Padding(

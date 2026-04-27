@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:app_links/app_links.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -7,6 +10,8 @@ import 'package:eveta/common_widget/bottom_nav_bar_widget.dart';
 import 'package:eveta/screens/home_screen.dart';
 import 'package:eveta/screens/login_screen.dart';
 import 'package:eveta/screens/menu_screen.dart';
+import 'package:eveta/screens/onboarding_flow_screen.dart';
+import 'package:eveta/screens/register_screen.dart';
 import 'package:eveta/screens/shopping_cart_screen.dart';
 import 'package:eveta/screens/product_detail_screen.dart';
 import 'package:eveta/screens/search_screen.dart';
@@ -21,6 +26,27 @@ import 'package:eveta/utils/auth_service.dart';
 import 'package:eveta/theme/eveta_shop_theme.dart';
 import 'package:eveta/theme/eveta_theme_controller.dart';
 import 'package:eveta/theme/shop_system_ui.dart';
+
+const String _pendingProductDeepLinkKey = 'pending_product_deep_link_id';
+
+String? _extractProductIdFromUri(Uri uri) {
+  if (uri.scheme == 'https' && uri.host == 'eveta.app' && uri.pathSegments.length >= 2 && uri.pathSegments.first == 'p') {
+    final id = uri.pathSegments[1].trim();
+    return id.isEmpty ? null : id;
+  }
+  if (uri.host != 'product' && (uri.pathSegments.isEmpty || uri.pathSegments.first != 'product')) {
+    return null;
+  }
+  if (uri.host == 'product' && uri.pathSegments.isNotEmpty) {
+    final id = uri.pathSegments.first.trim();
+    return id.isEmpty ? null : id;
+  }
+  if (uri.pathSegments.length >= 2 && uri.pathSegments.first == 'product') {
+    final id = uri.pathSegments[1].trim();
+    return id.isEmpty ? null : id;
+  }
+  return null;
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -41,6 +67,7 @@ Future<void> main() async {
   await CartService.init();
   await FavoritesService.init();
   await CatalogLocalSync.syncCartAndFavoritesWithCatalog();
+  await initEvetaThemeMode();
 
   runApp(const MyApp());
 }
@@ -65,6 +92,8 @@ class MyApp extends StatelessWidget {
           home: const SplashScreen(),
           routes: {
             '/home': (context) => const MyHomePage(),
+            '/login': (context) => const LoginScreen(),
+            '/create-account': (context) => const RegisterScreen(),
           },
           builder: (context, child) {
             return MediaQuery(
@@ -89,17 +118,43 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
+  double _logoScale = 0.88;
+  double _logoOpacity = 0.0;
+  final AppLinks _appLinks = AppLinks();
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _logoScale = 1.0;
+        _logoOpacity = 1.0;
+      });
+    });
+    _captureInitialDeepLink();
     _checkLoginStatus();
   }
 
+  Future<void> _captureInitialDeepLink() async {
+    try {
+      final uri = await _appLinks.getInitialLink();
+      if (uri == null) return;
+      final productId = _extractProductIdFromUri(uri);
+      if (productId == null) return;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_pendingProductDeepLinkKey, productId);
+    } catch (_) {
+      // Ignora errores de parseo/captura para no bloquear el splash.
+    }
+  }
+
   Future<void> _checkLoginStatus() async {
-    await Future.delayed(const Duration(seconds: 2));
+    await Future.delayed(const Duration(milliseconds: 1750));
 
     final supabaseSession = Supabase.instance.client.auth.currentUser;
     final prefs = await SharedPreferences.getInstance();
+    final onboardingCompleted = prefs.getBool(OnboardingScreen.completedKey) ?? false;
     if (supabaseSession == null) {
       // Evita entrar por una preferencia vieja sin sesión real.
       await prefs.remove('isLoggedIn');
@@ -122,44 +177,45 @@ class _SplashScreenState extends State<SplashScreen> {
           );
         }
       } else {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const LoginScreen()),
-        );
+        if (onboardingCompleted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const LoginScreen()),
+          );
+        } else {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const OnboardingScreen()),
+          );
+        }
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: const Color(0xFF22C55E),
+      backgroundColor: isDark ? const Color(0xFF0B0F1A) : Colors.white,
       body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SvgPicture.asset(
-              'assets/images/eVeta.svg',
-              width: 130,
-              height: 130,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 650),
+          curve: Curves.easeOutCubic,
+          opacity: _logoOpacity,
+          child: AnimatedScale(
+            duration: const Duration(milliseconds: 650),
+            curve: Curves.easeOutCubic,
+            scale: _logoScale,
+            child: SvgPicture.asset(
+              'assets/images/auth_logo_light.svg',
+              width: 160,
+              height: 160,
               fit: BoxFit.contain,
+              colorFilter: isDark
+                  ? const ColorFilter.mode(Colors.white, BlendMode.srcIn)
+                  : null,
             ),
-            const SizedBox(height: 24),
-            const Text(
-              'eVeta',
-              style: TextStyle(
-                fontSize: 42,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-                letterSpacing: 3,
-              ),
-            ),
-            const SizedBox(height: 16),
-            const CircularProgressIndicator(
-              color: Colors.white,
-              strokeWidth: 2,
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -181,6 +237,8 @@ class _MyHomePageNewState extends State<MyHomePage> with WidgetsBindingObserver 
   bool _searchOpen = false;
   int _searchSession = 0;
   String? _searchInitialQuery;
+  final AppLinks _appLinks = AppLinks();
+  StreamSubscription<Uri>? _deepLinkSub;
 
   void _onThemeModeChanged() {
     if (mounted) _updateSystemUI();
@@ -191,6 +249,10 @@ class _MyHomePageNewState extends State<MyHomePage> with WidgetsBindingObserver 
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     evetaThemeMode.addListener(_onThemeModeChanged);
+    _consumePendingDeepLink();
+    _deepLinkSub = _appLinks.uriLinkStream.listen((uri) {
+      _handleDeepLink(uri);
+    }, onError: (_) {});
   }
 
   @override
@@ -217,10 +279,34 @@ class _MyHomePageNewState extends State<MyHomePage> with WidgetsBindingObserver 
 
   @override
   void dispose() {
+    _deepLinkSub?.cancel();
     evetaThemeMode.removeListener(_onThemeModeChanged);
     WidgetsBinding.instance.removeObserver(this);
     _pageController.dispose();
     super.dispose();
+  }
+
+  Future<void> _consumePendingDeepLink() async {
+    final prefs = await SharedPreferences.getInstance();
+    final pendingId = prefs.getString(_pendingProductDeepLinkKey)?.trim();
+    if (!mounted || pendingId == null || pendingId.isEmpty) return;
+    await prefs.remove(_pendingProductDeepLinkKey);
+    _showProductDetail(pendingId);
+  }
+
+  Future<void> _handleDeepLink(Uri uri) async {
+    final productId = _extractProductIdFromUri(uri);
+    if (productId == null || productId.isEmpty) return;
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_pendingProductDeepLinkKey, productId);
+      if (!mounted) return;
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+      return;
+    }
+    if (!mounted) return;
+    _showProductDetail(productId);
   }
 
   void _showProductDetail(String productId) {

@@ -6,6 +6,18 @@ import 'package:eveta/search/product_search_models.dart';
 class SupabaseService {
   static final SupabaseClient client = Supabase.instance.client;
 
+  static List<Map<String, dynamic>> _excludeEventTicketMirrorProducts(
+    List<Map<String, dynamic>> rows,
+  ) {
+    return rows
+        .where(
+          (row) =>
+              row['event_ticket_type_id'] == null ||
+              row['event_ticket_type_id'].toString().trim().isEmpty,
+        )
+        .toList();
+  }
+
   static Future<List<Map<String, dynamic>>> getProducts() async {
     try {
       final response = await client
@@ -18,7 +30,9 @@ class SupabaseService {
       if (response.isNotEmpty) {
         debugPrint('Primer producto: ${response[0]}');
       }
-      return List<Map<String, dynamic>>.from(response);
+      return _excludeEventTicketMirrorProducts(
+        List<Map<String, dynamic>>.from(response),
+      );
     } catch (e) {
       debugPrint('Error al obtener productos: $e');
       return [];
@@ -34,7 +48,9 @@ class SupabaseService {
           .eq('category_id', categoryId)
           .order('created_at', ascending: false)
           .limit(100);
-      return List<Map<String, dynamic>>.from(response);
+      return _excludeEventTicketMirrorProducts(
+        List<Map<String, dynamic>>.from(response),
+      );
     } catch (e) {
       debugPrint('Error al obtener productos por categoría: $e');
       return [];
@@ -53,7 +69,9 @@ class SupabaseService {
           .inFilter('category_id', ids)
           .order('created_at', ascending: false)
           .limit(200);
-      return List<Map<String, dynamic>>.from(response);
+      return _excludeEventTicketMirrorProducts(
+        List<Map<String, dynamic>>.from(response),
+      );
     } catch (e) {
       debugPrint('Error al obtener productos por categorías: $e');
       return [];
@@ -64,7 +82,7 @@ class SupabaseService {
     try {
       final response = await client
           .from('profiles')
-          .select('id, shop_name, shop_description, shop_logo_url, shop_banner_url, full_name, email, avatar_url')
+          .select('id, shop_name, shop_description, shop_logo_url, shop_banner_url, shop_border_color, full_name, email, avatar_url')
           .eq('id', sellerId)
           .maybeSingle();
       if (response == null) return null;
@@ -87,7 +105,7 @@ class SupabaseService {
       return m;
     } catch (e) {
       // Si aún no existe `shop_banner_url` en DB, reintentamos sin esa columna.
-      if (e.toString().toLowerCase().contains('shop_banner_url')) {
+      if (e.toString().toLowerCase().contains('shop_banner_url') || e.toString().toLowerCase().contains('shop_border_color')) {
         final response = await client
             .from('profiles')
             .select('id, shop_name, shop_description, shop_logo_url, full_name, email, avatar_url')
@@ -109,12 +127,14 @@ class SupabaseService {
     try {
       final response = await client
           .from('products')
-          .select('id, name, price, original_price, images, stock, rating, review_count, is_featured, tags, categories(name)')
+          .select('id, name, price, original_price, images, stock, rating, review_count, is_featured, tags, event_ticket_type_id, categories(name)')
           .eq('is_active', true)
           .eq('seller_id', sellerId)
           .order('created_at', ascending: false)
           .limit(50);
-      return List<Map<String, dynamic>>.from(response);
+      return _excludeEventTicketMirrorProducts(
+        List<Map<String, dynamic>>.from(response),
+      );
     } catch (e) {
       debugPrint('Error al obtener productos por seller: $e');
       return [];
@@ -159,11 +179,13 @@ class SupabaseService {
       final q = _escapeIlike(query.trim());
       final response = await client
           .from('products')
-          .select('id, name, price, images, categories(name)')
+          .select('id, name, price, images, event_ticket_type_id, categories(name)')
           .eq('is_active', true)
           .or('name.ilike.%$q%,tags.cs.{$query}')
           .limit(25);
-      return List<Map<String, dynamic>>.from(response);
+      return _excludeEventTicketMirrorProducts(
+        List<Map<String, dynamic>>.from(response),
+      );
     } catch (e) {
       debugPrint('Error en búsqueda: $e');
       return [];
@@ -177,6 +199,7 @@ class SupabaseService {
           .from('products')
           .select('price')
           .eq('is_active', true)
+          .isFilter('event_ticket_type_id', null)
           .order('price', ascending: false)
           .limit(1)
           .maybeSingle();
@@ -202,13 +225,15 @@ class SupabaseService {
       final response = await client
           .from('products')
           .select(
-            'id, name, price, original_price, images, stock, rating, review_count, is_featured, tags, categories(name)',
+            'id, name, price, original_price, images, stock, rating, review_count, is_featured, tags, event_ticket_type_id, categories(name)',
           )
           .eq('is_active', true)
           .neq('id', excludeProductId)
           .overlaps('tags', clean)
           .limit(limit);
-      return List<Map<String, dynamic>>.from(response);
+      return _excludeEventTicketMirrorProducts(
+        List<Map<String, dynamic>>.from(response),
+      );
     } catch (e) {
       debugPrint('getProductsOverlappingTags: $e — reintento con un tag');
       try {
@@ -216,13 +241,15 @@ class SupabaseService {
         final response = await client
             .from('products')
             .select(
-              'id, name, price, original_price, images, stock, rating, review_count, is_featured, tags, categories(name)',
+              'id, name, price, original_price, images, stock, rating, review_count, is_featured, tags, event_ticket_type_id, categories(name)',
             )
             .eq('is_active', true)
             .neq('id', excludeProductId)
             .or('tags.cs.{$t}')
             .limit(limit);
-        return List<Map<String, dynamic>>.from(response);
+        return _excludeEventTicketMirrorProducts(
+          List<Map<String, dynamic>>.from(response),
+        );
       } catch (e2) {
         debugPrint('getProductsOverlappingTags fallback: $e2');
         return [];
@@ -243,13 +270,15 @@ class SupabaseService {
       final response = await client
           .from('products')
           .select(
-            'id, name, price, original_price, images, stock, rating, review_count, is_featured, tags, categories(name)',
+            'id, name, price, original_price, images, stock, rating, review_count, is_featured, tags, event_ticket_type_id, categories(name)',
           )
           .eq('is_active', true)
           .neq('id', excludeProductId)
           .ilike('name', '%$q%')
           .limit(limit);
-      return List<Map<String, dynamic>>.from(response);
+      return _excludeEventTicketMirrorProducts(
+        List<Map<String, dynamic>>.from(response),
+      );
     } catch (e) {
       debugPrint('searchProductsByNameWord: $e');
       return [];
@@ -306,7 +335,7 @@ class SupabaseService {
       try {
         dynamic qb = client
             .from('products')
-            .select('id, name, price, stock, images, category_id, created_at, tags, categories(name)')
+            .select('id, name, price, stock, images, category_id, created_at, tags, event_ticket_type_id, categories(name)')
             .eq('is_active', true);
 
         if (trimmed.length >= 2) {
@@ -340,7 +369,9 @@ class SupabaseService {
 
         qb = qb.limit(100);
         final response = await qb;
-        return List<Map<String, dynamic>>.from(response);
+        return _excludeEventTicketMirrorProducts(
+          List<Map<String, dynamic>>.from(response),
+        );
       } catch (e) {
         debugPrint('searchProductsAdvanced (includeCategoryName=$includeCat): $e');
         if (!includeCat) return [];
@@ -400,7 +431,9 @@ class SupabaseService {
           .eq('is_featured', true)
           .eq('is_active', true)
           .limit(10);
-      return List<Map<String, dynamic>>.from(response);
+      return _excludeEventTicketMirrorProducts(
+        List<Map<String, dynamic>>.from(response),
+      );
     } catch (e) {
       debugPrint('Error al obtener productos destacados: $e');
       return [];

@@ -96,8 +96,8 @@ class _CategoryChipBase extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final r = BorderRadius.circular(borderRadius.clamp(0.0, 999.0));
     final iosBorder = evetaIosCapsuleBorder(context);
-    final borderColor = selected ? scheme.primary : iosBorder;
-    final textColor = selected ? scheme.primary : scheme.onSurface;
+    final borderColor = selected ? scheme.onSurface.withValues(alpha: 0.2) : iosBorder;
+    final textColor = scheme.onSurface;
     final weight = selected ? FontWeight.w700 : FontWeight.w500;
 
     return Padding(
@@ -111,7 +111,7 @@ class _CategoryChipBase extends StatelessWidget {
           highlightColor: scheme.onSurface.withValues(alpha: 0.05),
           child: Ink(
             decoration: BoxDecoration(
-              color: Colors.transparent,
+              color: selected ? scheme.surfaceContainerHigh : Colors.transparent,
               borderRadius: r,
               border: Border.all(
                 color: borderColor,

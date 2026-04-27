@@ -2,10 +2,12 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:eveta/screens/my_orders_screen.dart';
 import 'package:eveta/theme/eveta_shop_theme.dart';
 import 'package:eveta/utils/order_service.dart';
+import 'package:eveta/utils/wallet_service.dart';
 
 /// Pago único por QR tras confirmar el pedido; luego pantalla de éxito y acceso a pedidos.
 class CheckoutPaymentScreen extends StatefulWidget {
@@ -24,6 +26,8 @@ class CheckoutPaymentScreen extends StatefulWidget {
 
 class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> with SingleTickerProviderStateMixin {
   bool _paymentDone = false;
+  bool _processingWallet = false;
+  String _paymentMethod = 'qr';
   late final AnimationController _celebrateCtrl;
   late final Animation<double> _popScale;
 
@@ -60,6 +64,32 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> with Sing
     if (!mounted) return;
     setState(() => _paymentDone = true);
     _celebrateCtrl.forward(from: 0);
+  }
+
+  Future<void> _onPayWithWallet() async {
+    if (_processingWallet) return;
+    setState(() => _processingWallet = true);
+    try {
+      await Supabase.instance.client.rpc(
+        'wallet_debit_for_orders',
+        params: {
+          'p_order_ids': widget.orderIds,
+        },
+      );
+      await _onMarkPaid();
+    } catch (e) {
+      if (!mounted) return;
+      final scheme = Theme.of(context).colorScheme;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se pudo cobrar con saldo: $e'),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: scheme.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _processingWallet = false);
+    }
   }
 
   Future<void> _openMyOrders() async {
@@ -109,9 +139,13 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> with Sing
                 qrPayload: _qrPayload,
                 amountLabel: widget.amountLabel,
                 orderCount: widget.orderIds.length,
+                paymentMethod: _paymentMethod,
                 scheme: scheme,
                 tt: tt,
+                onChangeMethod: (v) => setState(() => _paymentMethod = v),
                 onPaid: () => _onMarkPaid(),
+                onPayWithWallet: _onPayWithWallet,
+                processingWallet: _processingWallet,
               ),
       ),
     );
@@ -124,17 +158,25 @@ class _QrBody extends StatelessWidget {
     required this.qrPayload,
     required this.amountLabel,
     required this.orderCount,
+    required this.paymentMethod,
     required this.scheme,
     required this.tt,
+    required this.onChangeMethod,
     required this.onPaid,
+    required this.onPayWithWallet,
+    required this.processingWallet,
   });
 
   final String qrPayload;
   final String amountLabel;
   final int orderCount;
+  final String paymentMethod;
   final ColorScheme scheme;
   final TextTheme tt;
+  final ValueChanged<String> onChangeMethod;
   final VoidCallback onPaid;
+  final VoidCallback onPayWithWallet;
+  final bool processingWallet;
 
   @override
   Widget build(BuildContext context) {
@@ -144,35 +186,74 @@ class _QrBody extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'El pago de tu pedido es solo por código QR. Escanea con tu app bancaria o billetera.',
+            'Método de pago',
+            style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment<String>(
+                value: 'qr',
+                label: Text('QR bancario'),
+                icon: Icon(Icons.qr_code_rounded),
+              ),
+              ButtonSegment<String>(
+                value: 'wallet',
+                label: Text('Saldo eVeta'),
+                icon: Icon(Icons.account_balance_wallet_rounded),
+              ),
+            ],
+            selected: {paymentMethod},
+            onSelectionChanged: (s) => onChangeMethod(s.first),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            paymentMethod == 'qr'
+                ? 'Escanea con tu app bancaria o billetera y luego confirma.'
+                : 'Usa tu saldo eVeta para pagar al instante.',
             style: tt.bodyLarge?.copyWith(
               color: scheme.onSurfaceVariant,
               height: 1.35,
             ),
           ),
           const SizedBox(height: 20),
-          Center(
-            child: Material(
-              color: Colors.white,
-              elevation: 4,
-              borderRadius: BorderRadius.circular(16),
-              clipBehavior: Clip.antiAlias,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: QrImageView(
-                  data: qrPayload,
-                  version: QrVersions.auto,
-                  size: 220,
-                  eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: Color(0xFF1C1C1E)),
-                  dataModuleStyle: const QrDataModuleStyle(
-                    dataModuleShape: QrDataModuleShape.square,
-                    color: Color(0xFF1C1C1E),
+          if (paymentMethod == 'qr')
+            Center(
+              child: Material(
+                color: Colors.white,
+                elevation: 4,
+                borderRadius: BorderRadius.circular(16),
+                clipBehavior: Clip.antiAlias,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: QrImageView(
+                    data: qrPayload,
+                    version: QrVersions.auto,
+                    size: 220,
+                    eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: Color(0xFF1C1C1E)),
+                    dataModuleStyle: const QrDataModuleStyle(
+                      dataModuleShape: QrDataModuleShape.square,
+                      color: Color(0xFF1C1C1E),
+                    ),
+                    backgroundColor: Colors.white,
                   ),
-                  backgroundColor: Colors.white,
                 ),
               ),
+            )
+          else
+            FutureBuilder<double>(
+              future: WalletService.getBalance(),
+              builder: (context, snapshot) {
+                final bal = snapshot.data ?? 0;
+                return Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.account_balance_wallet_rounded),
+                    title: const Text('Saldo disponible'),
+                    subtitle: Text('Bs ${bal.toStringAsFixed(2)}'),
+                  ),
+                );
+              },
             ),
-          ),
           const SizedBox(height: 16),
           Text(
             'Total: $amountLabel',
@@ -189,16 +270,27 @@ class _QrBody extends StatelessWidget {
           SizedBox(
             height: 52,
             child: FilledButton(
-              onPressed: onPaid,
+              onPressed: paymentMethod == 'qr'
+                  ? onPaid
+                  : (processingWallet ? null : onPayWithWallet),
               style: FilledButton.styleFrom(
                 backgroundColor: EvetaShopColors.brand,
                 foregroundColor: Colors.white,
                 elevation: 0,
               ),
-              child: Text(
-                'Ya completé el pago',
-                style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800, color: Colors.white),
-              ),
+              child: processingWallet
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.4,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text(
+                      paymentMethod == 'qr' ? 'Ya completé el pago' : 'Pagar con saldo',
+                      style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w800, color: Colors.white),
+                    ),
             ),
           ),
         ],

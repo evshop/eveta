@@ -304,33 +304,48 @@ class _EvetaFullscreenImageViewerState extends State<EvetaFullscreenImageViewer>
                                         curve: Curves.easeOutCubic,
                                       );
                                     },
-                                    child: AnimatedContainer(
-                                      duration: const Duration(milliseconds: 200),
-                                      width: 48,
-                                      height: 48,
-                                      clipBehavior: Clip.antiAlias,
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(14),
-                                        border: Border.all(
-                                          color: sel ? scheme.primary : scheme.outline.withValues(alpha: 0.45),
-                                          width: sel ? 2.2 : 1,
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(14),
+                                      child: AnimatedContainer(
+                                        duration: const Duration(milliseconds: 200),
+                                        width: 48,
+                                        height: 48,
+                                        clipBehavior: Clip.antiAlias,
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(14),
+                                          boxShadow: sel
+                                              ? [
+                                                  BoxShadow(
+                                                    color: scheme.primary.withValues(alpha: 0.28),
+                                                    blurRadius: 6,
+                                                    offset: const Offset(0, 2),
+                                                  ),
+                                                ]
+                                              : null,
                                         ),
-                                        boxShadow: sel
-                                            ? [
-                                                BoxShadow(
-                                                  color: scheme.primary.withValues(alpha: 0.28),
-                                                  blurRadius: 6,
-                                                  offset: const Offset(0, 2),
+                                        child: Stack(
+                                          fit: StackFit.expand,
+                                          children: [
+                                            EvetaCachedImage(
+                                              imageUrl: urls[i],
+                                              delivery: EvetaImageDelivery.card,
+                                              fit: BoxFit.cover,
+                                              memCacheWidth: 160,
+                                              errorIconSize: 22,
+                                            ),
+                                            IgnorePointer(
+                                              child: DecoratedBox(
+                                                decoration: BoxDecoration(
+                                                  borderRadius: BorderRadius.circular(14),
+                                                  border: Border.all(
+                                                    color: sel ? scheme.primary : scheme.outline.withValues(alpha: 0.45),
+                                                    width: sel ? 2.2 : 1,
+                                                  ),
                                                 ),
-                                              ]
-                                            : null,
-                                      ),
-                                      child: EvetaCachedImage(
-                                        imageUrl: urls[i],
-                                        delivery: EvetaImageDelivery.card,
-                                        fit: BoxFit.cover,
-                                        memCacheWidth: 160,
-                                        errorIconSize: 22,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   );

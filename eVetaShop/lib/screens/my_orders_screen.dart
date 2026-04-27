@@ -5,8 +5,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:eveta/common_widget/eveta_circular_back_button.dart';
 import 'package:eveta/utils/order_service.dart';
 
-const Color _kGreen = Color(0xFF09CB6B);
-
 class MyOrdersScreen extends StatefulWidget {
   const MyOrdersScreen({super.key});
 
@@ -50,29 +48,36 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
   @override
   Widget build(BuildContext context) {
     final user = Supabase.instance.client.auth.currentUser;
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6F7),
+      backgroundColor: scheme.surface,
       appBar: AppBar(
-        backgroundColor: _kGreen,
+        backgroundColor: scheme.surface,
         elevation: 0,
-        systemOverlayStyle: SystemUiOverlayStyle.light,
-        leading: const EvetaCircularBackButton(),
-        title: const Text(
+        systemOverlayStyle: Theme.of(context).brightness == Brightness.dark
+            ? SystemUiOverlayStyle.light
+            : SystemUiOverlayStyle.dark,
+        leading: EvetaCircularBackButton(
+          variant: Theme.of(context).brightness == Brightness.dark
+              ? EvetaCircularBackVariant.tonalSurface
+              : EvetaCircularBackVariant.onLightBackground,
+        ),
+        title: Text(
           'Mis pedidos',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          style: TextStyle(color: scheme.onSurface, fontWeight: FontWeight.w700),
         ),
         centerTitle: true,
       ),
       body: user == null
           ? const Center(child: Text('Inicia sesión para ver tus pedidos.'))
           : RefreshIndicator(
-              color: _kGreen,
+              color: scheme.primary,
               onRefresh: _refresh,
               child: FutureBuilder<List<Map<String, dynamic>>>(
                 future: _future,
                 builder: (context, snap) {
                   if (snap.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator(color: _kGreen));
+                    return Center(child: CircularProgressIndicator(color: scheme.primary));
                   }
                   if (snap.hasError) {
                     return Center(child: Text('Error: ${snap.error}'));
@@ -105,11 +110,16 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                       final dist = o['distance_km'];
                       final addr = o['dropoff_address']?.toString() ?? '';
                       final ds = o['delivery_status']?.toString();
+                      final statusColor = switch (ds) {
+                        'delivered' => Colors.blueGrey,
+                        'cancelled' => Colors.redAccent,
+                        _ => scheme.onSurfaceVariant,
+                      };
                       return Material(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
+                        color: scheme.surfaceContainerHigh,
+                        borderRadius: BorderRadius.circular(16),
                         child: InkWell(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(16),
                           onTap: () {},
                           child: Padding(
                             padding: const EdgeInsets.all(16),
@@ -130,15 +140,15 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                       decoration: BoxDecoration(
-                                        color: _kGreen.withValues(alpha: 0.12),
+                                        color: statusColor.withValues(alpha: 0.14),
                                         borderRadius: BorderRadius.circular(20),
                                       ),
                                       child: Text(
                                         _labelDelivery(ds),
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 12,
                                           fontWeight: FontWeight.w600,
-                                          color: Color(0xFF1A7A4A),
+                                          color: statusColor,
                                         ),
                                       ),
                                     ),
@@ -149,7 +159,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                                   addr.isEmpty ? 'Sin dirección' : addr,
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+                                  style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
                                 ),
                                 const SizedBox(height: 10),
                                 Row(
@@ -159,14 +169,14 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                                       dist != null
                                           ? '${(dist is num ? dist.toDouble() : double.tryParse(dist.toString()) ?? 0).toStringAsFixed(1)} km'
                                           : '— km',
-                                      style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                                      style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
                                     ),
                                     Text(
                                       'Bs ${total?.toString() ?? '0'}',
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontWeight: FontWeight.w800,
                                         fontSize: 16,
-                                        color: Color(0xFF1A1A1A),
+                                        color: scheme.onSurface,
                                       ),
                                     ),
                                   ],

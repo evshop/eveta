@@ -40,7 +40,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) return;
 
-      final productsResponse = await Supabase.instance.client.from('products').select('id').eq('seller_id', user.id);
+      final productsResponse = await Supabase.instance.client
+          .from('products')
+          .select('id')
+          .eq('seller_id', user.id)
+          .isFilter('event_ticket_type_id', null);
 
       final productsCount = (productsResponse as List).length;
 

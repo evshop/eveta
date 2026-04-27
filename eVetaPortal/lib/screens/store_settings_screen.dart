@@ -20,6 +20,7 @@ class StoreSettingsScreen extends StatefulWidget {
 class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
   final _nameCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
+  final _borderColorCtrl = TextEditingController();
 
   bool _loading = true;
   bool _saving = false;
@@ -32,6 +33,16 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
 
   String? _email;
   String? _shopId;
+
+  Color? _parseHexColor(String? raw) {
+    final s = (raw ?? '').trim().replaceAll('#', '');
+    if (s.isEmpty) return null;
+    final hex = s.length == 6 ? 'FF$s' : s;
+    if (hex.length != 8) return null;
+    final v = int.tryParse(hex, radix: 16);
+    if (v == null) return null;
+    return Color(v);
+  }
 
   String _cacheBustImageUrl(String url) {
     final trimmed = url.trim();
@@ -70,7 +81,7 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
         row = await Supabase.instance.client
             .from('profiles')
             .select(
-              'id, shop_name, shop_description, shop_logo_url, shop_banner_url, avatar_url',
+              'id, shop_name, shop_description, shop_logo_url, shop_banner_url, shop_border_color, avatar_url',
             )
             .eq('id', user.id)
             .maybeSingle();
@@ -78,7 +89,7 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
         if (e.toString().toLowerCase().contains('shop_banner_url')) {
           row = await Supabase.instance.client
               .from('profiles')
-              .select('id, shop_name, shop_description, shop_logo_url, avatar_url')
+            .select('id, shop_name, shop_description, shop_logo_url, shop_border_color, avatar_url')
               .eq('id', user.id)
               .maybeSingle();
         } else {
@@ -94,6 +105,7 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
 
       _nameCtrl.text = row['shop_name']?.toString().trim() ?? '';
       _descCtrl.text = row['shop_description']?.toString().trim() ?? '';
+      _borderColorCtrl.text = row['shop_border_color']?.toString().trim() ?? '';
       final legacyAvatar = row['avatar_url']?.toString().trim();
       final logo = row['shop_logo_url']?.toString().trim();
       final banner = row['shop_banner_url']?.toString().trim();
@@ -205,6 +217,7 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
               'shop_description': _descCtrl.text.trim(),
               'shop_logo_url': _logoUrl,
               'shop_banner_url': _bannerUrl,
+              'shop_border_color': _borderColorCtrl.text.trim().isEmpty ? null : _borderColorCtrl.text.trim(),
               'is_seller': true,
             }, onConflict: 'id')
             .select('id');
@@ -220,6 +233,7 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
                 'shop_logo_url': _logoUrl,
                 // Fallback legacy: usar avatar_url si aún no existe shop_banner_url.
                 'avatar_url': _bannerUrl,
+                'shop_border_color': _borderColorCtrl.text.trim().isEmpty ? null : _borderColorCtrl.text.trim(),
                 'is_seller': true,
               }, onConflict: 'id')
               .select('id');
@@ -612,6 +626,14 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
                         alignLabelWithHint: true,
                       ).applyDefaults(Theme.of(ctx).inputDecorationTheme),
                     ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _borderColorCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Color del borde del logo (hex)',
+                        hintText: '#09CB6B o vacío para sin color',
+                      ).applyDefaults(Theme.of(ctx).inputDecorationTheme),
+                    ),
                     const SizedBox(height: 20),
                     FilledButton(
                       onPressed: () => Navigator.pop(ctx),
@@ -632,6 +654,7 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
   void dispose() {
     _nameCtrl.dispose();
     _descCtrl.dispose();
+    _borderColorCtrl.dispose();
     super.dispose();
   }
 
@@ -666,6 +689,7 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
                       logoBytes: _logoBytes,
                       shopName: _nameCtrl.text.trim(),
                       shopDescription: _descCtrl.text.trim(),
+                      logoBorderColor: _parseHexColor(_borderColorCtrl.text) ?? scheme.primary,
                       scale: scale,
                       onBannerTap: _uploading ? null : _showBannerSheet,
                       onLogoTap: _uploading ? null : _showLogoSheet,

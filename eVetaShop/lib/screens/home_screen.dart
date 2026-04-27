@@ -26,6 +26,8 @@ import 'package:eveta/utils/feature_flags.dart';
 import 'package:eveta/utils/catalog_cache_service.dart';
 import 'package:eveta/utils/supabase_service.dart';
 import 'package:eveta/ui/shop/product_map_ui.dart';
+import 'package:eveta/screens/wallet_screen.dart';
+import 'package:eveta/utils/wallet_service.dart';
 
 class _HomeData {
   const _HomeData({
@@ -63,6 +65,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final ScrollController _homeScrollController = ScrollController();
   StreamSubscription<AuthState>? _authSub;
   String _locationLine = 'Entrega en La Paz, Bolivia';
+  double _headerT = 0.0;
 
   @override
   void initState() {
@@ -73,6 +76,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mounted) setState(() {});
     });
     _refreshLocationLine();
+    _homeScrollController.addListener(_onScroll);
   }
 
   Future<void> _refreshLocationLine() async {
@@ -82,7 +86,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (loc.lat != null && loc.lng != null && loc.displayLabel.trim().isNotEmpty) {
         _locationLine = loc.displayLabel.trim();
       } else {
-        _locationLine = 'Elige dónde entregamos · La Paz, Bolivia';
+        _locationLine = 'Elige tu destino';
       }
     });
   }
@@ -90,9 +94,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     _authSub?.cancel();
+    _homeScrollController.removeListener(_onScroll);
     _homeScrollController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (!mounted) return;
+    // Header se anima de ~236px -> ~56px (sin contar statusTop).
+    const maxH = 236.0;
+    const minH = 56.0;
+    final t = (_homeScrollController.offset / (maxH - minH)).clamp(0.0, 1.0);
+    if ((t - _headerT).abs() > 0.01) {
+      setState(() => _headerT = t);
+    }
   }
 
   @override
@@ -165,7 +181,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         color: scheme.surfaceContainerHigh,
                         borderRadius: BorderRadius.circular(EvetaShopDimens.radiusMd),
                         child: ListTile(
-                          leading: Icon(Icons.place_outlined, color: scheme.primary),
+                          leading: Icon(Icons.place_outlined, color: scheme.onSurface),
                           title: Text(loc.displayTitle, maxLines: 2, overflow: TextOverflow.ellipsis),
                           onTap: () async {
                             Navigator.pop(ctx);
@@ -178,7 +194,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                 ),
                 const SizedBox(height: 12),
-                FilledButton.icon(
+                OutlinedButton.icon(
                   onPressed: () async {
                     Navigator.pop(ctx);
                     await Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const LocationOnboardingScreen()));
@@ -186,9 +202,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   },
                   icon: const Icon(Icons.add_location_alt_outlined, size: 20),
                   label: const Text('Agregar nueva ubicación'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: scheme.primary,
-                    foregroundColor: scheme.onPrimary,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: scheme.onSurface,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                 ),
@@ -265,17 +280,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   /// Iconos del saludo compactos: fondo tonal circular (no píldora ovalada).
-  ButtonStyle _homeHeaderCircleIconStyle() {
-    return IconButton.styleFrom(
-      shape: const CircleBorder(),
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: VisualDensity.compact,
-      minimumSize: const Size(44, 44),
-      fixedSize: const Size(44, 44),
-      padding: EdgeInsets.zero,
-    );
-  }
-
   Widget _buildHomeStickyHeader(BuildContext context, double t) {
     final scheme = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
@@ -351,34 +355,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(
-                                          'Hola, $firstName',
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: tt.headlineSmall?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.4),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          '¿Qué compramos hoy?',
-                                          style: tt.bodyMedium?.copyWith(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w500),
-                                        ),
-                                      ],
+                                    child: Transform.translate(
+                                      offset: Offset(0, lerpDouble(0, -10, t.clamp(0.0, 1.0))!),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            'Hola, $firstName',
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: tt.headlineSmall?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.4),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '¿Qué compramos hoy?',
+                                            style: tt.bodyMedium?.copyWith(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w500),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                  IconButton.filledTonal(
-                                    style: _homeHeaderCircleIconStyle(),
-                                    onPressed: widget.onOpenWishlist,
-                                    icon: const Icon(Icons.favorite_outline_rounded, size: 22),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  IconButton.filledTonal(
-                                    style: _homeHeaderCircleIconStyle(),
-                                    onPressed: widget.onOpenCart,
-                                    icon: const Icon(Icons.shopping_bag_outlined, size: 22),
+                                  Transform.translate(
+                                    offset: Offset(lerpDouble(0, 10, t.clamp(0.0, 1.0))!, 0),
+                                    child: _BalancePill(
+                                      onTap: () {
+                                        Navigator.push<void>(
+                                          context,
+                                          MaterialPageRoute<void>(builder: (_) => const WalletScreen()),
+                                        );
+                                      },
+                                    ),
                                   ),
                                 ],
                               ),
@@ -392,7 +399,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                     padding: const EdgeInsets.symmetric(vertical: 4),
                                     child: Row(
                                       children: [
-                                        Icon(Icons.location_on_rounded, size: 18, color: scheme.primary),
+                                        Icon(
+                                          Icons.location_on_rounded,
+                                          size: 18,
+                                          color: Theme.of(context).brightness == Brightness.dark
+                                              ? Colors.white
+                                              : Colors.black,
+                                        ),
                                         const SizedBox(width: 8),
                                         Expanded(
                                           child: Text(
@@ -407,27 +420,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                 ),
                               ),
                               SizedBox(height: lerpDouble(10, 0, searchPhase)!),
-                              SizedBox(
-                                height: lerpDouble(58, 0, searchPhase)!,
-                                child: ClipRect(
-                                  child: Align(
-                                    alignment: Alignment.topCenter,
-                                    heightFactor: 1.0,
-                                    child: Transform.translate(
-                                      offset: Offset(0, -14 * searchPhase),
-                                      child: Opacity(
-                                        opacity: (1.0 - searchPhase).clamp(0.0, 1.0),
-                                        child: Transform.scale(
-                                          scale: lerpDouble(1.0, 0.82, searchPhase)!,
-                                          alignment: Alignment.topCenter,
-                                          child: EvetaSearchBar(
-                                            onTap: () => _openSearch(context),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
+                              _MorphingSearchBar(
+                                t: searchPhase,
+                                onTap: () => _openSearch(context),
                               ),
                             ],
                           ),
@@ -454,27 +449,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       child: Row(
                         children: [
                           Expanded(
-                            child: Text(
-                              'Hola, $firstName',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.35),
+                            child: Transform.translate(
+                              offset: Offset(0, lerpDouble(10, 0, (t - 0.35).clamp(0.0, 1.0))!),
+                              child: Text(
+                                'Hola, $firstName',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.35),
+                              ),
                             ),
                           ),
-                          IconButton.filledTonal(
-                            style: _homeHeaderCircleIconStyle(),
-                            onPressed: () => _openSearch(context),
-                            icon: const Icon(Icons.search_rounded, size: 22),
-                          ),
-                          IconButton.filledTonal(
-                            style: _homeHeaderCircleIconStyle(),
-                            onPressed: widget.onOpenWishlist,
-                            icon: const Icon(Icons.favorite_outline_rounded, size: 22),
-                          ),
-                          IconButton.filledTonal(
-                            style: _homeHeaderCircleIconStyle(),
-                            onPressed: widget.onOpenCart,
-                            icon: const Icon(Icons.shopping_bag_outlined, size: 22),
+                          Transform.scale(
+                            scale: lerpDouble(0.95, 1.0, (t - 0.35).clamp(0.0, 1.0))!,
+                            child: _BalancePill(
+                              compact: true,
+                              onTap: () {
+                                Navigator.push<void>(
+                                  context,
+                                  MaterialPageRoute<void>(builder: (_) => const WalletScreen()),
+                                );
+                              },
+                            ),
                           ),
                         ],
                       ),
@@ -499,17 +494,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         body: SafeArea(
           top: false,
           bottom: false,
-          child: RefreshIndicator(
-            color: scheme.primary,
-            onRefresh: () async {
-              final f = _load();
-              setState(() => _homeFuture = f);
-              await CatalogCacheService.getProducts(forceRefresh: true);
-              await f;
-            },
-            child: FutureBuilder<_HomeData>(
-              future: _homeFuture,
-              builder: (context, snapshot) {
+          child: Stack(
+            children: [
+              RefreshIndicator(
+                color: scheme.primary,
+                onRefresh: () async {
+                  final f = _load();
+                  setState(() => _homeFuture = f);
+                  await CatalogCacheService.getProducts(forceRefresh: true);
+                  await f;
+                },
+                child: FutureBuilder<_HomeData>(
+                  future: _homeFuture,
+                  builder: (context, snapshot) {
                 final statusTop = MediaQuery.paddingOf(context).top;
                 if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
                   return CustomScrollView(
@@ -525,6 +522,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         backgroundColor: scheme.surface,
                         borderColor: scheme.outline.withValues(alpha: 0.25),
                         builder: (ctx, _) => _HeaderSkeleton(loading: true),
+                      ),
+                    ),
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          EvetaShopDimens.spaceLg,
+                          EvetaShopDimens.spaceMd,
+                          EvetaShopDimens.spaceLg,
+                          0,
+                        ),
+                        child: Shimmer.fromColors(
+                          baseColor: Theme.of(context).brightness == Brightness.dark
+                              ? scheme.surfaceContainerHighest
+                              : Colors.grey[300]!,
+                          highlightColor: Theme.of(context).brightness == Brightness.dark
+                              ? scheme.surfaceBright
+                              : Colors.grey[100]!,
+                          child: Container(
+                            height: 152,
+                            decoration: BoxDecoration(
+                              color: scheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(EvetaShopDimens.radiusXl),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                     SliverPadding(
@@ -781,10 +803,160 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   const SliverToBoxAdapter(child: SizedBox(height: 110)),
                 ],
                 );
-              },
+                  },
+                ),
+              ),
+              // Cuando el header ya está compacto, mantenemos el botón de búsqueda por encima,
+              // pero más abajo (no encima del saldo).
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                right: 16,
+                top: MediaQuery.paddingOf(context).top + lerpDouble(140, 90, _headerT.clamp(0.0, 1.0))!,
+                child: IgnorePointer(
+                  ignoring: _headerT < 0.66,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 160),
+                    curve: Curves.easeOutCubic,
+                    opacity: _headerT < 0.66 ? 0.0 : 1.0,
+                    child: Material(
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.92),
+                      elevation: 10,
+                      shadowColor: Colors.black.withValues(alpha: 0.22),
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: () => _openSearch(context),
+                        child: const SizedBox(
+                          width: 46,
+                          height: 46,
+                          child: Icon(Icons.search_rounded),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+    );
+  }
+}
+
+class _BalancePill extends StatelessWidget {
+  const _BalancePill({required this.onTap, this.compact = false});
+
+  final VoidCallback onTap;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    return FutureBuilder<double>(
+      future: WalletService.getBalance(),
+      builder: (context, snap) {
+        final bal = snap.data ?? 0;
+        return Material(
+          color: scheme.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(999),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(999),
+            onTap: onTap,
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: compact ? 10 : 12,
+                vertical: compact ? 8 : 10,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.account_balance_wallet_rounded, size: 18, color: scheme.primary),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Bs ${bal.toStringAsFixed(2)}',
+                    style: tt.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _MorphingSearchBar extends StatelessWidget {
+  const _MorphingSearchBar({
+    required this.t,
+    required this.onTap,
+  });
+
+  final double t;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // t: 0 => barra completa, t: 1 => botón circular a la derecha.
+    final w = MediaQuery.sizeOf(context).width;
+    final fullW = w - (EvetaShopDimens.spaceLg * 2);
+    const circle = 46.0;
+    final targetW = lerpDouble(fullW, circle, t) ?? fullW;
+    final radius = lerpDouble(26, 23, t) ?? 26;
+
+    return SizedBox(
+      height: 58,
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 0),
+          width: targetW,
+          height: 46,
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.82 : 0.95),
+            borderRadius: BorderRadius.circular(radius),
+            border: Border.all(color: scheme.outline.withValues(alpha: isDark ? 0.32 : 0.18)),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              child: Stack(
+                alignment: Alignment.centerLeft,
+                children: [
+                  // Barra completa visible cuando t ~ 0
+                  Opacity(
+                    opacity: (1 - t).clamp(0.0, 1.0),
+                    child: IgnorePointer(
+                      ignoring: t > 0.05,
+                      child: Transform.scale(
+                        scale: lerpDouble(1.0, 0.82, t) ?? 1.0,
+                        alignment: Alignment.centerLeft,
+                        child: EvetaSearchBar(onTap: onTap),
+                      ),
+                    ),
+                  ),
+                  // Botón circular visible cuando t ~ 1
+                  Opacity(
+                    // Cuando ya está bien compacto, el circular vive arriba (overlay).
+                    opacity: (t < 0.92 ? t : 0.0).clamp(0.0, 1.0),
+                    child: Align(
+                      alignment: Alignment.center,
+                      child: Icon(Icons.search_rounded, color: scheme.onSurface),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
+      ),
     );
   }
 }
@@ -827,9 +999,14 @@ class _HeaderSkeleton extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              Container(width: 44, height: 44, decoration: BoxDecoration(color: scheme.surfaceContainerHigh, shape: BoxShape.circle)),
-              const SizedBox(width: 8),
-              Container(width: 44, height: 44, decoration: BoxDecoration(color: scheme.surfaceContainerHigh, shape: BoxShape.circle)),
+              Container(
+                width: 140,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHigh,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 14),

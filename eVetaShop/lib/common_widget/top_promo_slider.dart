@@ -21,7 +21,7 @@ class TopPromoSlider extends StatelessWidget {
             ),
             items: const [
               Image(
-                image: AssetImage("assets/images/promotion__one.png"),
+                image: AssetImage("assets/images/ic_discount.png"),
                 height: 150,
                 width: double.infinity,
                 fit: BoxFit.cover,

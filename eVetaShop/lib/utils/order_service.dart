@@ -16,6 +16,13 @@ class OrderService {
     return '';
   }
 
+  static double _safeMoney(num? value) {
+    if (value == null) return 0.0;
+    final d = value.toDouble();
+    if (!d.isFinite) return 0.0;
+    return double.parse(d.toStringAsFixed(2));
+  }
+
   /// Crea uno o más pedidos (uno por tienda) desde el carrito. Vacía el carrito si todo OK.
   static Future<List<String>> placeOrdersFromCart({
     required double dropoffLat,
@@ -91,22 +98,26 @@ class OrderService {
           // Columna en Postgres suele ser `unit_price` (no `price_unit`).
           'unit_price': price,
           'quantity': c.quantity,
+          // Algunas BD tienen `total` NOT NULL en order_items.
+          'total': _safeMoney(line),
           'line_total': line,
           'image_url': _firstImage(p['images']),
         });
       }
 
-      final total = subtotal + feeEach;
+      final safeSubtotal = _safeMoney(subtotal);
+      final safeFeeEach = _safeMoney(feeEach);
+      final total = _safeMoney(safeSubtotal + safeFeeEach);
 
       final orderInsert = await _client
           .from('orders')
           .insert({
             'buyer_id': user.id,
             'seller_id': sellerId,
-            'subtotal': subtotal,
-            'delivery_fee': feeEach,
+            'subtotal': safeSubtotal,
+            'delivery_fee': safeFeeEach,
             'total': total,
-            'distance_km': distanceKm,
+            'distance_km': _safeMoney(distanceKm),
             // Portal / tienda usan `pending` para pedidos nuevos.
             'status': 'pending',
             'delivery_status': 'awaiting_driver',

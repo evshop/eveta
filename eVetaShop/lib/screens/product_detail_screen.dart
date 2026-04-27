@@ -613,9 +613,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
         ? EvetaCircularBackVariant.tonalSurface
         : EvetaCircularBackVariant.onLightBackground;
 
-    return Column(
+    return Stack(
       children: [
-        Expanded(
+        Positioned.fill(
           child: CustomScrollView(
               controller: _detailScrollController,
               physics: const ClampingScrollPhysics(),
@@ -714,13 +714,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
                     _buildPriceSection(name, price, unit, originalPrice, hasDiscount, rating, reviewCount, stock, isOutOfStock, scale, product),
                     _buildDescriptionSection(description, tags, scale, widget.onTagTap, product),
                     _buildRelatedProducts(scale),
+                    SizedBox(height: MediaQuery.of(context).padding.bottom + 96 * scale),
                   ],
                 ),
               ),
             ],
           ),
         ),
-        _buildBottomBar(isOutOfStock, product, scale),
+        Positioned(
+          left: 16 * scale,
+          right: 16 * scale,
+          bottom: 0,
+          child: _buildBottomBar(isOutOfStock, product, scale),
+        ),
       ],
     );
   }
@@ -819,21 +825,30 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
               margin: EdgeInsets.only(right: 8 * scale),
               clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
-                border: Border.all(
-                  color: isActive ? scheme.primary : scheme.outline.withValues(alpha: 0.5),
-                  width: isActive ? 2 : 1,
-                ),
                 borderRadius: BorderRadius.circular(14 * scale),
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12 * scale),
-                child: EvetaCachedImage(
-                  imageUrl: imageUrls[index],
-                  delivery: EvetaImageDelivery.thumb,
-                  fit: BoxFit.cover,
-                  memCacheWidth: 240,
-                  errorIconSize: 28,
-                ),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  EvetaCachedImage(
+                    imageUrl: imageUrls[index],
+                    delivery: EvetaImageDelivery.thumb,
+                    fit: BoxFit.cover,
+                    memCacheWidth: 240,
+                    errorIconSize: 28,
+                  ),
+                  IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14 * scale),
+                        border: Border.all(
+                          color: isActive ? scheme.primary : scheme.outline.withValues(alpha: 0.45),
+                          width: isActive ? 2 : 1,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           );
@@ -1340,50 +1355,61 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
 
   Widget _buildBottomBar(bool isOutOfStock, Map<String, dynamic> product, double scale) {
     final scheme = Theme.of(context).colorScheme;
-    final canvas = _detailCanvasColor(scheme);
     final onPrimary = scheme.onPrimary;
-    final primary = scheme.primary;
-    return Container(
-      padding: EdgeInsets.fromLTRB(16 * scale, 12 * scale, 16 * scale, MediaQuery.of(context).padding.bottom + 12 * scale),
-      decoration: BoxDecoration(
-        color: canvas,
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 20, offset: const Offset(0, -4))],
-      ),
+    final safeB = MediaQuery.of(context).padding.bottom;
+    return Padding(
+      padding: EdgeInsets.only(bottom: safeB + 12 * scale),
       child: Row(
         children: [
-          Container(
-            height: 50 * scale,
-            decoration: BoxDecoration(
-              color: scheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(25 * scale),
-              border: Border.all(color: scheme.outline.withValues(alpha: 0.35)),
-            ),
-            child: Row(
-              children: [
-                IconButton(
-                  icon: Icon(Icons.remove, size: 20 * scale),
-                  onPressed: _quantity > 1 ? () => setState(() => _quantity--) : null,
-                  color: _quantity > 1 ? scheme.onSurface : scheme.onSurface.withValues(alpha: 0.35),
-                  splashRadius: 24,
-                  padding: EdgeInsets.zero,
-                  constraints: BoxConstraints(minWidth: 40 * scale, minHeight: 40 * scale),
+          AnimatedOpacity(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            opacity: _isAddingToCart ? 0.72 : 1,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                child: Material(
+                  elevation: 10,
+                  shadowColor: Colors.black.withValues(alpha: scheme.brightness == Brightness.dark ? 0.42 : 0.14),
+                  color: scheme.surfaceContainerHighest.withValues(alpha: 0.72),
+                  shape: StadiumBorder(side: BorderSide(color: scheme.outline.withValues(alpha: 0.28))),
+                  child: SizedBox(
+                    height: 50 * scale,
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 46 * scale,
+                          child: IconButton(
+                            icon: Icon(Icons.remove, size: 20 * scale),
+                            onPressed: _quantity > 1 ? () => setState(() => _quantity--) : null,
+                            color: _quantity > 1 ? scheme.onSurface : scheme.onSurface.withValues(alpha: 0.35),
+                            splashRadius: 24,
+                          ),
+                        ),
+                        SizedBox(
+                          width: 34 * scale,
+                          child: Center(
+                            child: Text(
+                              '$_quantity',
+                              style: TextStyle(fontSize: 16 * scale, fontWeight: FontWeight.w800, color: scheme.onSurface),
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 46 * scale,
+                          child: IconButton(
+                            icon: Icon(Icons.add, size: 20 * scale),
+                            onPressed: _quantity < (product['stock'] ?? 0) ? () => setState(() => _quantity++) : null,
+                            color: _quantity < (product['stock'] ?? 0) ? scheme.onSurface : scheme.onSurface.withValues(alpha: 0.35),
+                            splashRadius: 24,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                Container(
-                  width: 32 * scale,
-                  alignment: Alignment.center,
-                  child: Text('$_quantity', style: TextStyle(fontSize: 16 * scale, fontWeight: FontWeight.bold, color: scheme.onSurface)),
-                ),
-                IconButton(
-                  icon: Icon(Icons.add, size: 20 * scale),
-                  onPressed: _quantity < (product['stock'] ?? 0)
-                      ? () => setState(() => _quantity++)
-                      : null,
-                  color: _quantity < (product['stock'] ?? 0) ? scheme.onSurface : scheme.onSurface.withValues(alpha: 0.35),
-                  splashRadius: 24,
-                  padding: EdgeInsets.zero,
-                  constraints: BoxConstraints(minWidth: 40 * scale, minHeight: 40 * scale),
-                ),
-              ],
+              ),
             ),
           ),
           SizedBox(width: 16 * scale),
@@ -1393,14 +1419,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
               child: ElevatedButton(
                 onPressed: isOutOfStock ? null : () => _addToCart(product),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: isOutOfStock ? scheme.surfaceContainerHighest : primary,
+                  backgroundColor: isOutOfStock ? scheme.surfaceContainerHighest : EvetaShopColors.brand,
                   foregroundColor: isOutOfStock ? scheme.onSurfaceVariant : onPrimary,
                   disabledBackgroundColor: scheme.surfaceContainerHighest,
                   disabledForegroundColor: scheme.onSurfaceVariant,
                   padding: EdgeInsets.zero,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25 * scale)),
-                  elevation: isOutOfStock ? 0 : 4,
-                  shadowColor: primary.withValues(alpha: 0.4),
+                  shape: const StadiumBorder(),
+                  elevation: isOutOfStock ? 0 : 12,
+                  shadowColor: Colors.black.withValues(alpha: scheme.brightness == Brightness.dark ? 0.42 : 0.16),
                 ),
                 child: _isAddingToCart
                     ? SizedBox(width: 24 * scale, height: 24 * scale, child: CircularProgressIndicator(strokeWidth: 2.5, color: onPrimary))
@@ -1413,7 +1439,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
                             isOutOfStock ? 'Agotado' : 'Agregar',
                             style: TextStyle(
                               fontSize: 16 * scale,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w800,
                               color: isOutOfStock ? scheme.onSurfaceVariant : onPrimary,
                               letterSpacing: 0.5,
                             ),

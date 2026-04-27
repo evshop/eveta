@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:ui' show lerpDouble;
 
 /// Cabecera fija (pinned) para pantallas tipo categorías / inicio: título, buscador y chips.
 class StickyCategoryHeader extends SliverPersistentHeaderDelegate {
@@ -27,23 +28,27 @@ class StickyCategoryHeader extends SliverPersistentHeaderDelegate {
     final showDivider = overlapsContent || shrinkOffset > 0.5;
     final range = (maxExtent - minExtent).abs();
     final progress = range <= 0.001 ? 0.0 : (shrinkOffset / range).clamp(0.0, 1.0);
+    final bottomRadius = (lerpDouble(0, 12, Curves.easeOut.transform(progress)) ?? 0).clamp(0.0, 12.0);
     return Material(
       color: backgroundColor,
       elevation: showDivider ? 0.5 : 0,
       shadowColor: Colors.black.withValues(alpha: 0.08),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: showDivider ? borderColor : Colors.transparent,
-              width: 1,
+      child: ClipRRect(
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(bottomRadius)),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: showDivider ? borderColor : Colors.transparent,
+                width: 1,
+              ),
             ),
           ),
-        ),
-        child: SizedBox(
-          height: maxExtent,
-          width: double.infinity,
-          child: builder(context, progress),
+          child: SizedBox(
+            height: maxExtent,
+            width: double.infinity,
+            child: builder(context, progress),
+          ),
         ),
       ),
     );

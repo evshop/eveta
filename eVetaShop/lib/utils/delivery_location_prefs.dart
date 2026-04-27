@@ -20,6 +20,7 @@ class SavedDeliveryLocation {
     this.aptFloor,
     this.instructions,
     this.geocodedLine = '',
+    this.plusCode = '',
   });
 
   final String id;
@@ -35,6 +36,7 @@ class SavedDeliveryLocation {
   final String? instructions;
   /// Línea corta de geocoding (calle / zona), útil para mostrar.
   final String geocodedLine;
+  final String plusCode;
 
   String get displayTitle {
     final l = label.trim();
@@ -62,6 +64,7 @@ class SavedDeliveryLocation {
         if (aptFloor != null) 'apt_floor': aptFloor,
         if (instructions != null) 'instructions': instructions,
         'geocoded_line': geocodedLine,
+        'plus_code': plusCode,
       };
 
   static SavedDeliveryLocation? fromJson(Object? raw) {
@@ -88,6 +91,7 @@ class SavedDeliveryLocation {
       aptFloor: _nullableTrimmed(m['apt_floor']),
       instructions: _nullableTrimmed(m['instructions']),
       geocodedLine: geo,
+      plusCode: m['plus_code']?.toString() ?? '',
     );
   }
 
@@ -219,6 +223,7 @@ class DeliveryLocationPrefs {
     required String label,
     required String neighborhood,
     required String geocodedLine,
+    String? plusCode,
     String? reference,
     String? aptFloor,
     String? instructions,
@@ -235,9 +240,7 @@ class DeliveryLocationPrefs {
     await _migrateLegacyToListIfNeeded(p);
     var list = await loadSaved();
 
-    const tol = 0.00015;
-    final idx = list.indexWhere((e) => (e.lat - lat).abs() < tol && (e.lng - lng).abs() < tol);
-    final id = idx >= 0 ? list[idx].id : 'loc_${DateTime.now().millisecondsSinceEpoch}';
+    final id = 'loc_${DateTime.now().millisecondsSinceEpoch}';
     final entry = SavedDeliveryLocation(
       id: id,
       lat: lat,
@@ -249,12 +252,9 @@ class DeliveryLocationPrefs {
       aptFloor: _nullableTrimmed(aptFloor),
       instructions: _nullableTrimmed(instructions),
       geocodedLine: geocodedLine.trim(),
+      plusCode: (plusCode ?? '').trim(),
     );
-    if (idx >= 0) {
-      list = List<SavedDeliveryLocation>.from(list)..[idx] = entry;
-    } else {
-      list = [...list, entry];
-    }
+    list = [...list, entry];
 
     await p.setString(_savedKey, jsonEncode(list.map((e) => e.toJson()).toList()));
     await p.setString(_activeIdKey, id);

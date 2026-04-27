@@ -83,11 +83,12 @@ class ShopAppearanceSettingsScreen extends StatelessWidget {
                     },
                     onSelectionChanged: (s) {
                       final v = s.first;
-                      evetaThemeMode.value = switch (v) {
+                      final mode = switch (v) {
                         1 => ThemeMode.light,
                         2 => ThemeMode.dark,
                         _ => ThemeMode.system,
                       };
+                      setEvetaThemeMode(mode);
                     },
                   ),
                 ],

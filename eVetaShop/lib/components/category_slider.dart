@@ -105,8 +105,15 @@ Future<List<CategoryModel>> getCategoryListFromSupabase(String slug, bool isSubL
             name: json['name']?.toString() ?? '',
             // Usamos ID como "slug" para que al tocar navegue por category_id.
             slug: json['id']?.toString() ?? '',
-            imageUrl:
-                json['image_url']?.toString() ?? 'assets/images/ic_category_image.png',
+            // En eVetaShop la imagen cuadrada de categoría debe ser `icon` (1:1).
+            // Si no existe, caemos a `image_url` (banner) o al asset por defecto.
+            imageUrl: (() {
+              final icon = json['icon']?.toString().trim() ?? '';
+              if (icon.isNotEmpty) return icon;
+              final banner = json['image_url']?.toString().trim() ?? '';
+              if (banner.isNotEmpty) return banner;
+              return '';
+            })(),
           ),
         )
         .toList();

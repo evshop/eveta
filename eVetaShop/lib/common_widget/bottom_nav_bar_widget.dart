@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:eveta/animation_navbar/home.dart';
 import 'package:eveta/theme/shop_system_ui.dart';
 import 'package:eveta/utils/cart_service.dart';
 
@@ -29,7 +31,10 @@ class BottomNavBarWidget extends StatefulWidget {
   State<BottomNavBarWidget> createState() => _BottomNavBarWidgetState();
 }
 
-class _BottomNavBarWidgetState extends State<BottomNavBarWidget> {
+class _BottomNavBarWidgetState extends State<BottomNavBarWidget>
+    with TickerProviderStateMixin {
+  late final AnimationController _homeController;
+
   final List<({IconData icon, String label})> _items = const [
     (icon: Icons.home_outlined, label: 'Inicio'),
     (icon: Icons.grid_view, label: 'Categorías'),
@@ -39,9 +44,44 @@ class _BottomNavBarWidgetState extends State<BottomNavBarWidget> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _homeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 760),
+      value: widget.currentIndex == 0 ? 1 : 0,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant BottomNavBarWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.currentIndex == widget.currentIndex) return;
+    final becameSelected = oldWidget.currentIndex != 0 && widget.currentIndex == 0;
+    final becameDeselected = oldWidget.currentIndex == 0 && widget.currentIndex != 0;
+    if (becameSelected) {
+      _homeController.forward();
+    } else if (becameDeselected) {
+      _homeController.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _homeController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final primary = scheme.primary;
+    final indicatorColor =
+        Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final selectedIconColor = isDark ? Colors.white : Colors.black;
+    final unselectedIconColor =
+        (isDark ? Colors.white : Colors.black).withValues(alpha: isDark ? 0.72 : 0.55);
     final n = _items.length;
     final width = MediaQuery.sizeOf(context).width;
     final tabW = width / n;
@@ -85,7 +125,7 @@ class _BottomNavBarWidgetState extends State<BottomNavBarWidget> {
                     height: 3,
                     child: Container(
                       decoration: BoxDecoration(
-                        color: primary,
+                        color: indicatorColor,
                         borderRadius: BorderRadius.circular(1.5),
                       ),
                     ),
@@ -113,10 +153,13 @@ class _BottomNavBarWidgetState extends State<BottomNavBarWidget> {
                             children: [
                               Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                                child: Icon(
-                                  _items[index].icon,
-                                  color: isSelected ? primary : scheme.onSurfaceVariant.withValues(alpha: 0.45),
-                                  size: 24,
+                                child: _navIcon(
+                                  index: index,
+                                  isSelected: isSelected,
+                                  primary: primary,
+                                  onSurfaceVariant: scheme.onSurfaceVariant,
+                                  selectedIconColor: selectedIconColor,
+                                  unselectedIconColor: unselectedIconColor,
                                   key: isCart && widget.useCartFlyTargetKey ? BottomNavBarWidget.cartKey : null,
                                 ),
                               ),
@@ -134,7 +177,7 @@ class _BottomNavBarWidgetState extends State<BottomNavBarWidget> {
                                         decoration: BoxDecoration(
                                           color: scheme.surfaceContainerHighest,
                                           shape: BoxShape.circle,
-                                          border: Border.all(color: primary, width: 1.5),
+                                          border: Border.all(color: selectedIconColor, width: 1.5),
                                           boxShadow: [
                                             BoxShadow(
                                               color: Colors.black.withValues(alpha: 0.1),
@@ -147,7 +190,7 @@ class _BottomNavBarWidgetState extends State<BottomNavBarWidget> {
                                           child: Text(
                                             '$count',
                                             style: TextStyle(
-                                              color: primary,
+                                              color: selectedIconColor,
                                               fontSize: 9,
                                               fontWeight: FontWeight.bold,
                                             ),
@@ -159,16 +202,7 @@ class _BottomNavBarWidgetState extends State<BottomNavBarWidget> {
                                 ),
                             ],
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _items[index].label,
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: isSelected ? primary : scheme.onSurfaceVariant.withValues(alpha: 0.45),
-                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 10),
                         ],
                       ),
                     ),
@@ -180,6 +214,58 @@ class _BottomNavBarWidgetState extends State<BottomNavBarWidget> {
         ),
       ),
     ),
+    );
+  }
+
+  Widget _navIcon({
+    required int index,
+    required bool isSelected,
+    required Color primary,
+    required Color onSurfaceVariant,
+    required Color selectedIconColor,
+    required Color unselectedIconColor,
+    Key? key,
+  }) {
+    if (index == 0) {
+      return AnimatedBuilder(
+        animation: _homeController,
+        builder: (_, __) {
+          return NavbarHomeIcon(
+            key: key,
+            progress: _homeController.value,
+            isDarkMode: Theme.of(context).brightness == Brightness.dark,
+            size: 26,
+          );
+        },
+      );
+    }
+    if (index == 1) {
+      return SvgPicture.asset(
+        isSelected ? 'assets/images/category_select.svg' : 'assets/images/category.svg',
+        width: 25,
+        height: 25,
+        colorFilter: ColorFilter.mode(
+          isSelected ? selectedIconColor : unselectedIconColor,
+          BlendMode.srcIn,
+        ),
+      );
+    }
+    if (index == 2) {
+      return SvgPicture.asset(
+        isSelected ? 'assets/images/favorite_selected.svg' : 'assets/images/favorite_outline.svg',
+        width: 24,
+        height: 24,
+        colorFilter: ColorFilter.mode(
+          isSelected ? selectedIconColor : unselectedIconColor,
+          BlendMode.srcIn,
+        ),
+      );
+    }
+    return Icon(
+      _items[index].icon,
+      color: isSelected ? selectedIconColor : unselectedIconColor,
+      size: 24,
+      key: key,
     );
   }
 }
