@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
 import '../services/cloudinary_service.dart';
 import '../services/products_service.dart';
@@ -16,6 +17,21 @@ class CategoriesScreen extends StatefulWidget {
 class _CategoriesScreenState extends State<CategoriesScreen> {
   bool _loading = true;
   List<Map<String, dynamic>> _categories = [];
+
+  Color? _hexToColor(String? raw) {
+    final s = (raw ?? '').trim().replaceAll('#', '');
+    if (s.isEmpty) return null;
+    final hex = s.length == 6 ? 'FF$s' : s;
+    if (hex.length != 8) return null;
+    final value = int.tryParse(hex, radix: 16);
+    if (value == null) return null;
+    return Color(value);
+  }
+
+  String _colorToHex(Color c) {
+    final rgb = c.toARGB32() & 0x00FFFFFF;
+    return '#${rgb.toRadixString(16).padLeft(6, '0').toUpperCase()}';
+  }
 
   @override
   void initState() {
@@ -46,6 +62,21 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     bool uploading = false;
     var parentId = existing?['parent_id']?.toString();
     final colorCtrl = TextEditingController(text: existing?['color_hex']?.toString() ?? '');
+    Color? selectedColor = _hexToColor(colorCtrl.text);
+    const quickPalette = <Color>[
+      Color(0xFF09CB6B),
+      Color(0xFF2ECC71),
+      Color(0xFF16A085),
+      Color(0xFF3498DB),
+      Color(0xFF6366F1),
+      Color(0xFF8E44AD),
+      Color(0xFFE91E63),
+      Color(0xFFE74C3C),
+      Color(0xFFF39C12),
+      Color(0xFF111827),
+      Color(0xFF6B7280),
+      Color(0xFFFFFFFF),
+    ];
     var specTemplateEnabled = existing?['spec_template_enabled'] == true;
     final specGroupController = TextEditingController(
       text: existing?['spec_group_title']?.toString() ?? '',
@@ -117,14 +148,93 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                   }),
                 ),
                 const SizedBox(height: 12),
-                TextField(
-                  controller: colorCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Color de borde (hex)',
-                    hintText: '#09CB6B o vacío para sin color',
-                    border: OutlineInputBorder(),
-                  ),
+                Text(
+                  'Color de borde',
+                  style: Theme.of(ctx).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
                 ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: () => setDialogState(() {
+                        selectedColor = null;
+                        colorCtrl.text = '';
+                      }),
+                      icon: const Icon(Icons.block_outlined, size: 18),
+                      label: const Text('Sin color'),
+                    ),
+                    ...quickPalette.map((c) {
+                      final active = selectedColor != null && selectedColor!.toARGB32() == c.toARGB32();
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(999),
+                        onTap: () => setDialogState(() {
+                          selectedColor = c;
+                          colorCtrl.text = _colorToHex(c);
+                        }),
+                        child: Container(
+                          width: 30,
+                          height: 30,
+                          decoration: BoxDecoration(
+                            color: c,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: active ? Colors.black : Colors.black26,
+                              width: active ? 2.2 : 1.0,
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        var temp = selectedColor ?? const Color(0xFF09CB6B);
+                        final picked = await showDialog<Color>(
+                          context: ctx,
+                          builder: (dCtx) {
+                            return AlertDialog(
+                              title: const Text('Elegir color'),
+                              content: SingleChildScrollView(
+                                child: ColorPicker(
+                                  pickerColor: temp,
+                                  onColorChanged: (v) => temp = v,
+                                  enableAlpha: false,
+                                  labelTypes: const [],
+                                  pickerAreaHeightPercent: 0.72,
+                                ),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(dCtx),
+                                  child: const Text('Cancelar'),
+                                ),
+                                FilledButton(
+                                  onPressed: () => Navigator.pop(dCtx, temp),
+                                  child: const Text('Usar color'),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                        if (picked == null) return;
+                        setDialogState(() {
+                          selectedColor = picked;
+                          colorCtrl.text = _colorToHex(picked);
+                        });
+                      },
+                      icon: const Icon(Icons.palette_outlined, size: 18),
+                      label: const Text('Personalizar'),
+                    ),
+                  ],
+                ),
+                if (selectedColor != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Seleccionado: ${colorCtrl.text}',
+                    style: TextStyle(fontSize: 12, color: Theme.of(ctx).colorScheme.onSurfaceVariant),
+                  ),
+                ],
                 if (parentId != null) ...[
                   const SizedBox(height: 12),
                   SwitchListTile(

@@ -24,13 +24,25 @@ class ProductsService {
           .order('name');
       return List<Map<String, dynamic>>.from(data);
     } catch (e) {
-      if (e.toString().toLowerCase().contains('spec_template') ||
-          e.toString().toLowerCase().contains('spec_field')) {
-        final data = await _client
-            .from('categories')
-            .select('id, name, slug, icon, image_url, color_hex, parent_id')
-            .order('name');
-        return List<Map<String, dynamic>>.from(data);
+      final msg = e.toString().toLowerCase();
+      if (msg.contains('spec_template') || msg.contains('spec_field') || msg.contains('color_hex')) {
+        try {
+          final data = await _client
+              .from('categories')
+              .select('id, name, slug, icon, image_url, color_hex, parent_id')
+              .order('name');
+          return List<Map<String, dynamic>>.from(data);
+        } catch (e2) {
+          final msg2 = e2.toString().toLowerCase();
+          if (msg2.contains('color_hex')) {
+            final data = await _client
+                .from('categories')
+                .select('id, name, slug, icon, image_url, parent_id')
+                .order('name');
+            return List<Map<String, dynamic>>.from(data);
+          }
+          rethrow;
+        }
       }
       rethrow;
     }
