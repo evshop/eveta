@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../services/wallet_admin_service.dart';
 
@@ -32,31 +33,35 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
   }
 
   Future<void> _attachQrSource(String topupId) async {
-    final urlCtrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Cargar QR Yape'),
-        content: TextField(
-          controller: urlCtrl,
-          decoration: const InputDecoration(
-            labelText: 'URL pública de imagen QR',
-            hintText: 'https://...',
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Decodificar y guardar')),
-        ],
-      ),
+    final picked = await FilePicker.platform.pickFiles(
+      allowMultiple: false,
+      withData: true,
+      type: FileType.custom,
+      allowedExtensions: const ['png', 'jpg', 'jpeg', 'webp'],
     );
-    if (ok != true) return;
-    final imageUrl = urlCtrl.text.trim();
-    if (imageUrl.isEmpty) return;
+    if (picked == null || picked.files.isEmpty) return;
+    final file = picked.files.single;
+    final bytes = file.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo leer archivo QR.')),
+      );
+      return;
+    }
 
-    final result = await WalletAdminService.decodeAndAttachTopupQr(
+    final ext = (file.extension ?? '').toLowerCase();
+    final mimeType = switch (ext) {
+      'jpg' || 'jpeg' => 'image/jpeg',
+      'webp' => 'image/webp',
+      _ => 'image/png',
+    };
+
+    final result = await WalletAdminService.uploadAndDecodeTopupQr(
       topupId: topupId,
-      imageUrl: imageUrl,
+      fileBytes: bytes,
+      fileName: file.name,
+      mimeType: mimeType,
       provider: 'yape',
     );
     if (!mounted) return;
@@ -457,7 +462,7 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                                   FilledButton.icon(
                                     onPressed: () => _attachQrSource(t['id'].toString()),
                                     icon: const Icon(Icons.qr_code_2_rounded),
-                                    label: const Text('Cargar QR Yape'),
+                                    label: const Text('Subir QR Yape'),
                                   ),
                                   const SizedBox(width: 8),
                                 ],

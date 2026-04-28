@@ -21,6 +21,22 @@ function json(payload: unknown, status = 200) {
   });
 }
 
+function extractWebhookToken(req: Request): string {
+  const auth = req.headers.get('authorization') ?? '';
+  const altA = req.headers.get('x-webhook-token') ?? '';
+  const altB = req.headers.get('x-tasker-token') ?? '';
+  const raw = (auth || altA || altB).trim();
+  if (!raw) return '';
+
+  // Acepta:
+  // - "Bearer <token>"
+  // - "Bearer<token>" (sin espacio, algunos clientes lo envían así)
+  // - "<token>" directo
+  const withoutBearer = raw.replace(/^Bearer\s*/i, '').trim();
+  // Limpia comillas/saltos invisibles de copy-paste.
+  return withoutBearer.replace(/^["']+|["']+$/g, '').replace(/\s+/g, '');
+}
+
 function parseAmount(text: string): number | null {
   const normalized = text.replace(',', '.');
   const m = normalized.match(/(?:bs\.?\s*)?(\d+(?:\.\d{1,2})?)/i);
@@ -35,6 +51,25 @@ function parseReference(text: string): string | null {
   return m ? m[0] : null;
 }
 
+function parseDetectedAt(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  // Epoch en segundos o milisegundos.
+  if (/^\d+$/.test(raw)) {
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return null;
+    const ms = raw.length <= 10 ? n * 1000 : n;
+    const d = new Date(ms);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+
+  // ISO u otro parseable por Date.
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -43,8 +78,7 @@ Deno.serve(async (req) => {
     return json({ error: 'Method not allowed' }, 405);
   }
 
-  const auth = req.headers.get('authorization') ?? '';
-  const token = auth.replace(/^Bearer\s+/i, '').trim();
+  const token = extractWebhookToken(req);
   let tokenOk = false;
   if (TASKER_WEBHOOK_SECRET && token === TASKER_WEBHOOK_SECRET) {
     tokenOk = true;
@@ -66,8 +100,7 @@ Deno.serve(async (req) => {
     const body = String(payload?.text ?? payload?.body ?? '').trim();
     const app = String(payload?.app ?? payload?.package ?? '').trim();
     const sender = String(payload?.sender ?? '').trim();
-    const detectedAtRaw = String(payload?.timestamp ?? payload?.detected_at ?? '').trim();
-    const detectedAt = detectedAtRaw ? new Date(detectedAtRaw).toISOString() : null;
+    const detectedAt = parseDetectedAt(payload?.timestamp ?? payload?.detected_at);
     const merged = `${title} ${body}`.trim();
 
     const detectedAmount = parseAmount(merged);

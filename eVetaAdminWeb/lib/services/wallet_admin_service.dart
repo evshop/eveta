@@ -1,4 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:convert';
+import 'dart:typed_data';
 
 class WalletAdminService {
   WalletAdminService._();
@@ -87,6 +89,31 @@ class WalletAdminService {
       final data = resp.data;
       final msg = data is Map ? data['error']?.toString() : null;
       throw AuthException(msg ?? 'No se pudo procesar QR.');
+    }
+    return Map<String, dynamic>.from(resp.data as Map);
+  }
+
+  static Future<Map<String, dynamic>> uploadAndDecodeTopupQr({
+    required String topupId,
+    required Uint8List fileBytes,
+    required String fileName,
+    String mimeType = 'image/png',
+    String provider = 'yape',
+  }) async {
+    final resp = await _client.functions.invoke(
+      'decode-wallet-qr-upload',
+      body: {
+        'topup_id': topupId,
+        'provider': provider,
+        'file_name': fileName,
+        'mime_type': mimeType,
+        'file_base64': base64Encode(fileBytes),
+      },
+    );
+    if (resp.status != 200) {
+      final data = resp.data;
+      final msg = data is Map ? data['error']?.toString() : null;
+      throw AuthException(msg ?? 'No se pudo procesar QR por archivo.');
     }
     return Map<String, dynamic>.from(resp.data as Map);
   }
