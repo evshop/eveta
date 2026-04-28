@@ -13,6 +13,7 @@ class WalletTopupsScreen extends StatefulWidget {
 class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
   late Future<List<Map<String, dynamic>>> _future;
   late Future<List<Map<String, dynamic>>> _tokensFuture;
+  late Future<List<Map<String, dynamic>>> _bankEventsFuture;
   String _status = 'pending_proof';
 
   @override
@@ -20,11 +21,13 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
     super.initState();
     _future = WalletAdminService.fetchTopups(status: _status);
     _tokensFuture = WalletAdminService.fetchWebhookTokens();
+    _bankEventsFuture = WalletAdminService.fetchBankIncomingEvents();
   }
 
   Future<void> _reload() async {
     setState(() => _future = WalletAdminService.fetchTopups(status: _status));
     setState(() => _tokensFuture = WalletAdminService.fetchWebhookTokens());
+    setState(() => _bankEventsFuture = WalletAdminService.fetchBankIncomingEvents());
     await _future;
   }
 
@@ -244,6 +247,70 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                               trailing: OutlinedButton(
                                 onPressed: () => _revokeToken(t['id'].toString()),
                                 child: const Text('Revocar'),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 10),
+            FutureBuilder<List<Map<String, dynamic>>>(
+              future: _bankEventsFuture,
+              builder: (context, bankSnap) {
+                final bankRows = bankSnap.data ?? const [];
+                return Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Text(
+                          'Notificaciones bancarias recibidas',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Aquí se ven los eventos enviados por Tasker y su estado de conciliación.',
+                          style: TextStyle(color: scheme.onSurfaceVariant),
+                        ),
+                        const SizedBox(height: 10),
+                        if (bankRows.isEmpty)
+                          Text(
+                            'No hay eventos bancarios todavía.',
+                            style: TextStyle(color: scheme.onSurfaceVariant),
+                          )
+                        else
+                          ...bankRows.take(8).map(
+                            (e) => ListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              leading: const Icon(Icons.notifications_active_outlined),
+                              title: Text(
+                                'Bs ${e['detected_amount'] ?? '-'}'
+                                ' · Ref ${e['detected_reference'] ?? '-'}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: Text(
+                                'Estado: ${e['match_status'] ?? '-'}'
+                                '${e['received_at'] != null ? ' · ${e['received_at']}' : ''}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              trailing: SizedBox(
+                                width: 170,
+                                child: Text(
+                                  (e['title']?.toString().trim().isNotEmpty == true)
+                                      ? e['title'].toString()
+                                      : (e['body']?.toString() ?? ''),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.right,
+                                  style: TextStyle(color: scheme.onSurfaceVariant),
+                                ),
                               ),
                             ),
                           ),

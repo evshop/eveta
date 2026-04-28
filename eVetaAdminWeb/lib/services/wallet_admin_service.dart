@@ -39,6 +39,20 @@ class WalletAdminService {
     return List<Map<String, dynamic>>.from(rows as List);
   }
 
+  static Future<List<Map<String, dynamic>>> fetchBankIncomingEvents({
+    int limit = 30,
+  }) async {
+    final rows = await _client
+        .from('bank_incoming_events')
+        .select(
+          'id, source, bank_app, title, body, detected_amount, detected_reference, '
+          'detected_sender, detected_at, received_at, match_status, matched_topup_id',
+        )
+        .order('received_at', ascending: false)
+        .limit(limit);
+    return List<Map<String, dynamic>>.from(rows as List);
+  }
+
   static Future<Map<String, dynamic>> createWebhookToken({String? label}) async {
     final rows = await _client.rpc('create_wallet_webhook_token', params: {
       'p_label': label,
