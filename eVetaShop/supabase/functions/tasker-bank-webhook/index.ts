@@ -45,7 +45,18 @@ Deno.serve(async (req) => {
 
   const auth = req.headers.get('authorization') ?? '';
   const token = auth.replace(/^Bearer\s+/i, '').trim();
-  if (!TASKER_WEBHOOK_SECRET || token != TASKER_WEBHOOK_SECRET) {
+  let tokenOk = false;
+  if (TASKER_WEBHOOK_SECRET && token === TASKER_WEBHOOK_SECRET) {
+    tokenOk = true;
+  } else {
+    const { data: validToken, error: tokenErr } = await supabaseAdmin.rpc('touch_wallet_webhook_token', {
+      p_token: token,
+    });
+    if (!tokenErr && validToken === true) {
+      tokenOk = true;
+    }
+  }
+  if (!tokenOk) {
     return json({ error: 'Unauthorized' }, 401);
   }
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/wallet_admin_service.dart';
 
@@ -11,16 +12,78 @@ class WalletTopupsScreen extends StatefulWidget {
 
 class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
   late Future<List<Map<String, dynamic>>> _future;
+  late Future<List<Map<String, dynamic>>> _tokensFuture;
 
   @override
   void initState() {
     super.initState();
     _future = WalletAdminService.fetchTopups();
+    _tokensFuture = WalletAdminService.fetchWebhookTokens();
   }
 
   Future<void> _reload() async {
     setState(() => _future = WalletAdminService.fetchTopups());
+    setState(() => _tokensFuture = WalletAdminService.fetchWebhookTokens());
     await _future;
+  }
+
+  Future<void> _createToken() async {
+    final labelCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Generar token Tasker'),
+        content: TextField(
+          controller: labelCtrl,
+          decoration: const InputDecoration(
+            labelText: 'Etiqueta (opcional)',
+            hintText: 'Ej: Samsung J7',
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Generar')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    final created = await WalletAdminService.createWebhookToken(
+      label: labelCtrl.text.trim().isEmpty ? null : labelCtrl.text.trim(),
+    );
+    if (!mounted) return;
+    final token = created['token']?.toString() ?? '';
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Token generado'),
+        content: SelectableText(
+          token,
+          style: const TextStyle(fontFamily: 'monospace'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: token));
+              if (ctx.mounted) Navigator.pop(ctx);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Token copiado. Guárdalo en Tasker.')),
+                );
+              }
+            },
+            child: const Text('Copiar'),
+          ),
+          FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar')),
+        ],
+      ),
+    );
+    await _reload();
+  }
+
+  Future<void> _revokeToken(String tokenId) async {
+    await WalletAdminService.revokeWebhookToken(tokenId);
+    await _reload();
   }
 
   Future<void> _approve(Map<String, dynamic> row) async {
@@ -74,6 +137,69 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            FutureBuilder<List<Map<String, dynamic>>>(
+              future: _tokensFuture,
+              builder: (context, tokenSnap) {
+                final tokens = tokenSnap.data ?? const [];
+                return Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                'Tokens webhook Tasker',
+                                style: TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                            ),
+                            FilledButton.icon(
+                              onPressed: _createToken,
+                              icon: const Icon(Icons.key_rounded),
+                              label: const Text('Generar token'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Usa este token en Tasker como Authorization: Bearer <token> para enviar notificaciones de pago.',
+                          style: TextStyle(color: scheme.onSurfaceVariant),
+                        ),
+                        const SizedBox(height: 10),
+                        if (tokens.isEmpty)
+                          Text(
+                            'No hay tokens activos.',
+                            style: TextStyle(color: scheme.onSurfaceVariant),
+                          )
+                        else
+                          ...tokens.map(
+                            (t) => ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: const Icon(Icons.vpn_key_outlined),
+                              title: Text(
+                                t['label']?.toString().trim().isNotEmpty == true
+                                    ? t['label'].toString()
+                                    : 'Token sin etiqueta',
+                              ),
+                              subtitle: Text(
+                                'Creado: ${t['created_at'] ?? '-'}'
+                                '${t['last_used_at'] != null ? ' · Último uso: ${t['last_used_at']}' : ''}',
+                              ),
+                              trailing: OutlinedButton(
+                                onPressed: () => _revokeToken(t['id'].toString()),
+                                child: const Text('Revocar'),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 10),
             Row(
               children: [
                 Text(

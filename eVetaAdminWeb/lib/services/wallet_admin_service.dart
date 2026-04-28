@@ -33,4 +33,26 @@ class WalletAdminService {
       'p_reason': reason,
     });
   }
+
+  static Future<List<Map<String, dynamic>>> fetchWebhookTokens() async {
+    final rows = await _client.rpc('list_wallet_webhook_tokens');
+    return List<Map<String, dynamic>>.from(rows as List);
+  }
+
+  static Future<Map<String, dynamic>> createWebhookToken({String? label}) async {
+    final rows = await _client.rpc('create_wallet_webhook_token', params: {
+      'p_label': label,
+    });
+    final list = List<Map<String, dynamic>>.from(rows as List);
+    if (list.isEmpty) {
+      throw AuthException('No se pudo crear el token.');
+    }
+    return list.first;
+  }
+
+  static Future<void> revokeWebhookToken(String tokenId) async {
+    await _client.rpc('revoke_wallet_webhook_token', params: {
+      'p_token_id': tokenId,
+    });
+  }
 }
