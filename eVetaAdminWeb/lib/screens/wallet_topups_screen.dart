@@ -13,18 +13,72 @@ class WalletTopupsScreen extends StatefulWidget {
 class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
   late Future<List<Map<String, dynamic>>> _future;
   late Future<List<Map<String, dynamic>>> _tokensFuture;
+  String _status = 'pending_proof';
 
   @override
   void initState() {
     super.initState();
-    _future = WalletAdminService.fetchTopups();
+    _future = WalletAdminService.fetchTopups(status: _status);
     _tokensFuture = WalletAdminService.fetchWebhookTokens();
   }
 
   Future<void> _reload() async {
-    setState(() => _future = WalletAdminService.fetchTopups());
+    setState(() => _future = WalletAdminService.fetchTopups(status: _status));
     setState(() => _tokensFuture = WalletAdminService.fetchWebhookTokens());
     await _future;
+  }
+
+  Future<void> _attachQrSource(String topupId) async {
+    final urlCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cargar QR Yape'),
+        content: TextField(
+          controller: urlCtrl,
+          decoration: const InputDecoration(
+            labelText: 'URL pública de imagen QR',
+            hintText: 'https://...',
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Decodificar y guardar')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final imageUrl = urlCtrl.text.trim();
+    if (imageUrl.isEmpty) return;
+
+    final result = await WalletAdminService.decodeAndAttachTopupQr(
+      topupId: topupId,
+      imageUrl: imageUrl,
+      provider: 'yape',
+    );
+    if (!mounted) return;
+    final raw = result['raw_qr_text']?.toString() ?? '';
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('QR guardado'),
+        content: SelectableText(
+          raw,
+          style: const TextStyle(fontFamily: 'monospace'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: raw));
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('Copiar texto plano'),
+          ),
+          FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar')),
+        ],
+      ),
+    );
+    await _reload();
   }
 
   Future<void> _createToken() async {
@@ -219,6 +273,35 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
               ],
             ),
             const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ChoiceChip(
+                  label: const Text('Pendientes QR (pending_proof)'),
+                  selected: _status == 'pending_proof',
+                  onSelected: (v) {
+                    if (!v) return;
+                    setState(() {
+                      _status = 'pending_proof';
+                      _future = WalletAdminService.fetchTopups(status: _status);
+                    });
+                  },
+                ),
+                ChoiceChip(
+                  label: const Text('Pendientes revisión (pending_review)'),
+                  selected: _status == 'pending_review',
+                  onSelected: (v) {
+                    if (!v) return;
+                    setState(() {
+                      _status = 'pending_review';
+                      _future = WalletAdminService.fetchTopups(status: _status);
+                    });
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
             if (rows.isEmpty)
               const Expanded(
                 child: Center(
@@ -261,6 +344,11 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                               ],
                             ),
                             const SizedBox(height: 6),
+                            SelectableText(
+                              'Topup ID: ${t['id']}',
+                              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+                            ),
+                            const SizedBox(height: 4),
                             Text('Usuario: $userLabel'),
                             const SizedBox(height: 4),
                             if (hint.isNotEmpty) ...[
@@ -298,8 +386,16 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                             const SizedBox(height: 10),
                             Row(
                               children: [
+                                if (_status == 'pending_proof') ...[
+                                  FilledButton.icon(
+                                    onPressed: () => _attachQrSource(t['id'].toString()),
+                                    icon: const Icon(Icons.qr_code_2_rounded),
+                                    label: const Text('Cargar QR Yape'),
+                                  ),
+                                  const SizedBox(width: 8),
+                                ],
                                 FilledButton.icon(
-                                  onPressed: () => _approve(t),
+                                  onPressed: _status == 'pending_review' ? () => _approve(t) : null,
                                   icon: const Icon(Icons.check_rounded),
                                   label: const Text('Aprobar'),
                                 ),

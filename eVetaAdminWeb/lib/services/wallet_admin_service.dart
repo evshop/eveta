@@ -55,4 +55,25 @@ class WalletAdminService {
       'p_token_id': tokenId,
     });
   }
+
+  static Future<Map<String, dynamic>> decodeAndAttachTopupQr({
+    required String topupId,
+    required String imageUrl,
+    String provider = 'yape',
+  }) async {
+    final resp = await _client.functions.invoke(
+      'decode-wallet-qr',
+      body: {
+        'topup_id': topupId,
+        'image_url': imageUrl,
+        'provider': provider,
+      },
+    );
+    if (resp.status != 200) {
+      final data = resp.data;
+      final msg = data is Map ? data['error']?.toString() : null;
+      throw AuthException(msg ?? 'No se pudo procesar QR.');
+    }
+    return Map<String, dynamic>.from(resp.data as Map);
+  }
 }
