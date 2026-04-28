@@ -30,12 +30,23 @@ class AuthService {
   static Future<bool> isCurrentUserAdmin() async {
     final user = _client.auth.currentUser;
     if (user == null) return false;
-    final profile = await _client
-        .from('profiles')
-        .select('is_admin')
-        .eq('id', user.id)
-        .maybeSingle();
-    return profile?['is_admin'] == true;
+    try {
+      final profile = await _client
+          .from('profiles')
+          .select('id, is_admin')
+          .eq('id', user.id)
+          .maybeSingle();
+      return profile?['is_admin'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> currentUserProfileExists() async {
+    final user = _client.auth.currentUser;
+    if (user == null) return false;
+    final profile = await _client.from('profiles').select('id').eq('id', user.id).maybeSingle();
+    return profile != null;
   }
 
   static Future<Map<String, dynamic>?> fetchMyProfile() async {

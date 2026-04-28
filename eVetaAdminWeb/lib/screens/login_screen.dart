@@ -77,13 +77,16 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       await LoginPrefs.saveRememberedEmail(_emailController.text, _remember);
       final isAdmin = await AuthService.isCurrentUserAdmin();
       if (!isAdmin) {
+        final hasProfile = await AuthService.currentUserProfileExists();
         await AuthService.signOut();
         setState(() {
-          _error = 'Tu cuenta no tiene permisos de administrador.';
+          _error = hasProfile
+              ? 'Tu cuenta no tiene permisos de administrador (profiles.is_admin = false).'
+              : 'Tu cuenta autenticó, pero no existe perfil en la tabla profiles para este usuario. Debes crear la fila profiles(id=auth.uid()) y marcar is_admin=true.';
         });
       }
     } catch (e) {
-      setState(() => _error = 'Credenciales inválidas o error de conexión.');
+      setState(() => _error = 'No se pudo iniciar sesión: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
