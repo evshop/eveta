@@ -23,8 +23,14 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
     await _future;
   }
 
-  Future<void> _approve(String topupId) async {
-    await WalletAdminService.approveTopup(topupId);
+  Future<void> _approve(Map<String, dynamic> row) async {
+    final topupId = row['id'].toString();
+    final hint = Map<String, dynamic>.from((row['reconciliation_hint'] as Map?) ?? const {});
+    final bankEventId = hint['bank_event_id']?.toString();
+    await WalletAdminService.approveTopup(
+      topupId,
+      bankEventId: (bankEventId == null || bankEventId.isEmpty) ? null : bankEventId,
+    );
     await _reload();
   }
 
@@ -101,6 +107,7 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                   itemBuilder: (context, i) {
                     final t = rows[i];
                     final profile = Map<String, dynamic>.from((t['profiles'] as Map?) ?? const {});
+                    final hint = Map<String, dynamic>.from((t['reconciliation_hint'] as Map?) ?? const {});
                     final userLabel = profile['full_name']?.toString().trim().isNotEmpty == true
                         ? profile['full_name'].toString()
                         : (profile['username']?.toString().trim().isNotEmpty == true
@@ -130,6 +137,26 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                             const SizedBox(height: 6),
                             Text('Usuario: $userLabel'),
                             const SizedBox(height: 4),
+                            if (hint.isNotEmpty) ...[
+                              if ((hint['bank_match_status']?.toString() ?? '') == 'suggested')
+                                Container(
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: scheme.surfaceContainerHighest,
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Text(
+                                    'Match bancario sugerido · score ${hint['bank_match_score'] ?? '-'}'
+                                    '${hint['bank_detected_amount'] != null ? ' · Bs ${hint['bank_detected_amount']}' : ''}',
+                                    style: TextStyle(
+                                      color: scheme.onSurface,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                            ],
                             SelectableText(
                               proofUrl.isEmpty ? 'Sin comprobante' : proofUrl,
                               style: TextStyle(color: scheme.onSurfaceVariant),
@@ -146,7 +173,7 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                             Row(
                               children: [
                                 FilledButton.icon(
-                                  onPressed: () => _approve(t['id'].toString()),
+                                  onPressed: () => _approve(t),
                                   icon: const Icon(Icons.check_rounded),
                                   label: const Text('Aprobar'),
                                 ),

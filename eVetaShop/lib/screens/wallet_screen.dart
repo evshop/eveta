@@ -91,10 +91,25 @@ class _WalletScreenState extends State<WalletScreen> {
         bytes: bytes,
         extension: ext,
       );
+      Map<String, dynamic>? topup;
+      for (final row in _topups) {
+        if (row['id'].toString() == topupId) {
+          topup = row;
+          break;
+        }
+      }
+      if (topup == null && _activeTopup != null && _activeTopup!['id'].toString() == topupId) {
+        topup = _activeTopup;
+      }
       await WalletService.submitTopupProof(
         topupId: topupId,
         proofUrl: proofUrl,
         note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
+        hint: <String, dynamic>{
+          'topup_reference_code': topup?['reference_code']?.toString(),
+          'topup_amount': topup?['amount'],
+          'proof_uploaded_at': DateTime.now().toIso8601String(),
+        },
       );
       _noteCtrl.clear();
       await _reload();
