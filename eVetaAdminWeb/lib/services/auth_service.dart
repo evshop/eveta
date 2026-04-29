@@ -30,16 +30,28 @@ class AuthService {
   static Future<bool> isCurrentUserAdmin() async {
     final user = _client.auth.currentUser;
     if (user == null) return false;
-    try {
-      final profile = await _client
-          .from('profiles')
-          .select('id, is_admin')
-          .eq('id', user.id)
-          .maybeSingle();
-      return profile?['is_admin'] == true;
-    } catch (_) {
-      return false;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final rpcResult = await _client.rpc('profile_is_admin');
+        if (rpcResult is bool) return rpcResult;
+      } catch (_) {
+        // Fallback below.
+      }
+      try {
+        final profile = await _client
+            .from('profiles')
+            .select('id, is_admin')
+            .eq('id', user.id)
+            .maybeSingle();
+        if (profile?['is_admin'] == true) return true;
+      } catch (_) {
+        // Retry once for transient startup/session timing.
+      }
+      if (attempt == 0) {
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+      }
     }
+    return false;
   }
 
   static Future<bool> currentUserProfileExists() async {
