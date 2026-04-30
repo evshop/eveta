@@ -47,7 +47,9 @@ function parseAmount(text: string): number | null {
 }
 
 function parseReference(text: string): string | null {
-  const m = text.toUpperCase().match(/WLT-[A-Z0-9]{6,20}/);
+  // Nuevas referencias sin guiones (Yape): EV + alfanumérico
+  // Compat: soporta el formato antiguo WLT-...
+  const m = text.toUpperCase().match(/(?:WLT-[A-Z0-9]{6,20}|EV[A-Z0-9]{6,20})/);
   return m ? m[0] : null;
 }
 

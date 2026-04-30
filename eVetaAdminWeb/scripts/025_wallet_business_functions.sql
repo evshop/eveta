@@ -6,7 +6,8 @@ returns text
 language sql
 stable
 as $$
-  select 'WLT-' || upper(substring(md5(random()::text || clock_timestamp()::text), 1, 10));
+  -- Yape: solo letras/números (sin guiones). Ej: EV4A9C2F01B3
+  select 'EV' || upper(substring(md5(random()::text || clock_timestamp()::text), 1, 11));
 $$;
 
 create or replace function public.get_wallet_balance()

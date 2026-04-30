@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'dart:convert';
 
 import '../services/wallet_admin_service.dart';
@@ -589,6 +590,14 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                           ? profile['username'].toString()
                           : (profile['email']?.toString() ?? 'Usuario'));
                 final proofUrl = t['proof_url']?.toString() ?? '';
+                final qrSources = List<Map<String, dynamic>>.from(
+                  (t['wallet_topup_qr_sources'] as List?) ?? const [],
+                );
+                final qrSource = qrSources.isNotEmpty ? qrSources.first : null;
+                final rawQrText = qrSource?['raw_qr_text']?.toString() ?? '';
+                final decodedOk = qrSource?['decoded_ok'] == true;
+                final decodedAt = qrSource?['decoded_at']?.toString();
+                final qrProvider = qrSource?['provider']?.toString() ?? 'yape';
 
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 10),
@@ -650,6 +659,75 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                             proofUrl.isEmpty ? 'Sin comprobante' : proofUrl,
                             style: TextStyle(color: scheme.onSurfaceVariant),
                           ),
+                          const SizedBox(height: 8),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'QR decodificado (${qrProvider.toUpperCase()})',
+                                  style: const TextStyle(fontWeight: FontWeight.w800),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  qrSource == null
+                                      ? 'Aún no hay QR procesado por el worker.'
+                                      : (decodedOk
+                                          ? 'OK · ${decodedAt ?? '-'}'
+                                          : 'No decodificado'),
+                                  style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+                                ),
+                                if (rawQrText.isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  SelectableText(
+                                    rawQrText,
+                                    style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    crossAxisAlignment: WrapCrossAlignment.center,
+                                    children: [
+                                      OutlinedButton.icon(
+                                        onPressed: () async {
+                                          await Clipboard.setData(ClipboardData(text: rawQrText));
+                                          if (!mounted) return;
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(content: Text('Texto plano QR copiado.')),
+                                          );
+                                        },
+                                        icon: const Icon(Icons.copy_rounded),
+                                        label: const Text('Copiar texto plano'),
+                                      ),
+                                      SizedBox(
+                                        width: 150,
+                                        height: 150,
+                                        child: Card(
+                                          margin: EdgeInsets.zero,
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(8),
+                                            child: Center(
+                                              child: QrImageView(
+                                                data: rawQrText,
+                                                size: 130,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
                           if (proofUrl.isNotEmpty) ...[
                             const SizedBox(height: 8),
                             OutlinedButton.icon(
@@ -665,7 +743,9 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                             ),
                           ],
                           const SizedBox(height: 10),
-                          Row(
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
                             children: [
                               if (_status == 'pending_proof') ...[
                                 FilledButton.icon(
@@ -673,14 +753,12 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                                   icon: const Icon(Icons.qr_code_2_rounded),
                                   label: const Text('Subir QR Yape'),
                                 ),
-                                const SizedBox(width: 8),
                               ],
                               FilledButton.icon(
                                 onPressed: _status == 'pending_review' ? () => _approve(t) : null,
                                 icon: const Icon(Icons.check_rounded),
                                 label: const Text('Aprobar'),
                               ),
-                              const SizedBox(width: 8),
                               OutlinedButton.icon(
                                 onPressed: () => _reject(t['id'].toString()),
                                 icon: const Icon(Icons.close_rounded),

@@ -15,7 +15,8 @@ class WalletAdminService {
         .select(
           'id, user_id, reference_code, amount, status, proof_url, proof_note, '
           'created_at, updated_at, reject_reason, reconciliation_hint, '
-          'profiles:user_id(full_name, username, email)',
+          'profiles:user_id(full_name, username, email), '
+          'wallet_topup_qr_sources(provider, raw_qr_text, decoded_ok, decoded_at, created_at, image_url)',
         )
         .eq('status', status)
         .order('created_at');

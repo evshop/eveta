@@ -283,20 +283,45 @@ class _WalletScreenState extends State<WalletScreen> {
                                 return Column(
                                   children: [
                                     if (pendingGen) ...[
-                                      Text(
-                                        'Generando QR de pago…',
-                                        style: TextStyle(
-                                          color: scheme.onSurfaceVariant,
-                                          fontWeight: FontWeight.w600,
+                                      Container(
+                                        width: double.infinity,
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Column(
+                                          children: [
+                                            TweenAnimationBuilder<double>(
+                                              tween: Tween(begin: 0.75, end: 1.15),
+                                              duration: const Duration(milliseconds: 900),
+                                              curve: Curves.easeInOut,
+                                              builder: (context, value, child) => Transform.scale(
+                                                scale: value,
+                                                child: Icon(
+                                                  Icons.qr_code_2_rounded,
+                                                  size: 30,
+                                                  color: scheme.primary,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 6),
+                                            Text(
+                                              'Generando QR de pago...',
+                                              style: TextStyle(
+                                                color: scheme.onSurfaceVariant,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 8),
+                                            ClipRRect(
+                                              borderRadius: BorderRadius.circular(999),
+                                              child: const LinearProgressIndicator(minHeight: 7),
+                                            ),
+                                          ],
                                         ),
                                       ),
-                                      const SizedBox(height: 8),
-                                      const SizedBox(
-                                        width: 28,
-                                        height: 28,
-                                        child: CircularProgressIndicator(strokeWidth: 2),
-                                      ),
-                                      const SizedBox(height: 8),
+                                      const SizedBox(height: 10),
                                       Text(
                                         'Referencia ${_activeTopup!['reference_code']} · Bs ${_activeTopup!['amount']}',
                                         textAlign: TextAlign.center,
@@ -306,7 +331,7 @@ class _WalletScreenState extends State<WalletScreen> {
                                       Center(
                                         child: QrImageView(
                                           data: qrData,
-                                          size: 200,
+                                          size: 250,
                                           eyeStyle: QrEyeStyle(
                                             eyeShape: QrEyeShape.square,
                                             color: scheme.onSurface,
