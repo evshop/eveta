@@ -1,0 +1,6 @@
+Flask
+opencv-python-headless
+qrcode[pil]
+Pillow
+python-multipart
+cairosvg
