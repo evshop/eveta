@@ -49,6 +49,7 @@ returns table (
 language plpgsql
 security definer
 set search_path = public
+set default_transaction_read_only = off
 as $$
 declare
   v_uid uuid;
