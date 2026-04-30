@@ -18,6 +18,7 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
   late Future<List<Map<String, dynamic>>> _tokensFuture;
   late Future<List<Map<String, dynamic>>> _qrgenTokensFuture;
   late Future<List<Map<String, dynamic>>> _bankEventsFuture;
+  late Future<List<Map<String, dynamic>>> _qrAuditFuture;
   String _status = 'pending_proof';
 
   @override
@@ -27,6 +28,7 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
     _tokensFuture = WalletAdminService.fetchWebhookTokens();
     _qrgenTokensFuture = WalletAdminService.fetchQrgenTokens();
     _bankEventsFuture = WalletAdminService.fetchBankIncomingEvents();
+    _qrAuditFuture = WalletAdminService.fetchQrGenerationAudit();
   }
 
   Future<void> _reload() async {
@@ -34,6 +36,7 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
     setState(() => _tokensFuture = WalletAdminService.fetchWebhookTokens());
     setState(() => _qrgenTokensFuture = WalletAdminService.fetchQrgenTokens());
     setState(() => _bankEventsFuture = WalletAdminService.fetchBankIncomingEvents());
+    setState(() => _qrAuditFuture = WalletAdminService.fetchQrGenerationAudit());
     await _future;
   }
 
@@ -772,6 +775,173 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                   ),
                 );
               }).toList(),
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: FutureBuilder<List<Map<String, dynamic>>>(
+                  future: _qrAuditFuture,
+                  builder: (context, auditSnap) {
+                    final auditRows = auditSnap.data ?? const [];
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                'Monitor de generación QR (Termux -> decode -> QR)',
+                                style: TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Actualizar monitor',
+                              onPressed: _reload,
+                              icon: const Icon(Icons.refresh_rounded),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Esta sección muestra el pipeline completo: solicitud de recarga, claim del worker, '
+                          'texto plano extraído y QR final generado para validar que funciona.',
+                          style: TextStyle(color: scheme.onSurfaceVariant),
+                        ),
+                        const SizedBox(height: 10),
+                        if (auditRows.isEmpty)
+                          Text(
+                            'Aún no hay registros para auditar.',
+                            style: TextStyle(color: scheme.onSurfaceVariant),
+                          )
+                        else
+                          ...auditRows.where((row) {
+                            final hint = Map<String, dynamic>.from(
+                              (row['reconciliation_hint'] as Map?) ?? const {},
+                            );
+                            final qrSources = List<Map<String, dynamic>>.from(
+                              (row['wallet_topup_qr_sources'] as List?) ?? const [],
+                            );
+                            return hint['qrgen_claimed'] == true || qrSources.isNotEmpty;
+                          }).map((row) {
+                            final profile = Map<String, dynamic>.from(
+                              (row['profiles'] as Map?) ?? const {},
+                            );
+                            final hint = Map<String, dynamic>.from(
+                              (row['reconciliation_hint'] as Map?) ?? const {},
+                            );
+                            final qrSources = List<Map<String, dynamic>>.from(
+                              (row['wallet_topup_qr_sources'] as List?) ?? const [],
+                            );
+                            final qrSource = qrSources.isNotEmpty ? qrSources.first : null;
+                            final raw = qrSource?['raw_qr_text']?.toString() ?? '';
+                            final userLabel = profile['full_name']?.toString().trim().isNotEmpty == true
+                                ? profile['full_name'].toString()
+                                : (profile['username']?.toString().trim().isNotEmpty == true
+                                      ? profile['username'].toString()
+                                      : (profile['email']?.toString() ?? 'Usuario'));
+                            final claimed = hint['qrgen_claimed'] == true;
+                            final worker = hint['qrgen_worker_id']?.toString();
+                            final claimedAt = hint['qrgen_claimed_at']?.toString();
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(10),
+                                  color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Bs ${row['amount']} · ${row['reference_code']} · ${row['status']}',
+                                      style: const TextStyle(fontWeight: FontWeight.w800),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Usuario: $userLabel',
+                                      style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+                                    ),
+                                    Text(
+                                      'Claim worker: ${claimed ? 'sí' : 'no'}'
+                                      '${worker != null && worker.isNotEmpty ? ' · $worker' : ''}'
+                                      '${claimedAt != null ? ' · $claimedAt' : ''}',
+                                      style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    if (raw.isEmpty)
+                                      Text(
+                                        'QR aún no decodificado para esta recarga.',
+                                        style: TextStyle(color: scheme.onSurfaceVariant),
+                                      )
+                                    else
+                                      Wrap(
+                                        spacing: 10,
+                                        runSpacing: 10,
+                                        crossAxisAlignment: WrapCrossAlignment.start,
+                                        children: [
+                                          SizedBox(
+                                            width: 170,
+                                            height: 170,
+                                            child: Card(
+                                              child: Padding(
+                                                padding: const EdgeInsets.all(8),
+                                                child: Center(
+                                                  child: QrImageView(
+                                                    data: raw,
+                                                    size: 145,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          ConstrainedBox(
+                                            constraints: const BoxConstraints(maxWidth: 550),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                const Text(
+                                                  'Texto plano extraído:',
+                                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                SelectableText(
+                                                  raw,
+                                                  style: const TextStyle(
+                                                    fontFamily: 'monospace',
+                                                    fontSize: 11,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 6),
+                                                OutlinedButton.icon(
+                                                  onPressed: () async {
+                                                    await Clipboard.setData(ClipboardData(text: raw));
+                                                    if (!mounted) return;
+                                                    ScaffoldMessenger.of(context).showSnackBar(
+                                                      const SnackBar(
+                                                        content: Text('Texto plano copiado.'),
+                                                      ),
+                                                    );
+                                                  },
+                                                  icon: const Icon(Icons.copy_rounded),
+                                                  label: const Text('Copiar texto plano'),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
           ],
         );
       },

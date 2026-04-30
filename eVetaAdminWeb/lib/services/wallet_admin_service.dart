@@ -23,6 +23,21 @@ class WalletAdminService {
     return List<Map<String, dynamic>>.from(rows as List);
   }
 
+  static Future<List<Map<String, dynamic>>> fetchQrGenerationAudit({
+    int limit = 40,
+  }) async {
+    final rows = await _client
+        .from('wallet_topups')
+        .select(
+          'id, user_id, reference_code, amount, status, created_at, updated_at, '
+          'reconciliation_hint, profiles:user_id(full_name, username, email), '
+          'wallet_topup_qr_sources(provider, raw_qr_text, decoded_ok, decoded_at, created_at, image_url)',
+        )
+        .order('created_at', ascending: false)
+        .limit(limit);
+    return List<Map<String, dynamic>>.from(rows as List);
+  }
+
   static Future<void> approveTopup(String topupId, {String? bankEventId}) async {
     await _client.rpc('confirm_wallet_topup_match_and_approve', params: {
       'p_topup_id': topupId,
