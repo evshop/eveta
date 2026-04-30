@@ -332,6 +332,10 @@ class _WalletScreenState extends State<WalletScreen> {
                                         child: QrImageView(
                                           data: qrData,
                                           size: 250,
+                                          embeddedImage: const AssetImage('assets/images/ic_app_icon.png'),
+                                          embeddedImageStyle: QrEmbeddedImageStyle(
+                                            size: const Size(54, 54),
+                                          ),
                                           eyeStyle: QrEyeStyle(
                                             eyeShape: QrEyeShape.square,
                                             color: scheme.onSurface,

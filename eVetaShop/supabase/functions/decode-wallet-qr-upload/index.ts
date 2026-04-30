@@ -93,17 +93,40 @@ Deno.serve(async (req) => {
       return json({ error: 'Unauthorized' }, 401);
     }
 
-    const body = await req.json();
-    const topupId = String(body?.topup_id ?? '').trim();
-    const provider = String(body?.provider ?? 'yape').trim().toLowerCase();
-    const fileName = String(body?.file_name ?? 'qr.png').trim();
-    const mimeType = String(body?.mime_type ?? 'image/png').trim();
-    const fileBase64 = String(body?.file_base64 ?? '').trim();
-    if (!topupId || !fileBase64) {
-      return json({ error: 'topup_id y file_base64 son requeridos.' }, 400);
+    const contentType = req.headers.get('content-type') ?? '';
+    let topupId = '';
+    let provider = 'yape';
+    let fileName = 'qr.png';
+    let mimeType = 'image/png';
+    let bytes: Uint8Array | null = null;
+
+    if (contentType.toLowerCase().includes('multipart/form-data')) {
+      const form = await req.formData();
+      topupId = String(form.get('topup_id') ?? '').trim();
+      provider = String(form.get('provider') ?? 'yape').trim().toLowerCase();
+      const f = form.get('file');
+      if (!(f instanceof File)) {
+        return json({ error: 'file es requerido (multipart/form-data).' }, 400);
+      }
+      fileName = (f.name || 'qr.png').trim();
+      mimeType = (f.type || 'image/png').trim();
+      bytes = new Uint8Array(await f.arrayBuffer());
+    } else {
+      const body = await req.json();
+      topupId = String(body?.topup_id ?? '').trim();
+      provider = String(body?.provider ?? 'yape').trim().toLowerCase();
+      fileName = String(body?.file_name ?? 'qr.png').trim();
+      mimeType = String(body?.mime_type ?? 'image/png').trim();
+      const fileBase64 = String(body?.file_base64 ?? '').trim();
+      if (fileBase64) {
+        bytes = Uint8Array.from(atob(fileBase64), (c) => c.charCodeAt(0));
+      }
     }
 
-    const bytes = Uint8Array.from(atob(fileBase64), (c) => c.charCodeAt(0));
+    if (!topupId || !bytes || bytes.length === 0) {
+      return json({ error: 'topup_id y archivo son requeridos.' }, 400);
+    }
+
     const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
     tempPath = `${topupId}/${Date.now()}_${safeName}`;
 
