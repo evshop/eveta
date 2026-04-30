@@ -30,10 +30,32 @@ class WalletService {
         .from('wallet_topups')
         .select(
           'id, reference_code, amount, status, proof_url, proof_note, '
-          'created_at, updated_at, approved_at, rejected_at, reject_reason',
+          'created_at, updated_at, approved_at, rejected_at, reject_reason, '
+          'wallet_topup_qr_sources(provider, raw_qr_text, decoded_at)',
         )
         .order('created_at', ascending: false);
     return List<Map<String, dynamic>>.from(rows as List);
+  }
+
+  /// Texto del campo “mensaje” en Yape; debe coincidir con lo que usa el worker Termux/adb.
+  static String suggestedYapeMessage(String referenceCode) => 'VETA2 $referenceCode';
+
+  /// Texto EMV/plano del QR de pago (Yape, etc.) cuando el worker ya lo subió y decodificó.
+  static String? rawQrTextFromTopup(Map<String, dynamic> topup) {
+    final nested = topup['wallet_topup_qr_sources'];
+    if (nested is List && nested.isNotEmpty) {
+      for (final item in nested) {
+        if (item is Map) {
+          final raw = item['raw_qr_text']?.toString().trim();
+          if (raw != null && raw.isNotEmpty) return raw;
+        }
+      }
+    }
+    if (nested is Map) {
+      final raw = nested['raw_qr_text']?.toString().trim();
+      if (raw != null && raw.isNotEmpty) return raw;
+    }
+    return null;
   }
 
   static Future<void> submitTopupProof({

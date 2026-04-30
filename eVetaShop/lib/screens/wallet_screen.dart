@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:eveta/utils/wallet_service.dart';
@@ -24,6 +25,7 @@ class _WalletScreenState extends State<WalletScreen> {
   double _balance = 0;
   List<Map<String, dynamic>> _topups = const [];
   Map<String, dynamic>? _activeTopup;
+  Timer? _qrPollTimer;
 
   @override
   void initState() {
@@ -33,10 +35,50 @@ class _WalletScreenState extends State<WalletScreen> {
 
   @override
   void dispose() {
+    _qrPollTimer?.cancel();
     _amountCtrl.dispose();
     _noteCtrl.dispose();
     _withdrawAmountCtrl.dispose();
     super.dispose();
+  }
+
+  void _syncQrPollTimer() {
+    _qrPollTimer?.cancel();
+    final active = _activeTopup;
+    if (active == null) return;
+    final status = active['status']?.toString() ?? '';
+    final raw = WalletService.rawQrTextFromTopup(active);
+    if (status != 'pending_proof' || raw != null) return;
+
+    _qrPollTimer = Timer.periodic(const Duration(seconds: 4), (_) async {
+      if (!mounted) return;
+      try {
+        await _reload();
+        if (!mounted) return;
+        final t = _topupById(active['id']?.toString());
+        if (t != null) {
+          setState(() => _activeTopup = t);
+        }
+        final updated = _activeTopup;
+        if (updated == null) return;
+        final done = WalletService.rawQrTextFromTopup(updated) != null ||
+            (updated['status']?.toString() != 'pending_proof');
+        if (done) {
+          _qrPollTimer?.cancel();
+          _qrPollTimer = null;
+        }
+      } catch (_) {
+        // Silencioso: siguiente tick reintenta
+      }
+    });
+  }
+
+  Map<String, dynamic>? _topupById(String? id) {
+    if (id == null || id.isEmpty) return null;
+    for (final row in _topups) {
+      if (row['id']?.toString() == id) return row;
+    }
+    return null;
   }
 
   Future<void> _reload() async {
@@ -50,7 +92,13 @@ class _WalletScreenState extends State<WalletScreen> {
       setState(() {
         _balance = values[0] as double;
         _topups = List<Map<String, dynamic>>.from(values[1] as List);
+        final aid = _activeTopup?['id']?.toString();
+        if (aid != null) {
+          final fresh = _topupById(aid);
+          if (fresh != null) _activeTopup = fresh;
+        }
       });
+      _syncQrPollTimer();
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -68,7 +116,10 @@ class _WalletScreenState extends State<WalletScreen> {
       if (!mounted) return;
       setState(() => _activeTopup = topup);
       await _reload();
-      _snack('Solicitud creada. Deposita y sube tu comprobante.');
+      _snack(
+        'Solicitud enviada. El QR de pago (Yape) aparecerá aquí cuando el generador lo procese; '
+        'luego puedes pagar y subir comprobante si lo pide el admin.',
+      );
     } catch (e) {
       _snack('No se pudo crear la recarga: $e', isError: true);
     } finally {
@@ -221,17 +272,67 @@ class _WalletScreenState extends State<WalletScreen> {
                           ),
                           if (_activeTopup != null) ...[
                             const SizedBox(height: 14),
-                            Center(
-                              child: QrImageView(
-                                data:
-                                    'EVETA_TOPUP:${_activeTopup!['reference_code']}:${_activeTopup!['amount']}',
-                                size: 200,
-                                eyeStyle: QrEyeStyle(eyeShape: QrEyeShape.square, color: scheme.onSurface),
-                                dataModuleStyle: QrDataModuleStyle(
-                                  dataModuleShape: QrDataModuleShape.square,
-                                  color: scheme.onSurface,
-                                ),
-                              ),
+                            Builder(
+                              builder: (context) {
+                                final rawPay = WalletService.rawQrTextFromTopup(_activeTopup!);
+                                final pendingGen = (_activeTopup!['status']?.toString() == 'pending_proof') &&
+                                    (rawPay == null || rawPay.isEmpty);
+                                final qrData = (rawPay != null && rawPay.isNotEmpty)
+                                    ? rawPay
+                                    : 'EVETA_TOPUP:${_activeTopup!['reference_code']}:${_activeTopup!['amount']}';
+                                return Column(
+                                  children: [
+                                    if (pendingGen) ...[
+                                      Text(
+                                        'Generando QR de pago…',
+                                        style: TextStyle(
+                                          color: scheme.onSurfaceVariant,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      const SizedBox(
+                                        width: 28,
+                                        height: 28,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Referencia ${_activeTopup!['reference_code']} · Bs ${_activeTopup!['amount']}',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+                                      ),
+                                    ] else ...[
+                                      Center(
+                                        child: QrImageView(
+                                          data: qrData,
+                                          size: 200,
+                                          eyeStyle: QrEyeStyle(
+                                            eyeShape: QrEyeShape.square,
+                                            color: scheme.onSurface,
+                                          ),
+                                          dataModuleStyle: QrDataModuleStyle(
+                                            dataModuleShape: QrDataModuleShape.square,
+                                            color: scheme.onSurface,
+                                          ),
+                                        ),
+                                      ),
+                                      if (rawPay != null && rawPay.isNotEmpty) ...[
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'Escanea con la app de pago para completar la recarga',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            color: scheme.primary,
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ],
+                                );
+                              },
                             ),
                             const SizedBox(height: 10),
                             Text(
@@ -242,6 +343,20 @@ class _WalletScreenState extends State<WalletScreen> {
                             Text(
                               'Monto: Bs ${_activeTopup!['amount']}',
                               style: TextStyle(color: scheme.onSurfaceVariant),
+                            ),
+                            const SizedBox(height: 6),
+                            SelectableText(
+                              'Mensaje (Yape): ${WalletService.suggestedYapeMessage(_activeTopup!['reference_code']?.toString() ?? '')}',
+                              style: TextStyle(
+                                color: scheme.onSurfaceVariant,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'El generador remoto usa estos mismos datos; el QR grande lleva el payload que Yape necesita.',
+                              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 11),
                             ),
                             const SizedBox(height: 10),
                             TextField(
@@ -326,7 +441,8 @@ class _WalletScreenState extends State<WalletScreen> {
                           onTap: status == 'pending_proof'
                               ? () {
                                   setState(() => _activeTopup = t);
-                                  _snack('Seleccionaste recarga pendiente para subir comprobante.');
+                                  _syncQrPollTimer();
+                                  _snack('Recarga seleccionada. Si falta el QR de pago, se actualizará solo.');
                                 }
                               : null,
                         ),

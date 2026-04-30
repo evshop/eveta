@@ -14,6 +14,7 @@ class WalletTopupsScreen extends StatefulWidget {
 class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
   late Future<List<Map<String, dynamic>>> _future;
   late Future<List<Map<String, dynamic>>> _tokensFuture;
+  late Future<List<Map<String, dynamic>>> _qrgenTokensFuture;
   late Future<List<Map<String, dynamic>>> _bankEventsFuture;
   String _status = 'pending_proof';
 
@@ -22,12 +23,14 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
     super.initState();
     _future = WalletAdminService.fetchTopups(status: _status);
     _tokensFuture = WalletAdminService.fetchWebhookTokens();
+    _qrgenTokensFuture = WalletAdminService.fetchQrgenTokens();
     _bankEventsFuture = WalletAdminService.fetchBankIncomingEvents();
   }
 
   Future<void> _reload() async {
     setState(() => _future = WalletAdminService.fetchTopups(status: _status));
     setState(() => _tokensFuture = WalletAdminService.fetchWebhookTokens());
+    setState(() => _qrgenTokensFuture = WalletAdminService.fetchQrgenTokens());
     setState(() => _bankEventsFuture = WalletAdminService.fetchBankIncomingEvents());
     await _future;
   }
@@ -148,6 +151,73 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
     await _reload();
   }
 
+  Future<void> _createQrgenToken() async {
+    final labelCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Generar token QRGen (Termux)'),
+        content: TextField(
+          controller: labelCtrl,
+          decoration: const InputDecoration(
+            labelText: 'Etiqueta (opcional)',
+            hintText: 'Ej: Samsung A55 (Termux)',
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Generar')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    final created = await WalletAdminService.createQrgenToken(
+      label: labelCtrl.text.trim().isEmpty ? null : labelCtrl.text.trim(),
+    );
+    if (!mounted) return;
+    final token = created['token']?.toString() ?? '';
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Token QRGen generado'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Pégalo en tu script Termux como QRGEN_TOKEN.'),
+            const SizedBox(height: 10),
+            SelectableText(
+              token,
+              style: const TextStyle(fontFamily: 'monospace'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: token));
+              if (ctx.mounted) Navigator.pop(ctx);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Token copiado. Pégalo en Termux.')),
+                );
+              }
+            },
+            child: const Text('Copiar'),
+          ),
+          FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar')),
+        ],
+      ),
+    );
+    await _reload();
+  }
+
+  Future<void> _revokeQrgenToken(String tokenId) async {
+    await WalletAdminService.revokeQrgenToken(tokenId);
+    await _reload();
+  }
+
   Future<void> _approve(Map<String, dynamic> row) async {
     final topupId = row['id'].toString();
     final hint = Map<String, dynamic>.from((row['reconciliation_hint'] as Map?) ?? const {});
@@ -251,6 +321,70 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                               ),
                               trailing: OutlinedButton(
                                 onPressed: () => _revokeToken(t['id'].toString()),
+                                child: const Text('Revocar'),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 10),
+            FutureBuilder<List<Map<String, dynamic>>>(
+              future: _qrgenTokensFuture,
+              builder: (context, tokenSnap) {
+                final tokens = tokenSnap.data ?? const [];
+                return Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                'Tokens generador QR (Termux 24/7)',
+                                style: TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                            ),
+                            FilledButton.icon(
+                              onPressed: _createQrgenToken,
+                              icon: const Icon(Icons.qr_code_2_rounded),
+                              label: const Text('Generar token'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Este token lo usa tu teléfono con Termux para: (1) pedir la siguiente recarga pendiente '
+                          'y (2) subir la imagen del QR para decodificar.',
+                          style: TextStyle(color: scheme.onSurfaceVariant),
+                        ),
+                        const SizedBox(height: 10),
+                        if (tokens.isEmpty)
+                          Text(
+                            'No hay tokens activos.',
+                            style: TextStyle(color: scheme.onSurfaceVariant),
+                          )
+                        else
+                          ...tokens.map(
+                            (t) => ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: const Icon(Icons.memory_outlined),
+                              title: Text(
+                                t['label']?.toString().trim().isNotEmpty == true
+                                    ? t['label'].toString()
+                                    : 'Token sin etiqueta',
+                              ),
+                              subtitle: Text(
+                                'Creado: ${t['created_at'] ?? '-'}'
+                                '${t['last_used_at'] != null ? ' · Último uso: ${t['last_used_at']}' : ''}',
+                              ),
+                              trailing: OutlinedButton(
+                                onPressed: () => _revokeQrgenToken(t['id'].toString()),
                                 child: const Text('Revocar'),
                               ),
                             ),

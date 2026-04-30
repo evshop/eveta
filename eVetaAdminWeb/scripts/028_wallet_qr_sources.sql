@@ -1,5 +1,10 @@
 -- 028_wallet_qr_sources.sql
 -- Almacena QR fuente (imagen + texto plano) de recargas.
+--
+-- PREREQUISITO: debe existir public.wallet_topups (y el módulo wallet base).
+--   Ejecuta antes, en orden: 024_wallet_schema_rls.sql, luego 025_wallet_business_functions.sql
+--   (y el resto de scripts wallet que uses). Si 024 falla por falta de public.orders,
+--   aplica primero el esquema de pedidos de tu proyecto.
 
 create table if not exists public.wallet_topup_qr_sources (
   id uuid primary key default gen_random_uuid(),
@@ -24,6 +29,21 @@ on public.wallet_topup_qr_sources
 for select
 to authenticated
 using (public.profile_is_admin());
+
+-- Dueño de la recarga puede leer el texto plano del QR (app cliente).
+drop policy if exists "wallet_topup_qr_sources_owner_select" on public.wallet_topup_qr_sources;
+create policy "wallet_topup_qr_sources_owner_select"
+on public.wallet_topup_qr_sources
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.wallet_topups t
+    where t.id = wallet_topup_qr_sources.topup_id
+      and t.user_id = auth.uid()
+  )
+);
 
 create or replace function public.store_wallet_topup_qr_source(
   p_topup_id uuid,

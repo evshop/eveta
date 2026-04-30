@@ -41,6 +41,11 @@ class WalletAdminService {
     return List<Map<String, dynamic>>.from(rows as List);
   }
 
+  static Future<List<Map<String, dynamic>>> fetchQrgenTokens() async {
+    final rows = await _client.rpc('list_wallet_qrgen_tokens');
+    return List<Map<String, dynamic>>.from(rows as List);
+  }
+
   static Future<List<Map<String, dynamic>>> fetchBankIncomingEvents({
     int limit = 30,
   }) async {
@@ -66,8 +71,25 @@ class WalletAdminService {
     return list.first;
   }
 
+  static Future<Map<String, dynamic>> createQrgenToken({String? label}) async {
+    final rows = await _client.rpc('create_wallet_qrgen_token', params: {
+      'p_label': label,
+    });
+    final list = List<Map<String, dynamic>>.from(rows as List);
+    if (list.isEmpty) {
+      throw AuthException('No se pudo crear el token.');
+    }
+    return list.first;
+  }
+
   static Future<void> revokeWebhookToken(String tokenId) async {
     await _client.rpc('revoke_wallet_webhook_token', params: {
+      'p_token_id': tokenId,
+    });
+  }
+
+  static Future<void> revokeQrgenToken(String tokenId) async {
+    await _client.rpc('revoke_wallet_qrgen_token', params: {
       'p_token_id': tokenId,
     });
   }
