@@ -15,7 +15,7 @@ returns numeric
 language plpgsql
 security definer
 set search_path = public
-stable
+volatile
 as $$
 declare
   v_uid uuid;

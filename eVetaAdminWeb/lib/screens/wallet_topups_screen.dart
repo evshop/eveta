@@ -814,15 +814,7 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                             style: TextStyle(color: scheme.onSurfaceVariant),
                           )
                         else
-                          ...auditRows.where((row) {
-                            final hint = Map<String, dynamic>.from(
-                              (row['reconciliation_hint'] as Map?) ?? const {},
-                            );
-                            final qrSources = List<Map<String, dynamic>>.from(
-                              (row['wallet_topup_qr_sources'] as List?) ?? const [],
-                            );
-                            return hint['qrgen_claimed'] == true || qrSources.isNotEmpty;
-                          }).map((row) {
+                          ...auditRows.map((row) {
                             final profile = Map<String, dynamic>.from(
                               (row['profiles'] as Map?) ?? const {},
                             );
@@ -842,6 +834,14 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                             final claimed = hint['qrgen_claimed'] == true;
                             final worker = hint['qrgen_worker_id']?.toString();
                             final claimedAt = hint['qrgen_claimed_at']?.toString();
+                            final stageText = !claimed
+                                ? '1/4 Pendiente de claim por worker'
+                                : (raw.isEmpty
+                                    ? '2/4 Claim hecho, falta upload/decode'
+                                    : '4/4 Texto plano listo y QR generado');
+                            final stageColor = !claimed
+                                ? scheme.onSurfaceVariant
+                                : (raw.isEmpty ? Colors.orange : Colors.green);
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 10),
                               child: Container(
@@ -859,6 +859,15 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
+                                      stageText,
+                                      style: TextStyle(
+                                        color: stageColor,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
                                       'Usuario: $userLabel',
                                       style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
                                     ),
@@ -871,7 +880,9 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                                     const SizedBox(height: 8),
                                     if (raw.isEmpty)
                                       Text(
-                                        'QR aún no decodificado para esta recarga.',
+                                        claimed
+                                            ? 'Reclamada pero sin texto plano aún. Revisa script Termux (adb pull/upload).'
+                                            : 'Aún no reclamada por el worker (qrgen-next-topup).',
                                         style: TextStyle(color: scheme.onSurfaceVariant),
                                       )
                                     else
