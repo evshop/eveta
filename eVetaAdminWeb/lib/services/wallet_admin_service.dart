@@ -53,7 +53,7 @@ class WalletAdminService {
         .from('bank_incoming_events')
         .select(
           'id, source, bank_app, title, body, detected_amount, detected_reference, '
-          'detected_sender, detected_at, received_at, match_status, matched_topup_id',
+          'detected_sender, detected_at, received_at, match_status, matched_topup_id, raw_payload',
         )
         .order('received_at', ascending: false)
         .limit(limit);

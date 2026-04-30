@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
+import 'dart:convert';
 
 import '../services/wallet_admin_service.dart';
 
@@ -113,9 +114,18 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
     );
     if (ok != true) return;
 
-    final created = await WalletAdminService.createWebhookToken(
-      label: labelCtrl.text.trim().isEmpty ? null : labelCtrl.text.trim(),
-    );
+    Map<String, dynamic> created;
+    try {
+      created = await WalletAdminService.createWebhookToken(
+        label: labelCtrl.text.trim().isEmpty ? null : labelCtrl.text.trim(),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo generar token Tasker: $e')),
+      );
+      return;
+    }
     if (!mounted) return;
     final token = created['token']?.toString() ?? '';
     await showDialog<void>(
@@ -172,11 +182,26 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
     );
     if (ok != true) return;
 
-    final created = await WalletAdminService.createQrgenToken(
-      label: labelCtrl.text.trim().isEmpty ? null : labelCtrl.text.trim(),
-    );
+    Map<String, dynamic> created;
+    try {
+      created = await WalletAdminService.createQrgenToken(
+        label: labelCtrl.text.trim().isEmpty ? null : labelCtrl.text.trim(),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo generar token QRGen: $e')),
+      );
+      return;
+    }
     if (!mounted) return;
     final token = created['token']?.toString() ?? '';
+    if (token.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se recibió token desde el servidor. Revisa el RPC.')),
+      );
+      return;
+    }
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -266,8 +291,8 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
           return const Center(child: CircularProgressIndicator());
         }
         final rows = snapshot.data ?? const [];
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        return ListView(
+          padding: const EdgeInsets.all(12),
           children: [
             FutureBuilder<List<Map<String, dynamic>>>(
               future: _tokensFuture,
@@ -422,37 +447,81 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                             style: TextStyle(color: scheme.onSurfaceVariant),
                           )
                         else
-                          ...bankRows.take(8).map(
-                            (e) => ListTile(
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
+                          ...bankRows.take(10).map((e) {
+                            final payload = e['raw_payload'];
+                            final payloadPretty = payload == null
+                                ? null
+                                : const JsonEncoder.withIndent('  ').convert(payload);
+                            final detectedAmount = e['detected_amount'];
+                            final amountText = detectedAmount == null ? '-' : detectedAmount.toString();
+                            final refText = (e['detected_reference']?.toString().trim().isNotEmpty == true)
+                                ? e['detected_reference'].toString()
+                                : '-';
+                            final appText = (e['bank_app']?.toString().trim().isNotEmpty == true)
+                                ? e['bank_app'].toString()
+                                : '-';
+                            final senderText = (e['detected_sender']?.toString().trim().isNotEmpty == true)
+                                ? e['detected_sender'].toString()
+                                : '-';
+                            final receivedAt = e['received_at']?.toString() ?? '-';
+                            final detectedAt = e['detected_at']?.toString();
+                            final titleText = e['title']?.toString() ?? '';
+                            final bodyText = e['body']?.toString() ?? '';
+
+                            return ExpansionTile(
+                              tilePadding: EdgeInsets.zero,
                               leading: const Icon(Icons.notifications_active_outlined),
                               title: Text(
-                                'Bs ${e['detected_amount'] ?? '-'}'
-                                ' · Ref ${e['detected_reference'] ?? '-'}',
+                                'Bs $amountText · Ref $refText',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
                               subtitle: Text(
-                                'Estado: ${e['match_status'] ?? '-'}'
-                                '${e['received_at'] != null ? ' · ${e['received_at']}' : ''}',
-                                maxLines: 1,
+                                'Estado: ${e['match_status'] ?? '-'} · Recibido: $receivedAt'
+                                '${detectedAt != null ? ' · Detectado: $detectedAt' : ''}',
+                                maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              trailing: SizedBox(
-                                width: 170,
-                                child: Text(
-                                  (e['title']?.toString().trim().isNotEmpty == true)
-                                      ? e['title'].toString()
-                                      : (e['body']?.toString() ?? ''),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  textAlign: TextAlign.right,
-                                  style: TextStyle(color: scheme.onSurfaceVariant),
+                              childrenPadding: const EdgeInsets.only(left: 44, right: 8, bottom: 10),
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        'App: $appText\nSender: $senderText',
+                                        style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+                                      ),
+                                    ),
+                                    if (e['matched_topup_id'] != null)
+                                      Text(
+                                        'Topup: ${e['matched_topup_id']}',
+                                        style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+                                      ),
+                                  ],
                                 ),
-                              ),
-                            ),
-                          ),
+                                const SizedBox(height: 8),
+                                if (titleText.trim().isNotEmpty)
+                                  SelectableText(
+                                    'Título: $titleText',
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                if (bodyText.trim().isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  SelectableText(
+                                    'Body: $bodyText',
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                ],
+                                if (payloadPretty != null) ...[
+                                  const SizedBox(height: 8),
+                                  SelectableText(
+                                    payloadPretty,
+                                    style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+                                  ),
+                                ],
+                              ],
+                            );
+                          }),
                       ],
                     ),
                   ),
@@ -509,117 +578,122 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
             ),
             const SizedBox(height: 8),
             if (rows.isEmpty)
-              const Expanded(
-                child: Center(
-                  child: Text('No hay recargas pendientes de revisión.'),
-                ),
-              )
+              const Center(child: Text('No hay recargas pendientes de revisión.'))
             else
-              Expanded(
-                child: ListView.separated(
-                  itemCount: rows.length,
-                  separatorBuilder: (_, index) => const SizedBox(height: 10),
-                  itemBuilder: (context, i) {
-                    final t = rows[i];
-                    final profile = Map<String, dynamic>.from((t['profiles'] as Map?) ?? const {});
-                    final hint = Map<String, dynamic>.from((t['reconciliation_hint'] as Map?) ?? const {});
-                    final userLabel = profile['full_name']?.toString().trim().isNotEmpty == true
-                        ? profile['full_name'].toString()
-                        : (profile['username']?.toString().trim().isNotEmpty == true
-                              ? profile['username'].toString()
-                              : (profile['email']?.toString() ?? 'Usuario'));
-                    final proofUrl = t['proof_url']?.toString() ?? '';
-                    return Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    'Bs ${t['amount']} · ${t['reference_code']}',
-                                    style: const TextStyle(fontWeight: FontWeight.w800),
-                                  ),
+              ...rows.map((t) {
+                final profile = Map<String, dynamic>.from((t['profiles'] as Map?) ?? const {});
+                final hint = Map<String, dynamic>.from((t['reconciliation_hint'] as Map?) ?? const {});
+                final userLabel = profile['full_name']?.toString().trim().isNotEmpty == true
+                    ? profile['full_name'].toString()
+                    : (profile['username']?.toString().trim().isNotEmpty == true
+                          ? profile['username'].toString()
+                          : (profile['email']?.toString() ?? 'Usuario'));
+                final proofUrl = t['proof_url']?.toString() ?? '';
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'Bs ${t['amount']} · ${t['reference_code']}',
+                                  style: const TextStyle(fontWeight: FontWeight.w800),
                                 ),
-                                Text(
-                                  t['status']?.toString() ?? '',
-                                  style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w700),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            SelectableText(
-                              'Topup ID: ${t['id']}',
-                              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
-                            ),
-                            const SizedBox(height: 4),
-                            Text('Usuario: $userLabel'),
-                            const SizedBox(height: 4),
-                            if (hint.isNotEmpty) ...[
-                              if ((hint['bank_match_status']?.toString() ?? '') == 'suggested')
-                                Container(
-                                  margin: const EdgeInsets.only(bottom: 8),
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: scheme.surfaceContainerHighest,
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                  child: Text(
-                                    'Match bancario sugerido · score ${hint['bank_match_score'] ?? '-'}'
-                                    '${hint['bank_detected_amount'] != null ? ' · Bs ${hint['bank_detected_amount']}' : ''}',
-                                    style: TextStyle(
-                                      color: scheme.onSurface,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                            ],
-                            SelectableText(
-                              proofUrl.isEmpty ? 'Sin comprobante' : proofUrl,
-                              style: TextStyle(color: scheme.onSurfaceVariant),
-                            ),
-                            if (proofUrl.isNotEmpty) ...[
-                              const SizedBox(height: 8),
-                              OutlinedButton.icon(
-                                onPressed: () {},
-                                icon: const Icon(Icons.open_in_new_rounded),
-                                label: const Text('Abrir comprobante (copiar URL)'),
+                              ),
+                              Text(
+                                t['status']?.toString() ?? '',
+                                style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w700),
                               ),
                             ],
-                            const SizedBox(height: 10),
-                            Row(
-                              children: [
-                                if (_status == 'pending_proof') ...[
-                                  FilledButton.icon(
-                                    onPressed: () => _attachQrSource(t['id'].toString()),
-                                    icon: const Icon(Icons.qr_code_2_rounded),
-                                    label: const Text('Subir QR Yape'),
+                          ),
+                          const SizedBox(height: 6),
+                          SelectableText(
+                            'Topup ID: ${t['id']}',
+                            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+                          ),
+                          const SizedBox(height: 4),
+                          Text('Usuario: $userLabel'),
+                          const SizedBox(height: 4),
+                          if ((t['created_at']?.toString().trim().isNotEmpty ?? false))
+                            Text(
+                              'Creado: ${t['created_at']}',
+                              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+                            ),
+                          const SizedBox(height: 8),
+                          if (hint.isNotEmpty) ...[
+                            if ((hint['bank_match_status']?.toString() ?? '') == 'suggested')
+                              Container(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: scheme.surfaceContainerHighest,
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  'Match bancario sugerido · score ${hint['bank_match_score'] ?? '-'}'
+                                  '${hint['bank_detected_amount'] != null ? ' · Bs ${hint['bank_detected_amount']}' : ''}',
+                                  style: TextStyle(
+                                    color: scheme.onSurface,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 12,
                                   ),
-                                  const SizedBox(width: 8),
-                                ],
-                                FilledButton.icon(
-                                  onPressed: _status == 'pending_review' ? () => _approve(t) : null,
-                                  icon: const Icon(Icons.check_rounded),
-                                  label: const Text('Aprobar'),
                                 ),
-                                const SizedBox(width: 8),
-                                OutlinedButton.icon(
-                                  onPressed: () => _reject(t['id'].toString()),
-                                  icon: const Icon(Icons.close_rounded),
-                                  label: const Text('Rechazar'),
-                                ),
-                              ],
+                              ),
+                          ],
+                          SelectableText(
+                            proofUrl.isEmpty ? 'Sin comprobante' : proofUrl,
+                            style: TextStyle(color: scheme.onSurfaceVariant),
+                          ),
+                          if (proofUrl.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            OutlinedButton.icon(
+                              onPressed: () async {
+                                await Clipboard.setData(ClipboardData(text: proofUrl));
+                                if (!mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('URL copiada.')),
+                                );
+                              },
+                              icon: const Icon(Icons.copy_rounded),
+                              label: const Text('Copiar URL comprobante'),
                             ),
                           ],
-                        ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              if (_status == 'pending_proof') ...[
+                                FilledButton.icon(
+                                  onPressed: () => _attachQrSource(t['id'].toString()),
+                                  icon: const Icon(Icons.qr_code_2_rounded),
+                                  label: const Text('Subir QR Yape'),
+                                ),
+                                const SizedBox(width: 8),
+                              ],
+                              FilledButton.icon(
+                                onPressed: _status == 'pending_review' ? () => _approve(t) : null,
+                                icon: const Icon(Icons.check_rounded),
+                                label: const Text('Aprobar'),
+                              ),
+                              const SizedBox(width: 8),
+                              OutlinedButton.icon(
+                                onPressed: () => _reject(t['id'].toString()),
+                                icon: const Icon(Icons.close_rounded),
+                                label: const Text('Rechazar'),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
-                    );
-                  },
-                ),
-              ),
+                    ),
+                  ),
+                );
+              }).toList(),
           ],
         );
       },
