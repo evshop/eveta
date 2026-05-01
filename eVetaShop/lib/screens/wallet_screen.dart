@@ -1,10 +1,9 @@
 import 'dart:async';
-import 'dart:typed_data';
 
+import 'package:eveta/utils/wallet_resume_prefs.dart';
 import 'package:eveta/utils/wallet_service.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:qr_flutter/qr_flutter.dart';
+import 'topup_qr_screen.dart';
 
 class WalletScreen extends StatefulWidget {
   const WalletScreen({super.key});
@@ -15,17 +14,14 @@ class WalletScreen extends StatefulWidget {
 
 class _WalletScreenState extends State<WalletScreen> {
   final TextEditingController _amountCtrl = TextEditingController();
-  final TextEditingController _noteCtrl = TextEditingController();
   final TextEditingController _withdrawAmountCtrl = TextEditingController();
   bool _loading = true;
-  bool _creating = false;
-  bool _uploading = false;
   bool _showTopup = false;
   bool _showWithdraw = false;
   double _balance = 0;
   List<Map<String, dynamic>> _topups = const [];
-  Map<String, dynamic>? _activeTopup;
-  Timer? _qrPollTimer;
+  Set<String> _resumeIds = {};
+  Timer? _historyTick;
 
   @override
   void initState() {
@@ -35,50 +31,10 @@ class _WalletScreenState extends State<WalletScreen> {
 
   @override
   void dispose() {
-    _qrPollTimer?.cancel();
+    _historyTick?.cancel();
     _amountCtrl.dispose();
-    _noteCtrl.dispose();
     _withdrawAmountCtrl.dispose();
     super.dispose();
-  }
-
-  void _syncQrPollTimer() {
-    _qrPollTimer?.cancel();
-    final active = _activeTopup;
-    if (active == null) return;
-    final status = active['status']?.toString() ?? '';
-    final raw = WalletService.rawQrTextFromTopup(active);
-    if (status != 'pending_proof' || raw != null) return;
-
-    _qrPollTimer = Timer.periodic(const Duration(seconds: 4), (_) async {
-      if (!mounted) return;
-      try {
-        await _reload();
-        if (!mounted) return;
-        final t = _topupById(active['id']?.toString());
-        if (t != null) {
-          setState(() => _activeTopup = t);
-        }
-        final updated = _activeTopup;
-        if (updated == null) return;
-        final done = WalletService.rawQrTextFromTopup(updated) != null ||
-            (updated['status']?.toString() != 'pending_proof');
-        if (done) {
-          _qrPollTimer?.cancel();
-          _qrPollTimer = null;
-        }
-      } catch (_) {
-        // Silencioso: siguiente tick reintenta
-      }
-    });
-  }
-
-  Map<String, dynamic>? _topupById(String? id) {
-    if (id == null || id.isEmpty) return null;
-    for (final row in _topups) {
-      if (row['id']?.toString() == id) return row;
-    }
-    return null;
   }
 
   Future<void> _reload() async {
@@ -89,93 +45,99 @@ class _WalletScreenState extends State<WalletScreen> {
         WalletService.getMyTopups(),
       ]);
       if (!mounted) return;
+      final list = List<Map<String, dynamic>>.from(values[1] as List);
+      final resume = await WalletResumePrefs.pruneAndGetValid(list);
       setState(() {
         _balance = values[0] as double;
-        _topups = List<Map<String, dynamic>>.from(values[1] as List);
-        final aid = _activeTopup?['id']?.toString();
-        if (aid != null) {
-          final fresh = _topupById(aid);
-          if (fresh != null) _activeTopup = fresh;
-        }
+        _topups = list;
+        _resumeIds = resume;
       });
-      _syncQrPollTimer();
+      _syncHistoryCountdownTimer();
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  Future<void> _createTopup() async {
+  List<Map<String, dynamic>> _visibleTopups() {
+    return _topups.where((t) => _includeTopupInHistory(t)).toList();
+  }
+
+  bool _includeTopupInHistory(Map<String, dynamic> t) {
+    final status = t['status']?.toString() ?? '';
+    final id = t['id']?.toString() ?? '';
+
+    if (status == 'approved' || status == 'rejected') return true;
+    if (status == 'expired') return false;
+
+    if (WalletService.isTopupExpired(t) &&
+        status == 'pending_proof' &&
+        !WalletService.topupHasProof(t)) {
+      return false;
+    }
+
+    if (status == 'pending_review' && WalletService.topupHasProof(t)) return true;
+
+    if (status == 'pending_proof' && !WalletService.topupHasProof(t)) {
+      return _resumeIds.contains(id);
+    }
+    if (status == 'pending_review' && !WalletService.topupHasProof(t)) {
+      return _resumeIds.contains(id);
+    }
+    return false;
+  }
+
+  void _syncHistoryCountdownTimer() {
+    final visible = _visibleTopups();
+    final needs = visible.any((t) {
+      final st = t['status']?.toString() ?? '';
+      final id = t['id']?.toString() ?? '';
+      if (st != 'pending_proof' || !_resumeIds.contains(id)) return false;
+      return !WalletService.isTopupExpired(t);
+    });
+    if (needs) {
+      _historyTick ??= Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted) return;
+        setState(() {});
+      });
+    } else {
+      _historyTick?.cancel();
+      _historyTick = null;
+    }
+  }
+
+  Future<void> _openTopupFlow() async {
     final amount = double.tryParse(_amountCtrl.text.trim());
     if (amount == null || amount <= 0) {
       _snack('Ingresa un monto válido.');
       return;
     }
-    setState(() => _creating = true);
-    try {
-      final topup = await WalletService.createTopupRequest(amount: amount);
-      if (!mounted) return;
-      setState(() => _activeTopup = topup);
-      await _reload();
-      _snack(
-        'Solicitud enviada. El QR de pago (Yape) aparecerá aquí cuando el generador lo procese; '
-        'luego puedes pagar y subir comprobante si lo pide el admin.',
-      );
-    } catch (e) {
-      _snack('No se pudo crear la recarga: $e', isError: true);
-    } finally {
-      if (mounted) setState(() => _creating = false);
-    }
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TopupQrScreen(amount: amount),
+      ),
+    );
+    if (!mounted) return;
+    await _reload();
   }
 
-  Future<void> _pickAndUploadProof(String topupId) async {
-    setState(() => _uploading = true);
-    try {
-      final picker = ImagePicker();
-      final XFile? file = await picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 85,
-      );
-      if (file == null) return;
-      final Uint8List bytes = await file.readAsBytes();
-      final ext = _extensionFromName(file.name);
-      final proofUrl = await WalletService.uploadProofImage(
-        bytes: bytes,
-        extension: ext,
-      );
-      Map<String, dynamic>? topup;
-      for (final row in _topups) {
-        if (row['id'].toString() == topupId) {
-          topup = row;
-          break;
-        }
-      }
-      if (topup == null && _activeTopup != null && _activeTopup!['id'].toString() == topupId) {
-        topup = _activeTopup;
-      }
-      await WalletService.submitTopupProof(
-        topupId: topupId,
-        proofUrl: proofUrl,
-        note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
-        hint: <String, dynamic>{
-          'topup_reference_code': topup?['reference_code']?.toString(),
-          'topup_amount': topup?['amount'],
-          'proof_uploaded_at': DateTime.now().toIso8601String(),
-        },
-      );
-      _noteCtrl.clear();
-      await _reload();
-      _snack('Comprobante enviado para revisión.');
-    } catch (e) {
-      _snack('No se pudo subir el comprobante: $e', isError: true);
-    } finally {
-      if (mounted) setState(() => _uploading = false);
-    }
+  Future<void> _openTopupFromHistory(String topupId) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TopupQrScreen(existingTopupId: topupId),
+      ),
+    );
+    if (!mounted) return;
+    await _reload();
   }
 
-  String _extensionFromName(String name) {
-    final idx = name.lastIndexOf('.');
-    if (idx < 0 || idx == name.length - 1) return 'jpg';
-    return name.substring(idx + 1).toLowerCase();
+  String _countdownForTile(Map<String, dynamic> t) {
+    final exp = WalletService.parseTopupExpiresAt(t);
+    if (exp == null) return '';
+    final left = exp.difference(DateTime.now());
+    if (left.isNegative) return 'Expirado';
+    final m = left.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = left.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
   }
 
   void _snack(String text, {bool isError = false}) {
@@ -258,145 +220,15 @@ class _WalletScreenState extends State<WalletScreen> {
                           ),
                           const SizedBox(height: 10),
                           FilledButton.icon(
-                            onPressed: _creating ? null : _createTopup,
+                            onPressed: _openTopupFlow,
                             icon: const Icon(Icons.qr_code_rounded),
-                            label: Text(_creating ? 'Generando...' : 'Generar QR'),
+                            label: const Text('Generar QR'),
                           ),
-                          const SizedBox(height: 10),
-                          OutlinedButton.icon(
-                            onPressed: _activeTopup == null || _uploading
-                                ? null
-                                : () => _pickAndUploadProof(_activeTopup!['id'].toString()),
-                            icon: const Icon(Icons.upload_file_rounded),
-                            label: Text(_uploading ? 'Subiendo...' : 'Subir comprobante'),
+                          const SizedBox(height: 6),
+                          Text(
+                            'El comprobante se sube en la misma pantalla del QR. Si sales sin pagar, la recarga aparecerá aquí con cuenta regresiva.',
+                            style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant, height: 1.35),
                           ),
-                          if (_activeTopup != null) ...[
-                            const SizedBox(height: 14),
-                            Builder(
-                              builder: (context) {
-                                final rawPay = WalletService.rawQrTextFromTopup(_activeTopup!);
-                                final pendingGen = (_activeTopup!['status']?.toString() == 'pending_proof') &&
-                                    (rawPay == null || rawPay.isEmpty);
-                                final qrData = (rawPay != null && rawPay.isNotEmpty)
-                                    ? rawPay
-                                    : 'EVETA_TOPUP:${_activeTopup!['reference_code']}:${_activeTopup!['amount']}';
-                                return Column(
-                                  children: [
-                                    if (pendingGen) ...[
-                                      Container(
-                                        width: double.infinity,
-                                        padding: const EdgeInsets.all(12),
-                                        decoration: BoxDecoration(
-                                          color: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
-                                          borderRadius: BorderRadius.circular(12),
-                                        ),
-                                        child: Column(
-                                          children: [
-                                            TweenAnimationBuilder<double>(
-                                              tween: Tween(begin: 0.75, end: 1.15),
-                                              duration: const Duration(milliseconds: 900),
-                                              curve: Curves.easeInOut,
-                                              builder: (context, value, child) => Transform.scale(
-                                                scale: value,
-                                                child: Icon(
-                                                  Icons.qr_code_2_rounded,
-                                                  size: 30,
-                                                  color: scheme.primary,
-                                                ),
-                                              ),
-                                            ),
-                                            const SizedBox(height: 6),
-                                            Text(
-                                              'Generando QR de pago...',
-                                              style: TextStyle(
-                                                color: scheme.onSurfaceVariant,
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 8),
-                                            ClipRRect(
-                                              borderRadius: BorderRadius.circular(999),
-                                              child: const LinearProgressIndicator(minHeight: 7),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      const SizedBox(height: 10),
-                                      Text(
-                                        'Referencia ${_activeTopup!['reference_code']} · Bs ${_activeTopup!['amount']}',
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
-                                      ),
-                                    ] else ...[
-                                      Center(
-                                        child: QrImageView(
-                                          data: qrData,
-                                          size: 250,
-                                          embeddedImage: const AssetImage('assets/images/ic_app_icon.png'),
-                                          embeddedImageStyle: QrEmbeddedImageStyle(
-                                            size: const Size(54, 54),
-                                          ),
-                                          eyeStyle: QrEyeStyle(
-                                            eyeShape: QrEyeShape.square,
-                                            color: scheme.onSurface,
-                                          ),
-                                          dataModuleStyle: QrDataModuleStyle(
-                                            dataModuleShape: QrDataModuleShape.square,
-                                            color: scheme.onSurface,
-                                          ),
-                                        ),
-                                      ),
-                                      if (rawPay != null && rawPay.isNotEmpty) ...[
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          'Escanea con la app de pago para completar la recarga',
-                                          textAlign: TextAlign.center,
-                                          style: TextStyle(
-                                            color: scheme.primary,
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ],
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              'Código: ${_activeTopup!['reference_code']}',
-                              style: const TextStyle(fontWeight: FontWeight.w800),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Monto: Bs ${_activeTopup!['amount']}',
-                              style: TextStyle(color: scheme.onSurfaceVariant),
-                            ),
-                            const SizedBox(height: 6),
-                            SelectableText(
-                              'Mensaje (Yape): ${WalletService.suggestedYapeMessage(_activeTopup!['reference_code']?.toString() ?? '')}',
-                              style: TextStyle(
-                                color: scheme.onSurfaceVariant,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'El generador remoto usa estos mismos datos; el QR grande lleva el payload que Yape necesita.',
-                              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 11),
-                            ),
-                            const SizedBox(height: 10),
-                            TextField(
-                              controller: _noteCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Nota (opcional)',
-                                border: OutlineInputBorder(),
-                              ),
-                              maxLines: 2,
-                            ),
-                          ],
                         ],
                       ),
                     ),
@@ -449,31 +281,50 @@ class _WalletScreenState extends State<WalletScreen> {
                       'Aún no tienes recargas registradas.',
                       style: TextStyle(color: scheme.onSurfaceVariant),
                     )
+                  else if (_visibleTopups().isEmpty)
+                    Text(
+                      'No hay recargas para mostrar. Las pendientes solo aparecen si saliste de la pantalla del QR sin pagar, o si ya enviaste comprobante / fueron procesadas.',
+                      style: TextStyle(color: scheme.onSurfaceVariant, height: 1.35),
+                    )
                   else
-                    ..._topups.map((t) {
+                    ..._visibleTopups().map((t) {
                       final status = t['status']?.toString() ?? 'pending_proof';
                       final color = switch (status) {
                         'approved' => Colors.green,
                         'rejected' => scheme.error,
                         _ => Colors.orange,
                       };
+                      final id = t['id'].toString();
+                      final showCd = status == 'pending_proof' &&
+                          _resumeIds.contains(id) &&
+                          !WalletService.isTopupExpired(t);
                       return Card(
                         child: ListTile(
                           title: Text(
                             'Bs ${t['amount']} · ${t['reference_code']}',
                             style: const TextStyle(fontWeight: FontWeight.w700),
                           ),
-                          subtitle: Text(
-                            _statusLabel(status),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(_statusLabel(status)),
+                              if (showCd)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    'Vence en ${_countdownForTile(t)}',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      color: scheme.primary,
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                           trailing: Icon(Icons.circle, size: 12, color: color),
-                          onTap: status == 'pending_proof'
-                              ? () {
-                                  setState(() => _activeTopup = t);
-                                  _syncQrPollTimer();
-                                  _snack('Recarga seleccionada. Si falta el QR de pago, se actualizará solo.');
-                                }
-                              : null,
+                          onTap: (status == 'approved' || status == 'rejected')
+                              ? null
+                              : () => _openTopupFromHistory(id),
                         ),
                       );
                     }),

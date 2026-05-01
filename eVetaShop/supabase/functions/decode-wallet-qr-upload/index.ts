@@ -55,6 +55,24 @@ async function decodeQrFromImageUrl(imageUrl: string): Promise<string | null> {
   return raw;
 }
 
+async function decodeQrFromBytes(bytes: Uint8Array, fileName: string, mimeType: string): Promise<string | null> {
+  const endpoint = 'https://api.qrserver.com/v1/read-qr-code/';
+  const form = new FormData();
+  // Asegura ArrayBuffer (evita tipos SharedArrayBuffer en TS tooling).
+  // TS tooling puede inferir SharedArrayBuffer; casteo para evitar falsos positivos.
+  const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as unknown as ArrayBuffer;
+  form.append('file', new File([ab], fileName || 'qr.png', { type: mimeType || 'image/png' }));
+  const resp = await fetch(endpoint, { method: 'POST', body: form });
+  if (!resp.ok) return null;
+  const data = await resp.json();
+  if (!Array.isArray(data) || data.length === 0) return null;
+  const first = data[0];
+  const symbol = Array.isArray(first?.symbol) ? first.symbol[0] : null;
+  const raw = typeof symbol?.data === 'string' ? symbol.data.trim() : '';
+  if (!raw || raw.toLowerCase() === 'null') return null;
+  return raw;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -127,6 +145,12 @@ Deno.serve(async (req) => {
       return json({ error: 'topup_id y archivo son requeridos.' }, 400);
     }
 
+    // Decodifica desde bytes directamente (más confiable que fileurl).
+    const rawQr = await decodeQrFromBytes(bytes, fileName, mimeType);
+    if (!rawQr) {
+      return json({ error: 'No se pudo decodificar QR desde la imagen.' }, 422);
+    }
+
     const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
     tempPath = `${topupId}/${Date.now()}_${safeName}`;
 
@@ -148,10 +172,6 @@ Deno.serve(async (req) => {
     }
 
     const signedUrl = signed.signedUrl;
-    const rawQr = await decodeQrFromImageUrl(signedUrl);
-    if (!rawQr) {
-      return json({ error: 'No se pudo decodificar QR desde la imagen.' }, 422);
-    }
 
     const { data: saved, error: saveErr } = await supabaseAdmin.rpc('store_wallet_topup_qr_source', {
       p_topup_id: topupId,

@@ -43,5 +43,9 @@
 	<false/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Necesitamos tu ubicación para que puedas seleccionar tu dirección de entrega con precisión.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Guardamos el QR de recarga en tu galería cuando lo descargas.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Guardamos el QR de recarga en tu galería cuando lo descargas.</string>
 </dict>
 </plist>

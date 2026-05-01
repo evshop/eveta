@@ -30,15 +30,42 @@ class WalletService {
         .from('wallet_topups')
         .select(
           'id, reference_code, amount, status, proof_url, proof_note, '
-          'created_at, updated_at, approved_at, rejected_at, reject_reason, '
+          'expires_at, created_at, updated_at, approved_at, rejected_at, reject_reason, '
           'wallet_topup_qr_sources(provider, raw_qr_text, decoded_at)',
         )
         .order('created_at', ascending: false);
     return List<Map<String, dynamic>>.from(rows as List);
   }
 
-  /// Texto del campo “mensaje” en Yape; debe coincidir con lo que usa el worker Termux/adb.
-  static String suggestedYapeMessage(String referenceCode) => 'VETA2 $referenceCode';
+  static Future<Map<String, dynamic>?> getTopupById(String topupId) async {
+    final row = await _client
+        .from('wallet_topups')
+        .select(
+          'id, reference_code, amount, status, proof_url, proof_note, '
+          'expires_at, created_at, updated_at, approved_at, rejected_at, reject_reason, '
+          'wallet_topup_qr_sources(provider, raw_qr_text, decoded_at)',
+        )
+        .eq('id', topupId)
+        .maybeSingle();
+    if (row == null) return null;
+    return Map<String, dynamic>.from(row as Map);
+  }
+
+  static DateTime? parseTopupExpiresAt(Map<String, dynamic> topup) {
+    final v = topup['expires_at'];
+    if (v == null) return null;
+    if (v is DateTime) return v.toUtc();
+    return DateTime.tryParse(v.toString());
+  }
+
+  static bool topupHasProof(Map<String, dynamic> topup) =>
+      (topup['proof_url']?.toString() ?? '').trim().isNotEmpty;
+
+  static bool isTopupExpired(Map<String, dynamic> topup) {
+    final exp = parseTopupExpiresAt(topup);
+    if (exp == null) return false;
+    return !exp.isAfter(DateTime.now());
+  }
 
   /// Texto EMV/plano del QR de pago (Yape, etc.) cuando el worker ya lo subió y decodificó.
   static String? rawQrTextFromTopup(Map<String, dynamic> topup) {
