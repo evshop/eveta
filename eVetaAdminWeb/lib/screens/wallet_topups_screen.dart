@@ -46,6 +46,21 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
     super.dispose();
   }
 
+  String _bankEventStatusLabel(String? status) {
+    switch (status) {
+      case 'matched_confirmed':
+        return 'Verificado — acreditado en wallet';
+      case 'matched_suggested':
+        return 'Coincidencia sin acreditar (revisar recarga o vencimiento)';
+      case 'unmatched':
+        return 'Sin coincidencia';
+      case 'discarded':
+        return 'Descartado';
+      default:
+        return (status != null && status.isNotEmpty) ? status : '—';
+    }
+  }
+
   Future<void> _reload() async {
     setState(() => _future = WalletAdminService.fetchTopups(status: _status));
     setState(() => _tokensFuture = WalletAdminService.fetchWebhookTokens());
@@ -504,6 +519,9 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                             final refText = (e['detected_reference']?.toString().trim().isNotEmpty == true)
                                 ? e['detected_reference'].toString()
                                 : '-';
+                            final matchedRef = e['matched_reference_code']?.toString().trim();
+                            final matchStatus = e['match_status']?.toString();
+                            final statusLabel = _bankEventStatusLabel(matchStatus);
                             final appText = (e['bank_app']?.toString().trim().isNotEmpty == true)
                                 ? e['bank_app'].toString()
                                 : '-';
@@ -514,23 +532,37 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                             final detectedAt = e['detected_at']?.toString();
                             final titleText = e['title']?.toString() ?? '';
                             final bodyText = e['body']?.toString() ?? '';
+                            final titleRefPart = (matchedRef != null && matchedRef.isNotEmpty)
+                                ? matchedRef
+                                : refText;
 
                             return ExpansionTile(
                               tilePadding: EdgeInsets.zero,
                               leading: const Icon(Icons.notifications_active_outlined),
                               title: Text(
-                                'Bs $amountText · Ref $refText',
+                                'Bs $amountText · $titleRefPart',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
                               subtitle: Text(
-                                'Estado: ${e['match_status'] ?? '-'} · Recibido: $receivedAt'
+                                '$statusLabel · Recibido: $receivedAt'
                                 '${detectedAt != null ? ' · Detectado: $detectedAt' : ''}',
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),
                               childrenPadding: const EdgeInsets.only(left: 44, right: 8, bottom: 10),
                               children: [
+                                if (matchedRef != null && matchedRef.isNotEmpty) ...[
+                                  SelectableText(
+                                    'Código de recarga (referencia EV): $matchedRef',
+                                    style: TextStyle(
+                                      color: scheme.primary,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                ],
                                 Row(
                                   children: [
                                     Expanded(
@@ -541,7 +573,7 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                                     ),
                                     if (e['matched_topup_id'] != null)
                                       Text(
-                                        'Topup: ${e['matched_topup_id']}',
+                                        'Topup id: ${e['matched_topup_id']}',
                                         style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
                                       ),
                                   ],
