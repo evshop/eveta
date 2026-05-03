@@ -1,10 +1,10 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/wallet_admin_service.dart';
 
@@ -22,7 +22,7 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
   late Future<List<Map<String, dynamic>>> _bankEventsFuture;
   late Future<List<Map<String, dynamic>>> _qrAuditFuture;
   String _status = 'pending_proof';
-  Timer? _bankEventsPoll;
+  RealtimeChannel? _bankEventsRealtimeChannel;
 
   @override
   void initState() {
@@ -32,18 +32,46 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
     _qrgenTokensFuture = WalletAdminService.fetchQrgenTokens();
     _bankEventsFuture = WalletAdminService.fetchBankIncomingEvents();
     _qrAuditFuture = WalletAdminService.fetchQrGenerationAudit();
-    _bankEventsPoll = Timer.periodic(const Duration(seconds: 20), (_) {
-      if (!mounted) return;
-      setState(() {
-        _bankEventsFuture = WalletAdminService.fetchBankIncomingEvents();
-      });
-    });
+    _subscribeBankIncomingRealtime();
+  }
+
+  void _subscribeBankIncomingRealtime() {
+    _bankEventsRealtimeChannel = Supabase.instance.client
+        .channel('wallet_admin_bank_incoming_events')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'bank_incoming_events',
+          callback: (_) {
+            if (!mounted) return;
+            setState(() {
+              _bankEventsFuture = WalletAdminService.fetchBankIncomingEvents();
+            });
+          },
+        );
+    _bankEventsRealtimeChannel!.subscribe();
   }
 
   @override
   void dispose() {
-    _bankEventsPoll?.cancel();
+    _bankEventsRealtimeChannel?.unsubscribe();
     super.dispose();
+  }
+
+  bool _rowLooksLikeUnexpandedTaskerVars(Map<String, dynamic> e) {
+    final buf = StringBuffer()
+      ..write(e['title'] ?? '')
+      ..write(' ')
+      ..write(e['body'] ?? '')
+      ..write(' ')
+      ..write(e['detected_reference'] ?? '');
+    final raw = e['raw_payload'];
+    if (raw is Map) {
+      try {
+        buf.write(jsonEncode(raw));
+      } catch (_) {}
+    }
+    return RegExp(r'%[a-z_][a-z0-9_]*', caseSensitive: false).hasMatch(buf.toString());
   }
 
   String _bankEventStatusLabel(String? status) {
@@ -499,8 +527,10 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          'Eventos de Tasker (se actualizan solos cada ~20 s). Revisa también título/cuerpo si el monto detectado sale vacío.',
-                          style: TextStyle(color: scheme.onSurfaceVariant),
+                          'Actualización en tiempo real (Supabase Realtime). Si no ves entradas nuevas al instante, '
+                          'ejecuta en SQL el script 041_bank_incoming_events_realtime.sql. '
+                          'Si el monto sale vacío o ves %antitle/%antext, Tasker está enviando el nombre de la variable sin sustituir: revisa el paso HTTP (texto y título reales de la notificación).',
+                          style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
                         ),
                         const SizedBox(height: 10),
                         if (bankRows.isEmpty)
@@ -519,7 +549,9 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                             final refText = (e['detected_reference']?.toString().trim().isNotEmpty == true)
                                 ? e['detected_reference'].toString()
                                 : '-';
-                            final matchedRef = e['matched_reference_code']?.toString().trim();
+                            final matchedRef = WalletAdminService.matchedTopupReferenceFromBankEvent(
+                              Map<String, dynamic>.from(e),
+                            );
                             final matchStatus = e['match_status']?.toString();
                             final statusLabel = _bankEventStatusLabel(matchStatus);
                             final appText = (e['bank_app']?.toString().trim().isNotEmpty == true)
@@ -552,6 +584,27 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                               ),
                               childrenPadding: const EdgeInsets.only(left: 44, right: 8, bottom: 10),
                               children: [
+                                if (_rowLooksLikeUnexpandedTaskerVars(
+                                  Map<String, dynamic>.from(e),
+                                )) ...[
+                                  Material(
+                                    color: scheme.errorContainer.withValues(alpha: 0.4),
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(8),
+                                      child: Text(
+                                        'Tasker está mandando nombres de variable sin sustituir (p. ej. %antitle, %antext). '
+                                        'En la petición HTTP, el cuerpo debe usar las variables que tu perfil de Tasker rellena con el título y texto reales del aviso (depende del plugin; revisa la ayuda de “Notification” / AutoNotification).',
+                                        style: TextStyle(
+                                          color: scheme.onErrorContainer,
+                                          fontSize: 12,
+                                          height: 1.35,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                ],
                                 if (matchedRef != null && matchedRef.isNotEmpty) ...[
                                   SelectableText(
                                     'Código de recarga (referencia EV): $matchedRef',

@@ -70,11 +70,30 @@ class WalletAdminService {
         .select(
           'id, source, bank_app, title, body, detected_amount, detected_reference, '
           'detected_sender, detected_at, received_at, match_status, matched_topup_id, '
-          'matched_reference_code, raw_payload',
+          'raw_payload, wallet_topups(reference_code)',
         )
         .order('received_at', ascending: false)
         .limit(limit);
     return List<Map<String, dynamic>>.from(rows as List);
+  }
+
+  /// Código EV de la recarga: relación embebida o columna opcional tras script 039.
+  static String? matchedTopupReferenceFromBankEvent(Map<String, dynamic> e) {
+    final col = e['matched_reference_code']?.toString().trim();
+    if (col != null && col.isNotEmpty) return col;
+    final w = e['wallet_topups'];
+    if (w is Map) {
+      final r = w['reference_code']?.toString().trim();
+      if (r != null && r.isNotEmpty) return r;
+    }
+    if (w is List && w.isNotEmpty) {
+      final first = w.first;
+      if (first is Map) {
+        final r = first['reference_code']?.toString().trim();
+        if (r != null && r.isNotEmpty) return r;
+      }
+    }
+    return null;
   }
 
   static Future<Map<String, dynamic>> createWebhookToken({String? label}) async {

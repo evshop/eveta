@@ -105,6 +105,21 @@ function parseDetectedAt(value: unknown): string | null {
     return Number.isNaN(d.getTime()) ? null : d.toISOString();
   }
 
+  // Tasker / regional: "3-5-2026 17.54" o "03-05-2026 17:54" (d-m-yyyy y hora con punto o :)
+  const dmY = raw.match(
+    /^(\d{1,2})-(\d{1,2})-(\d{4})\s+(\d{1,2})[.:](\d{2})(?::(\d{2}))?$/,
+  );
+  if (dmY) {
+    const day = Number.parseInt(dmY[1], 10);
+    const month = Number.parseInt(dmY[2], 10) - 1;
+    const year = Number.parseInt(dmY[3], 10);
+    const hour = Number.parseInt(dmY[4], 10);
+    const minute = Number.parseInt(dmY[5], 10);
+    const second = dmY[6] ? Number.parseInt(dmY[6], 10) : 0;
+    const d = new Date(year, month, day, hour, minute, second);
+    if (!Number.isNaN(d.getTime())) return d.toISOString();
+  }
+
   // ISO u otro parseable por Date.
   const d = new Date(raw);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
