@@ -105,18 +105,25 @@ function parseDetectedAt(value: unknown): string | null {
     return Number.isNaN(d.getTime()) ? null : d.toISOString();
   }
 
-  // Tasker / regional: "3-5-2026 17.54" o "03-05-2026 17:54" (d-m-yyyy y hora con punto o :)
+  // Tasker / regional: "3-5-2026 17.54" = día-mes-año en hora LOCAL del banco/teléfono (no UTC del Edge).
+  // En Edge, new Date(y,m,d,h,m) equivale a hora UTC → desplazaría el match ~4h (p. ej. Bolivia UTC-4).
+  // Por defecto +4 h para pasar hora local Bolivia a UTC. Ajusta con TASKER_NOTIFICATION_LOCAL_UTC_OFFSET_HOURS (horas que SUMAR a la hora local).
   const dmY = raw.match(
     /^(\d{1,2})-(\d{1,2})-(\d{4})\s+(\d{1,2})[.:](\d{2})(?::(\d{2}))?$/,
   );
   if (dmY) {
     const day = Number.parseInt(dmY[1], 10);
-    const month = Number.parseInt(dmY[2], 10) - 1;
+    const month0 = Number.parseInt(dmY[2], 10) - 1;
     const year = Number.parseInt(dmY[3], 10);
     const hour = Number.parseInt(dmY[4], 10);
     const minute = Number.parseInt(dmY[5], 10);
     const second = dmY[6] ? Number.parseInt(dmY[6], 10) : 0;
-    const d = new Date(year, month, day, hour, minute, second);
+    const offsetH = Number.parseInt(
+      Deno.env.get('TASKER_NOTIFICATION_LOCAL_UTC_OFFSET_HOURS') ?? '4',
+      10,
+    );
+    const utcMs = Date.UTC(year, month0, day, hour + offsetH, minute, second);
+    const d = new Date(utcMs);
     if (!Number.isNaN(d.getTime())) return d.toISOString();
   }
 

@@ -528,8 +528,9 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                         const SizedBox(height: 6),
                         Text(
                           'Actualización en tiempo real (Supabase Realtime). Si no ves entradas nuevas al instante, '
-                          'ejecuta en SQL el script 041_bank_incoming_events_realtime.sql. '
-                          'Si el monto sale vacío o ves %antitle/%antext, Tasker está enviando el nombre de la variable sin sustituir: revisa el paso HTTP (texto y título reales de la notificación).',
+                          'ejecuta 041_bank_incoming_events_realtime.sql. '
+                          '"Recibido" es hora UTC del servidor; la hora del JSON suele ser hora local del teléfono (p. ej. Bolivia +4 h respecto a UTC). '
+                          'Si el monto sale vacío o ves %antitle/%antext, revisa Tasker. Tras aplicar 042_wallet_match_time_received_at_first.sql, reintenta el match en SQL si un pago quedó en "Sin coincidencia".',
                           style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
                         ),
                         const SizedBox(height: 10),
