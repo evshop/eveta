@@ -47,7 +47,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
     'Próximamente',
     'CRUD de eventos, entradas y beneficios',
     'Métricas de acceso y canjes por evento',
-    'Revisión manual de comprobantes',
+    'Notificaciones bancarias y tokens Tasker',
     'Cuentas para eVetaDelivery',
   ];
 
