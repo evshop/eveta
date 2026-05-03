@@ -128,7 +128,8 @@ class _TopupQrScreenState extends State<TopupQrScreen> {
         await WalletResumePrefs.removeId(topupId);
         setState(() {
           _creating = false;
-          _error = 'Esta solicitud expiró (pasaron 10 minutos). Genera un QR nuevo.';
+          _error =
+              'Esta solicitud expiró (24 horas). Genera un QR nuevo desde Wallet.';
         });
         return;
       }
@@ -149,10 +150,10 @@ class _TopupQrScreenState extends State<TopupQrScreen> {
   void _startPolling(String topupId) {
     _poll?.cancel();
     _ticks = 0;
-    _poll = Timer.periodic(const Duration(seconds: 3), (_) async {
+    _poll = Timer.periodic(const Duration(seconds: 12), (_) async {
       _ticks++;
       if (!mounted) return;
-      if (_ticks >= 120) {
+      if (_ticks >= 7200) {
         _poll?.cancel();
         return;
       }
@@ -276,11 +277,11 @@ class _TopupQrScreenState extends State<TopupQrScreen> {
                   border: Border.all(color: scheme.outline.withValues(alpha: 0.25)),
                 ),
                 child: Text(
-                  'Para identificar tu pago automáticamente, usamos un monto único en centavos.\n\n'
-                  'Monto a acreditar: Bs ${base.toStringAsFixed(2)}\n'
+                  'Para identificar tu pago automáticamente, usamos centavos únicos (típicamente Bs 0.01 a 0.09 sobre tu monto base; si hay muchas recargas pendientes del mismo monto, puede usarse Bs 0.10 o más).\n\n'
+                  'Monto base elegido: Bs ${base.toStringAsFixed(2)}\n'
                   'Centavos de verificación: Bs ${delta.toStringAsFixed(2)}\n'
-                  'Monto a pagar: Bs ${pay.toStringAsFixed(2)}\n\n'
-                  'Este monto en centavos es solo para verificación y no es un cargo por uso.',
+                  'Total a pagar (Yape / QR): Bs ${pay.toStringAsFixed(2)}\n\n'
+                  'Paga exactamente el total. Cuando el banco notifique ese monto, se acredita en tu wallet el mismo total (incluye los centavos). La solicitud vence a las 24 horas; si expira, puedes crear otra.',
                   style: TextStyle(color: scheme.onSurfaceVariant, height: 1.35),
                 ),
               ),
@@ -324,9 +325,16 @@ class _TopupQrScreenState extends State<TopupQrScreen> {
     if (exp == null) return null;
     var left = exp.difference(_now);
     if (left.isNegative) left = Duration.zero;
-    final m = left.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final s = left.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return '$m:$s';
+    final totalSec = left.inSeconds;
+    final h = totalSec ~/ 3600;
+    final m = (totalSec % 3600) ~/ 60;
+    final s = totalSec % 60;
+    if (h > 0) {
+      return '${h}h ${m.toString().padLeft(2, '0')}m ${s.toString().padLeft(2, '0')}s';
+    }
+    final mm = m.toString().padLeft(2, '0');
+    final ss = s.toString().padLeft(2, '0');
+    return '$mm:$ss';
   }
 
   @override
@@ -429,7 +437,7 @@ class _TopupQrScreenState extends State<TopupQrScreen> {
                                   const SizedBox(width: 10),
                                   Expanded(
                                     child: Text(
-                                      'Este QR ya no es válido (10 minutos). Vuelve a Wallet y genera uno nuevo.',
+                                      'Este QR ya no es válido (pasaron 24 horas). Vuelve a Wallet y genera uno nuevo.',
                                       style: TextStyle(
                                         color: scheme.onErrorContainer,
                                         fontWeight: FontWeight.w600,
@@ -498,9 +506,17 @@ class _TopupQrScreenState extends State<TopupQrScreen> {
                         ),
                       ),
                       const SizedBox(height: 18),
-                      Text('Bs ${baseAmount.toStringAsFixed(2)}',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+                      Text(
+                        'Bs ${payAmount.toStringAsFixed(2)}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Base Bs ${baseAmount.toStringAsFixed(2)} · Verificación Bs ${delta.toStringAsFixed(2)}',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant, fontWeight: FontWeight.w600),
+                      ),
                       const SizedBox(height: 6),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -535,14 +551,14 @@ class _TopupQrScreenState extends State<TopupQrScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Método de verificación • Paga: Bs ${payAmount.toStringAsFixed(2)} (+${delta.toStringAsFixed(2)})',
+                        'Paga este total exacto; al verificarse se acredita el mismo monto en tu wallet.',
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant, fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 14),
                       if (status == 'approved')
                         Text(
-                          'Pago verificado. Saldo acreditado.',
+                          'Pago verificado. Se acreditó Bs ${payAmount.toStringAsFixed(2)}.',
                           style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w800),
                         ),
                     ],
