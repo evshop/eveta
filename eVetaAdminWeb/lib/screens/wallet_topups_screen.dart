@@ -1,8 +1,10 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'dart:convert';
 
 import '../services/wallet_admin_service.dart';
 
@@ -20,6 +22,7 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
   late Future<List<Map<String, dynamic>>> _bankEventsFuture;
   late Future<List<Map<String, dynamic>>> _qrAuditFuture;
   String _status = 'pending_proof';
+  Timer? _bankEventsPoll;
 
   @override
   void initState() {
@@ -29,6 +32,18 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
     _qrgenTokensFuture = WalletAdminService.fetchQrgenTokens();
     _bankEventsFuture = WalletAdminService.fetchBankIncomingEvents();
     _qrAuditFuture = WalletAdminService.fetchQrGenerationAudit();
+    _bankEventsPoll = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (!mounted) return;
+      setState(() {
+        _bankEventsFuture = WalletAdminService.fetchBankIncomingEvents();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _bankEventsPoll?.cancel();
+    super.dispose();
   }
 
   Future<void> _reload() async {
@@ -428,6 +443,34 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
             FutureBuilder<List<Map<String, dynamic>>>(
               future: _bankEventsFuture,
               builder: (context, bankSnap) {
+                if (bankSnap.hasError) {
+                  return Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const Text(
+                            'Notificaciones bancarias recibidas',
+                            style: TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Error al cargar: ${bankSnap.error}',
+                            style: TextStyle(color: scheme.error, fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Si el mensaje habla de permisos o RLS, ejecuta en Supabase el script '
+                            '038_profile_is_admin_include_portal.sql y confirma que tu usuario tiene '
+                            'is_admin en profiles o profiles_portal.',
+                            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
                 final bankRows = bankSnap.data ?? const [];
                 return Card(
                   child: Padding(
@@ -441,7 +484,7 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          'Aquí se ven los eventos enviados por Tasker y su estado de conciliación.',
+                          'Eventos de Tasker (se actualizan solos cada ~20 s). Revisa también título/cuerpo si el monto detectado sale vacío.',
                           style: TextStyle(color: scheme.onSurfaceVariant),
                         ),
                         const SizedBox(height: 10),

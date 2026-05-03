@@ -37,13 +37,51 @@ function extractWebhookToken(req: Request): string {
   return withoutBearer.replace(/^["']+|["']+$/g, '').replace(/\s+/g, '');
 }
 
-function parseAmount(text: string): number | null {
-  const normalized = text.replace(',', '.');
-  const m = normalized.match(/(?:bs\.?\s*)?(\d+(?:\.\d{1,2})?)/i);
-  if (!m) return null;
-  const n = Number.parseFloat(m[1]);
+/** Interpreta un token numérico con coma o punto como decimal / miles. */
+function parseMoneyToken(raw: string): number | null {
+  const s = raw.trim();
+  if (!s) return null;
+  const hasComma = s.includes(',');
+  const hasDot = s.includes('.');
+  let normalized = s;
+  if (hasComma && hasDot) {
+    if (s.lastIndexOf(',') > s.lastIndexOf('.')) {
+      normalized = s.replace(/\./g, '').replace(',', '.');
+    } else {
+      normalized = s.replace(/,/g, '');
+    }
+  } else if (hasComma) {
+    normalized = s.replace(',', '.');
+  }
+  const n = Number.parseFloat(normalized);
   if (!Number.isFinite(n) || n <= 0) return null;
   return Math.round(n * 100) / 100;
+}
+
+/**
+ * Extrae el monto de notificaciones Yape / bancos (S/, Bs., PEN, miles, etc.).
+ * Prefiere el último candidato razonable en el texto (suele ser el monto del movimiento).
+ */
+function parseAmount(text: string): number | null {
+  const t = text.replace(/\s+/g, ' ').trim();
+  if (!t) return null;
+  const candidates: number[] = [];
+  const re =
+    /(?:S\/?\s*|Bs\.?\s*|PEN\.?\s*|S\/\.\s*|soles?\s+de\s+)?(\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2}))/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(t)) !== null) {
+    const v = parseMoneyToken(m[1]);
+    if (v != null) candidates.push(v);
+  }
+  if (candidates.length === 0) {
+    const m2 = t.match(/(\d+(?:[.,]\d{1,2})?)/);
+    if (m2) {
+      const v = parseMoneyToken(m2[1]);
+      if (v != null) candidates.push(v);
+    }
+  }
+  if (candidates.length === 0) return null;
+  return candidates[candidates.length - 1];
 }
 
 function parseReference(text: string): string | null {

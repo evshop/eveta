@@ -63,7 +63,7 @@ class WalletAdminService {
   }
 
   static Future<List<Map<String, dynamic>>> fetchBankIncomingEvents({
-    int limit = 30,
+    int limit = 80,
   }) async {
     final rows = await _client
         .from('bank_incoming_events')

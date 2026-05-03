@@ -47,6 +47,17 @@ class AuthService {
       } catch (_) {
         // Retry once for transient startup/session timing.
       }
+      try {
+        final portal = await _client
+            .from('profiles_portal')
+            .select('is_admin')
+            .eq('auth_user_id', user.id)
+            .eq('is_active', true)
+            .maybeSingle();
+        if (portal?['is_admin'] == true) return true;
+      } catch (_) {
+        // Tabla o política ausente en proyectos antiguos.
+      }
       if (attempt == 0) {
         await Future<void>.delayed(const Duration(milliseconds: 250));
       }
