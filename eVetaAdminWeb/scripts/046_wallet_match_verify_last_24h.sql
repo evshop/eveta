@@ -1,7 +1,12 @@
--- 043_wallet_match_amount_only_24h.sql
--- Conciliación solo por monto exacto (sin comparar horas del evento vs. created_at).
--- Alcance: notificación recibida en las últimas 24 h; recarga pendiente con expires_at > now()
---           y mismo round(amount,2) que detected_amount. (Sin filtro created_at: ver 044.)
+-- 046_wallet_match_verify_last_24h.sql
+-- Flujo al recibir la notificación (Tasker -> webhook -> este match):
+--   1) La notificación debe ser reciente: received_at >= ahora - 24 h.
+--   2) Buscar recargas pendientes cuya PETICIÓN sea del último día:
+--        created_at >= ahora - 24 h, expires_at > ahora, status pending,
+--        y round(amount,2) = monto exacto de la notificación.
+--   3) Si hay coincidencia: acreditar saldo (wallet_apply) y marcar el evento bancario
+--      como matched_confirmed con matched_reference_code = código EV de la petición.
+--   4) Si no hay coincidencia: match_status = unmatched.
 
 create or replace function public.match_wallet_topups_with_bank_event(
   p_event_id uuid
@@ -67,6 +72,7 @@ begin
   where status in ('pending_review', 'pending_proof')
     and round(amount, 2) = round(v_event.detected_amount::numeric, 2)
     and expires_at > now()
+    and created_at >= now() - interval '24 hours'
   order by created_at desc
   limit 1;
 

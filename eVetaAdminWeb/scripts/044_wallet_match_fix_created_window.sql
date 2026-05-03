@@ -1,7 +1,8 @@
--- 043_wallet_match_amount_only_24h.sql
--- Conciliación solo por monto exacto (sin comparar horas del evento vs. created_at).
--- Alcance: notificación recibida en las últimas 24 h; recarga pendiente con expires_at > now()
---           y mismo round(amount,2) que detected_amount. (Sin filtro created_at: ver 044.)
+-- 044_wallet_match_fix_created_window.sql
+-- Corrige 043: el filtro created_at >= now() - 24h era demasiado estricto (ventana deslizante).
+-- Una recarga puede ser válida por expires_at y quedar fuera de ese created_at aunque el monto coincida.
+-- Regla: notificación received_at en las últimas 24 h; recarga pendiente con expires_at > now();
+--         monto exacto. Sin filtro por created_at.
 
 create or replace function public.match_wallet_topups_with_bank_event(
   p_event_id uuid

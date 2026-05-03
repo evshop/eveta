@@ -436,7 +436,7 @@ class _WalletTopupsScreenState extends State<WalletTopupsScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Tiempo real (Realtime). Conciliación: monto exacto y ventana 24 h (SQL 043). '
+                      'Tiempo real (Realtime). Verificación: notificación y petición <24 h, monto exacto, acredita y marca verificado (SQL 046). '
                       'Si ves %antitle en el JSON, corrige la tarea Tasker.',
                       style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
                     ),
