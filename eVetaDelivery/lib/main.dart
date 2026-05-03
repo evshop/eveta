@@ -1,10 +1,9 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:eveta_delivery/screens/delivery_login_screen.dart';
 import 'package:eveta_delivery/screens/delivery_shell_screen.dart';
-import 'package:eveta_delivery/theme/delivery_app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,11 +20,14 @@ class EvetaDeliveryApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return const CupertinoApp(
       title: 'eDelivery',
       debugShowCheckedModeBanner: false,
-      theme: deliveryAppTheme(),
-      home: const _AuthGate(),
+      theme: CupertinoThemeData(
+        brightness: Brightness.light,
+        primaryColor: CupertinoColors.systemPink,
+      ),
+      home: _AuthGate(),
     );
   }
 }
@@ -35,6 +37,10 @@ class _AuthGate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final offlineDemo = (dotenv.env['DELIVERY_OFFLINE_DEMO'] ?? '').toLowerCase() == 'true';
+    if (offlineDemo) {
+      return const DeliveryShellScreen();
+    }
     return StreamBuilder<AuthState>(
       stream: Supabase.instance.client.auth.onAuthStateChange,
       builder: (context, snapshot) {

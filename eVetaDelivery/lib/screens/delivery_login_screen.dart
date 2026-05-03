@@ -1,6 +1,8 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'delivery_shell_screen.dart';
 import '../widgets/delivery_auth_logo.dart';
 
 class DeliveryLoginScreen extends StatefulWidget {
@@ -13,10 +15,19 @@ class DeliveryLoginScreen extends StatefulWidget {
 class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _formKey = GlobalKey<FormState>();
+
   bool _isLoading = false;
   bool _obscurePassword = true;
   String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    final demoEmail = dotenv.env['DELIVERY_DEMO_EMAIL'];
+    if (demoEmail != null && demoEmail.trim().isNotEmpty) {
+      _emailController.text = demoEmail.trim();
+    }
+  }
 
   @override
   void dispose() {
@@ -25,8 +36,26 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
     super.dispose();
   }
 
+  bool _validate() {
+    final email = _emailController.text.trim();
+    final pass = _passwordController.text;
+    if (email.isEmpty) {
+      setState(() => _errorMessage = 'Ingresa tu correo');
+      return false;
+    }
+    if (!email.contains('@')) {
+      setState(() => _errorMessage = 'Correo no válido');
+      return false;
+    }
+    if (pass.isEmpty) {
+      setState(() => _errorMessage = 'Ingresa tu contraseña');
+      return false;
+    }
+    return true;
+  }
+
   Future<void> _handleLogin() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_validate()) return;
 
     setState(() {
       _isLoading = true;
@@ -34,6 +63,25 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
     });
 
     try {
+      final offlineDemo = (dotenv.env['DELIVERY_OFFLINE_DEMO'] ?? '').toLowerCase() == 'true';
+      if (offlineDemo) {
+        final demoEmail = (dotenv.env['DELIVERY_DEMO_EMAIL'] ?? '').trim();
+        final demoPass = (dotenv.env['DELIVERY_DEMO_PASSWORD'] ?? '');
+        final email = _emailController.text.trim();
+        final pass = _passwordController.text;
+        if (demoEmail.isEmpty || demoPass.isEmpty) {
+          throw const AuthException('Configura DELIVERY_DEMO_EMAIL y DELIVERY_DEMO_PASSWORD en app.env');
+        }
+        if (email.toLowerCase() != demoEmail.toLowerCase() || pass != demoPass) {
+          throw const AuthException('Credenciales demo inválidas');
+        }
+        if (!mounted) return;
+        Navigator.of(context).pushReplacement(
+          CupertinoPageRoute<void>(builder: (_) => const DeliveryShellScreen()),
+        );
+        return;
+      }
+
       await Supabase.instance.client.auth.signInWithPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
@@ -46,139 +94,223 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
       final ok = row != null && row['is_active'] == true;
       if (!ok) {
         await Supabase.instance.client.auth.signOut();
-        if (mounted) {
-          setState(() {
-            _errorMessage =
-                'Esta cuenta no está vinculada a Delivery. Usa una cuenta Delivery separada.';
-          });
-        }
+        if (!mounted) return;
+        setState(() {
+          _errorMessage =
+              'Esta cuenta no está vinculada a Delivery. Usa una cuenta Delivery separada.';
+        });
         return;
       }
     } on AuthException catch (e) {
       if (mounted) setState(() => _errorMessage = e.message);
-    } catch (e) {
+    } catch (_) {
       if (mounted) setState(() => _errorMessage = 'Error de conexión. Intenta de nuevo.');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  void _fillDemo() {
+    final email = dotenv.env['DELIVERY_DEMO_EMAIL']?.trim();
+    final pass = dotenv.env['DELIVERY_DEMO_PASSWORD'] ?? '';
+    setState(() => _errorMessage = null);
+    if (email != null && email.isNotEmpty) _emailController.text = email;
+    if (pass.isNotEmpty) _passwordController.text = pass;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final theme = CupertinoTheme.of(context);
+    final bg = theme.scaffoldBackgroundColor;
 
-    return Scaffold(
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          child: Form(
-            key: _formKey,
-            autovalidateMode: AutovalidateMode.disabled,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 12),
-                const DeliveryAuthLogo(size: 88),
-                const SizedBox(height: 28),
-                Text(
-                  'Hola, repartidor',
-                  style: Theme.of(context).textTheme.headlineLarge,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'Inicia sesión con el correo y contraseña de tu cuenta eDelivery.',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: scheme.onSurface.withValues(alpha: 0.6),
-                      ),
-                ),
-                const SizedBox(height: 28),
-                if (_errorMessage != null) ...[
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: scheme.error.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(14),
+    return CupertinoPageScaffold(
+      child: SafeArea(
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            CupertinoSliverNavigationBar(
+              largeTitle: const Text('Iniciar sesión'),
+              backgroundColor: bg.withAlpha(210),
+              border: const Border(
+                bottom: BorderSide(color: CupertinoColors.separator, width: 0.0),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Align(child: DeliveryAuthLogo(size: 84)),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Hola, repartidor',
+                      style: theme.textTheme.navLargeTitleTextStyle,
+                      textAlign: TextAlign.center,
                     ),
-                    child: Row(
+                    const SizedBox(height: 8),
+                    Text(
+                      'Usa el correo y contraseña de tu cuenta eDelivery.',
+                      style: theme.textTheme.textStyle.copyWith(
+                        color: CupertinoColors.secondaryLabel.resolveFrom(context),
+                        fontSize: 15,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 22),
+                    if (_errorMessage != null) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: CupertinoColors.systemRed.withAlpha(24),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: CupertinoColors.systemRed.withAlpha(60),
+                            width: 0.6,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              CupertinoIcons.exclamationmark_circle,
+                              color: CupertinoColors.systemRed,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                _errorMessage!,
+                                style: theme.textTheme.textStyle.copyWith(
+                                  color: CupertinoColors.systemRed,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+                    _CupertinoInputGroup(
                       children: [
-                        Icon(Icons.error_outline, color: scheme.error, size: 20),
-                        const SizedBox(width: 8),
+                        CupertinoTextField(
+                          controller: _emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          autofillHints: const [AutofillHints.email],
+                          placeholder: 'Correo electrónico',
+                          prefix: const Padding(
+                            padding: EdgeInsets.only(left: 12),
+                            child: Icon(CupertinoIcons.mail, size: 18),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                          textInputAction: TextInputAction.next,
+                          onChanged: (_) => setState(() => _errorMessage = null),
+                        ),
+                        CupertinoTextField(
+                          controller: _passwordController,
+                          obscureText: _obscurePassword,
+                          autofillHints: const [AutofillHints.password],
+                          placeholder: 'Contraseña',
+                          prefix: const Padding(
+                            padding: EdgeInsets.only(left: 12),
+                            child: Icon(CupertinoIcons.lock, size: 18),
+                          ),
+                          suffix: CupertinoButton(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                            minimumSize: Size.zero,
+                            onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                            child: Icon(
+                              _obscurePassword
+                                  ? CupertinoIcons.eye_slash
+                                  : CupertinoIcons.eye,
+                              size: 18,
+                              color: CupertinoColors.secondaryLabel.resolveFrom(context),
+                            ),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: (_) => _handleLogin(),
+                          onChanged: (_) => setState(() => _errorMessage = null),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
                         Expanded(
-                          child: Text(
-                            _errorMessage!,
-                            style: TextStyle(color: scheme.error, fontSize: 13),
+                          child: CupertinoButton(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            color: CupertinoColors.systemPink,
+                            borderRadius: BorderRadius.circular(16),
+                            onPressed: _isLoading ? null : _handleLogin,
+                            child: _isLoading
+                                ? const CupertinoActivityIndicator(color: CupertinoColors.white)
+                                : const Text('Entrar'),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                ],
-                TextFormField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  textInputAction: TextInputAction.next,
-                  autofillHints: const [AutofillHints.email],
-                  style: TextStyle(
-                    color: scheme.onSurface,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  decoration: InputDecoration(
-                    labelText: 'Correo electrónico',
-                    hintText: 'tu@correo.com',
-                    prefixIcon: Icon(Icons.mail_outline_rounded, color: scheme.onSurface.withValues(alpha: 0.45)),
-                  ),
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'Ingresa tu correo';
-                    if (!v.contains('@')) return 'Correo no válido';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _passwordController,
-                  obscureText: _obscurePassword,
-                  textInputAction: TextInputAction.done,
-                  autofillHints: const [AutofillHints.password],
-                  onFieldSubmitted: (_) => _handleLogin(),
-                  style: TextStyle(
-                    color: scheme.onSurface,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  decoration: InputDecoration(
-                    labelText: 'Contraseña',
-                    prefixIcon: Icon(Icons.lock_outline_rounded, color: scheme.onSurface.withValues(alpha: 0.45)),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                        color: scheme.onSurface.withValues(alpha: 0.45),
+                    const SizedBox(height: 10),
+                    CupertinoButton(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      onPressed: _isLoading ? null : _fillDemo,
+                      child: Text(
+                        'Usar cuenta demo',
+                        style: theme.textTheme.textStyle.copyWith(
+                          color: CupertinoColors.systemPink,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                      onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                     ),
-                  ),
-                  validator: (v) => (v == null || v.isEmpty) ? 'Ingresa tu contraseña' : null,
+                    const SizedBox(height: 2),
+                    Text(
+                      'Tip: define DELIVERY_DEMO_EMAIL y DELIVERY_DEMO_PASSWORD en assets/env/app.env',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.textStyle.copyWith(
+                        color: CupertinoColors.tertiaryLabel.resolveFrom(context),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 28),
-                ElevatedButton(
-                  onPressed: _isLoading ? null : _handleLogin,
-                  child: _isLoading
-                      ? SizedBox(
-                          height: 22,
-                          width: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.2,
-                            color: scheme.onPrimary,
-                          ),
-                        )
-                      : const Text('Iniciar sesión'),
-                ),
-              ],
+              ),
             ),
-          ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CupertinoInputGroup extends StatelessWidget {
+  const _CupertinoInputGroup({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: CupertinoColors.secondarySystemBackground.resolveFrom(context).withAlpha(220),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: CupertinoColors.separator.resolveFrom(context).withAlpha(90),
+          width: 0.6,
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: Column(
+          children: [
+            for (var i = 0; i < children.length; i++) ...[
+              children[i],
+              if (i != children.length - 1)
+                Container(
+                  height: 0.6,
+                  color: CupertinoColors.separator.resolveFrom(context).withAlpha(90),
+                ),
+            ],
+          ],
         ),
       ),
     );

@@ -12,6 +12,7 @@ import 'home_promotion_banners_screen.dart';
 import 'stores_hub_screen.dart';
 import 'products_screen.dart';
 import 'wallet_topups_screen.dart';
+import 'delivery_drivers_screen.dart';
 
 class AdminShellScreen extends StatefulWidget {
   const AdminShellScreen({super.key});
@@ -34,6 +35,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
     'Gestión de Eventos',
     'Dashboard Evento',
     'Recargas Wallet',
+    'Repartidores',
   ];
 
   static const _subtitles = [
@@ -46,6 +48,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
     'CRUD de eventos, entradas y beneficios',
     'Métricas de acceso y canjes por evento',
     'Revisión manual de comprobantes',
+    'Cuentas para eVetaDelivery',
   ];
 
   List<Widget> get _sections => const [
@@ -58,6 +61,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
         EventsScreen(),
         EventDashboardScreen(),
         WalletTopupsScreen(),
+        DeliveryDriversScreen(),
       ];
 
   int _bottomNavSelected() {
@@ -170,6 +174,15 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
                 onTap: () {
                   Navigator.pop(ctx);
                   setState(() => _index = 8);
+                },
+              ),
+              _MoreTile(
+                icon: Icons.delivery_dining_rounded,
+                label: 'Repartidores',
+                selected: _index == 9,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  setState(() => _index = 9);
                 },
               ),
             ],
@@ -369,6 +382,7 @@ class _AdminDrawer extends StatelessWidget {
       (Icons.event_rounded, 'Gestión de Eventos', 6),
       (Icons.insights_rounded, 'Dashboard Evento', 7),
       (Icons.account_balance_wallet_rounded, 'Recargas Wallet', 8),
+      (Icons.delivery_dining_rounded, 'Repartidores', 9),
     ];
     return Drawer(
       backgroundColor: scheme.surfaceContainerHighest,
@@ -743,6 +757,7 @@ class _Sidebar extends StatelessWidget {
       (Icons.event_outlined, 'Gestión de Eventos', 6),
       (Icons.insights_outlined, 'Dashboard Evento', 7),
       (Icons.account_balance_wallet_outlined, 'Recargas Wallet', 8),
+      (Icons.delivery_dining_outlined, 'Repartidores', 9),
     ];
     return Container(
       width: AdminTokens.sidebarWidth,

@@ -371,6 +371,77 @@ class AuthService {
     }
   }
 
+  static Future<List<Map<String, dynamic>>> fetchDeliveryDriversForAdmin() async {
+    if (!await isCurrentUserAdmin()) return [];
+    final rows = await _client
+        .from('profiles_delivery')
+        .select('id, auth_user_id, email, full_name, is_active, created_at, updated_at')
+        .order('created_at', ascending: false);
+    return List<Map<String, dynamic>>.from(rows as List);
+  }
+
+  /// Crea usuario Delivery en Auth + profiles_delivery. Requiere Edge Function `create-delivery-driver`.
+  static Future<({String userId, String email})> createDeliveryDriverAccount({
+    required String email,
+    required String password,
+    required String fullName,
+  }) async {
+    try {
+      var accessToken = _client.auth.currentSession?.accessToken;
+      if (accessToken == null || accessToken.isEmpty) {
+        final refreshed = await _client.auth.refreshSession();
+        accessToken = refreshed.session?.accessToken;
+      }
+      if (accessToken == null || accessToken.isEmpty) {
+        throw AuthException('Tu sesión expiró. Vuelve a iniciar sesión e intenta de nuevo.');
+      }
+      accessToken = accessToken.replaceFirst(
+        RegExp(r'^Bearer\s+', caseSensitive: false),
+        '',
+      );
+      final tokenLooksLikeJwt = accessToken.split('.').length == 3;
+      if (!tokenLooksLikeJwt) {
+        throw AuthException('Token de sesión inválido (no parece JWT).');
+      }
+
+      final res = await _client.functions.invoke(
+        'create-delivery-driver',
+        body: {
+          'email': email.trim().toLowerCase(),
+          'password': password,
+          'full_name': fullName.trim(),
+          'access_token': accessToken,
+        },
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'x-admin-access-token': accessToken,
+        },
+      );
+
+      final status = res.status;
+      final data = res.data;
+      if (status != 200) {
+        final msg = _extractFunctionError(data);
+        throw AuthException(msg ?? 'Error al crear la cuenta (HTTP $status).');
+      }
+      if (data is Map) {
+        final m = Map<String, dynamic>.from(data);
+        if (m['error'] != null) {
+          throw AuthException(m['error'].toString());
+        }
+        final uid = m['user_id']?.toString();
+        final em = m['email']?.toString() ?? email.trim().toLowerCase();
+        if (uid != null && uid.isNotEmpty) {
+          return (userId: uid, email: em);
+        }
+      }
+      throw AuthException('Respuesta inesperada del servidor.');
+    } catch (e) {
+      if (e is AuthException) rethrow;
+      throw AuthException('No se pudo crear la cuenta. ¿Desplegaste create-delivery-driver? $e');
+    }
+  }
+
   static String? _extractFunctionError(dynamic data) {
     if (data is Map && data['error'] != null) {
       return data['error'].toString();

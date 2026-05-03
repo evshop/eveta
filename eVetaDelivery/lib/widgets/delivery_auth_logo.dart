@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-/// Misma idea que Portal: logo SVG según brillo del tema.
+/// Logo SVG según brillo del sistema (Cupertino-friendly).
 class DeliveryAuthLogo extends StatelessWidget {
   const DeliveryAuthLogo({super.key, this.size = 88});
 
@@ -9,8 +9,11 @@ class DeliveryAuthLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final path = isDark ? 'assets/images/auth_logo_dark.svg' : 'assets/images/auth_logo_light.svg';
+    final brightness = CupertinoTheme.of(context).brightness ??
+        MediaQuery.platformBrightnessOf(context);
+    final isDark = brightness == Brightness.dark;
+    final path =
+        isDark ? 'assets/images/auth_logo_dark.svg' : 'assets/images/auth_logo_light.svg';
 
     return Center(
       child: SvgPicture.asset(
