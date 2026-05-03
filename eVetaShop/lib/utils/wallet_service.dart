@@ -29,7 +29,7 @@ class WalletService {
     final rows = await _client
         .from('wallet_topups')
         .select(
-          'id, reference_code, amount, status, proof_url, proof_note, '
+          'id, reference_code, amount, requested_amount, verification_delta, status, proof_url, proof_note, '
           'expires_at, created_at, updated_at, approved_at, rejected_at, reject_reason, '
           'wallet_topup_qr_sources(provider, raw_qr_text, decoded_at)',
         )
@@ -41,7 +41,7 @@ class WalletService {
     final row = await _client
         .from('wallet_topups')
         .select(
-          'id, reference_code, amount, status, proof_url, proof_note, '
+          'id, reference_code, amount, requested_amount, verification_delta, status, proof_url, proof_note, '
           'expires_at, created_at, updated_at, approved_at, rejected_at, reject_reason, '
           'wallet_topup_qr_sources(provider, raw_qr_text, decoded_at)',
         )
@@ -58,8 +58,17 @@ class WalletService {
     return DateTime.tryParse(v.toString());
   }
 
-  static bool topupHasProof(Map<String, dynamic> topup) =>
-      (topup['proof_url']?.toString() ?? '').trim().isNotEmpty;
+  static double requestedAmountFromTopup(Map<String, dynamic> topup) {
+    final v = topup['requested_amount'];
+    if (v is num) return v.toDouble();
+    return double.tryParse(v?.toString() ?? '') ?? 0;
+  }
+
+  static double verificationDeltaFromTopup(Map<String, dynamic> topup) {
+    final v = topup['verification_delta'];
+    if (v is num) return v.toDouble();
+    return double.tryParse(v?.toString() ?? '') ?? 0;
+  }
 
   static bool isTopupExpired(Map<String, dynamic> topup) {
     final exp = parseTopupExpiresAt(topup);

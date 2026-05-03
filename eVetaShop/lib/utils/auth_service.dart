@@ -85,6 +85,7 @@ class AuthService {
     if (response.user == null) {
       throw AuthException('No se pudo iniciar sesión.');
     }
+    await _enforceShopOnlyAccess();
     await _upsertCurrentProfile();
     await persistSessionUser(email.trim());
   }
@@ -246,6 +247,38 @@ class AuthService {
       );
     } catch (e) {
       throw AuthException('No se pudo iniciar el flujo de Google: $e');
+    }
+  }
+
+  /// Evita que cuentas de Portal/Delivery entren a eVetaShop.
+  static Future<void> _enforceShopOnlyAccess() async {
+    final uid = _client.auth.currentUser?.id;
+    if (uid == null) return;
+    try {
+      final portal = await _client
+          .from('profiles_portal')
+          .select('id')
+          .eq('auth_user_id', uid)
+          .maybeSingle();
+      if (portal != null) {
+        await _client.auth.signOut();
+        throw AuthException('Esta cuenta es de Portal. Usa tu cuenta de eVetaShop.');
+      }
+    } catch (_) {
+      // ignore (tabla puede no existir aún en dev)
+    }
+    try {
+      final delivery = await _client
+          .from('profiles_delivery')
+          .select('id')
+          .eq('auth_user_id', uid)
+          .maybeSingle();
+      if (delivery != null) {
+        await _client.auth.signOut();
+        throw AuthException('Esta cuenta es de Delivery. Usa tu cuenta de eVetaShop.');
+      }
+    } catch (_) {
+      // ignore
     }
   }
 

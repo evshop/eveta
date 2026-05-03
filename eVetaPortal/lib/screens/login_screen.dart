@@ -42,19 +42,21 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       if (response.user != null) {
-        final profile = await Supabase.instance.client
-            .from('profiles')
-            .select('is_admin, is_seller')
-            .eq('id', response.user!.id)
+        final portalProfile = await Supabase.instance.client
+            .from('profiles_portal')
+            .select('is_admin, is_seller, is_active')
+            .eq('auth_user_id', response.user!.id)
             .maybeSingle();
 
-        final isAdmin = profile?['is_admin'] == true;
-        final isSeller = profile?['is_seller'] == true;
-        if (!isAdmin && !isSeller) {
+        final isActive = portalProfile?['is_active'] == true;
+        final isAdmin = portalProfile?['is_admin'] == true;
+        final isSeller = portalProfile?['is_seller'] == true;
+        if (!isActive || (!isAdmin && !isSeller)) {
           await Supabase.instance.client.auth.signOut();
           if (mounted) {
             setState(() {
-              _errorMessage = 'Tu cuenta no tiene permisos para entrar al portal.';
+              _errorMessage =
+                  'Tu cuenta no está vinculada a Portal. Usa una cuenta Portal separada.';
             });
           }
           return;

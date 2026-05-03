@@ -36,12 +36,6 @@ class WalletResumePrefs {
     final id = topup['id']?.toString();
     if (id == null || id.isEmpty) return;
 
-    final proof = (topup['proof_url']?.toString() ?? '').trim();
-    if (proof.isNotEmpty) {
-      await removeId(id);
-      return;
-    }
-
     final status = topup['status']?.toString() ?? '';
     if (status == 'approved' || status == 'rejected' || status == 'expired') {
       await removeId(id);
@@ -74,9 +68,6 @@ class WalletResumePrefs {
     for (final id in current) {
       final t = byId[id];
       if (t == null) continue;
-
-      final proof = (t['proof_url']?.toString() ?? '').trim();
-      if (proof.isNotEmpty) continue;
 
       final status = t['status']?.toString() ?? '';
       if (status != 'pending_proof') continue;

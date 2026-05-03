@@ -49,6 +49,7 @@ dependencies:
   image_picker: ^1.2.1
   app_links: ^6.3.2
   gal: ^2.3.2
+  lottie: ^3.3.3
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -91,6 +92,7 @@ flutter:
     - assets/images/ic_add_cart.png
     - assets/images/ic_discount.png
     - assets/images/ic_app_icon.png
+    - lib/animation_onboarding/onboarding.svg
     - assets/images/eVeta.svg
     - assets/images/telefono.svg
     - assets/images/auth_logo_light.svg

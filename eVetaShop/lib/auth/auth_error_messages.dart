@@ -41,8 +41,13 @@ String _fromMessageAndCode(String message, String? code) {
   if (m.contains('signup_disabled') || m.contains('signups not allowed')) {
     return 'El registro no está disponible en este momento.';
   }
-  if (m.contains('network') || m.contains('socket') || m.contains('connection')) {
-    return 'Sin conexión o el servidor no respondió. Revisa tu internet.';
+  if (m.contains('failed host lookup') ||
+      m.contains('socketexception') ||
+      m.contains('no address associated with hostname') ||
+      m.contains('network') ||
+      m.contains('socket') ||
+      m.contains('connection')) {
+    return 'Sin internet. Conéctate y vuelve a intentar.';
   }
   if (m.contains('too many requests') || c == 'over_request_rate_limit') {
     return 'Demasiados intentos. Espera un momento y vuelve a intentar.';

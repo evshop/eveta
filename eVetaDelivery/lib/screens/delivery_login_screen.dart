@@ -39,16 +39,17 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
         password: _passwordController.text,
       );
       final row = await Supabase.instance.client
-          .from('profiles')
-          .select('is_delivery')
-          .eq('id', Supabase.instance.client.auth.currentUser!.id)
+          .from('profiles_delivery')
+          .select('is_active')
+          .eq('auth_user_id', Supabase.instance.client.auth.currentUser!.id)
           .maybeSingle();
-      final ok = row != null && row['is_delivery'] == true;
+      final ok = row != null && row['is_active'] == true;
       if (!ok) {
         await Supabase.instance.client.auth.signOut();
         if (mounted) {
           setState(() {
-            _errorMessage = 'Esta cuenta no es de reparto. Activa is_delivery en el perfil.';
+            _errorMessage =
+                'Esta cuenta no está vinculada a Delivery. Usa una cuenta Delivery separada.';
           });
         }
         return;

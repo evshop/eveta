@@ -5,6 +5,8 @@ import 'package:app_links/app_links.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:lottie/lottie.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:eveta/common_widget/bottom_nav_bar_widget.dart';
 import 'package:eveta/screens/home_screen.dart';
@@ -118,22 +120,47 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-  double _logoScale = 0.88;
-  double _logoOpacity = 0.0;
   final AppLinks _appLinks = AppLinks();
+  double _logoScale = 0.92;
+  double _logoOpacity = 0.0;
+  double _scanOpacity = 0.0;
+  double _scanY = 0.42;
+  bool _hasLottie = false;
 
   @override
   void initState() {
     super.initState();
+    _probeLottie();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       setState(() {
         _logoScale = 1.0;
         _logoOpacity = 1.0;
       });
+      Future.delayed(const Duration(milliseconds: 1100), () {
+        if (!mounted) return;
+        setState(() {
+          _scanOpacity = 0.75;
+          _scanY = 0.56;
+        });
+      });
+      Future.delayed(const Duration(milliseconds: 1750), () {
+        if (!mounted) return;
+        setState(() => _scanOpacity = 0.0);
+      });
     });
     _captureInitialDeepLink();
     _checkLoginStatus();
+  }
+
+  Future<void> _probeLottie() async {
+    try {
+      await rootBundle.load('lib/animation_onboarding/onboarding.json');
+      if (!mounted) return;
+      setState(() => _hasLottie = true);
+    } catch (_) {
+      // No JSON aún: usamos SVG + animación Flutter.
+    }
   }
 
   Future<void> _captureInitialDeepLink() async {
@@ -150,7 +177,8 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _checkLoginStatus() async {
-    await Future.delayed(const Duration(milliseconds: 1750));
+    // Deja correr la animacion SVG de arranque antes de navegar.
+    await Future.delayed(const Duration(milliseconds: 4300));
 
     final supabaseSession = Supabase.instance.client.auth.currentUser;
     final prefs = await SharedPreferences.getInstance();
@@ -163,6 +191,42 @@ class _SplashScreenState extends State<SplashScreen> {
 
     if (mounted) {
       if (supabaseSession != null) {
+        // Bloquea sesión si esta cuenta pertenece a Portal/Delivery.
+        try {
+          final uid = supabaseSession.id;
+          final portal = await Supabase.instance.client
+              .from('profiles_portal')
+              .select('id')
+              .eq('auth_user_id', uid)
+              .maybeSingle();
+          if (portal != null) {
+            await Supabase.instance.client.auth.signOut();
+            if (!mounted) return;
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const LoginScreen()),
+            );
+            return;
+          }
+        } catch (_) {}
+        try {
+          final uid = supabaseSession.id;
+          final delivery = await Supabase.instance.client
+              .from('profiles_delivery')
+              .select('id')
+              .eq('auth_user_id', uid)
+              .maybeSingle();
+          if (delivery != null) {
+            await Supabase.instance.client.auth.signOut();
+            if (!mounted) return;
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const LoginScreen()),
+            );
+            return;
+          }
+        } catch (_) {}
+
         final needsCompletion = await AuthService.profileNeedsCompletion();
         if (!mounted) return;
         if (needsCompletion) {
@@ -194,9 +258,8 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0B0F1A) : Colors.white,
+      backgroundColor: Colors.black,
       body: Center(
         child: AnimatedOpacity(
           duration: const Duration(milliseconds: 650),
@@ -206,14 +269,49 @@ class _SplashScreenState extends State<SplashScreen> {
             duration: const Duration(milliseconds: 650),
             curve: Curves.easeOutCubic,
             scale: _logoScale,
-            child: SvgPicture.asset(
-              'assets/images/auth_logo_light.svg',
-              width: 160,
-              height: 160,
-              fit: BoxFit.contain,
-              colorFilter: isDark
-                  ? const ColorFilter.mode(Colors.white, BlendMode.srcIn)
-                  : null,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 360, maxHeight: 220),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  if (_hasLottie)
+                    Lottie.asset(
+                      'lib/animation_onboarding/onboarding.json',
+                      fit: BoxFit.contain,
+                      repeat: false,
+                    )
+                  else
+                    SvgPicture.asset(
+                      'lib/animation_onboarding/onboarding.svg',
+                      fit: BoxFit.contain,
+                    ),
+                  // Scan line (animación simple en Flutter).
+                  if (!_hasLottie)
+                    AnimatedAlign(
+                      duration: const Duration(milliseconds: 650),
+                      curve: Curves.easeOutCubic,
+                      alignment: Alignment(0, _scanY * 2 - 1),
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 280),
+                        opacity: _scanOpacity,
+                        child: Container(
+                          width: 320,
+                          height: 2,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.white.withValues(alpha: 0.55),
+                                blurRadius: 10,
+                                spreadRadius: 1,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),

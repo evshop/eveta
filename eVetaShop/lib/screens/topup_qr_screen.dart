@@ -8,7 +8,6 @@ import 'package:eveta/utils/wallet_service.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:gal/gal.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
@@ -38,7 +37,6 @@ class _TopupQrScreenState extends State<TopupQrScreen> {
   Timer? _poll;
   int _ticks = 0;
   bool _savingQr = false;
-  bool _uploadingProof = false;
   Timer? _countdownTimer;
   DateTime _now = DateTime.now();
 
@@ -256,60 +254,41 @@ class _TopupQrScreenState extends State<TopupQrScreen> {
     await _shareQrPng(bytes, code);
   }
 
-  String _extensionFromName(String name) {
-    final idx = name.lastIndexOf('.');
-    if (idx < 0 || idx == name.length - 1) return 'jpg';
-    return name.substring(idx + 1).toLowerCase();
-  }
-
-  Future<void> _pickAndUploadProof() async {
-    final topup = _topup;
-    if (topup == null || _uploadingProof) return;
-    final id = topup['id']?.toString();
-    if (id == null || id.isEmpty) return;
-    if (WalletService.isTopupExpired(topup)) {
-      _snack('El tiempo de esta recarga expiró.', isError: true);
-      return;
-    }
-
-    setState(() => _uploadingProof = true);
-    try {
-      final picker = ImagePicker();
-      final XFile? file = await picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 85,
-      );
-      if (file == null) return;
-
-      final Uint8List bytes = await file.readAsBytes();
-      final ext = _extensionFromName(file.name);
-      final proofUrl = await WalletService.uploadProofImage(
-        bytes: bytes,
-        extension: ext,
-      );
-
-      await WalletService.submitTopupProof(
-        topupId: id,
-        proofUrl: proofUrl,
-        note: null,
-        hint: <String, dynamic>{
-          'topup_reference_code': topup['reference_code']?.toString(),
-          'topup_amount': topup['amount'],
-          'proof_uploaded_at': DateTime.now().toIso8601String(),
-        },
-      );
-
-      await WalletResumePrefs.removeId(id);
-
-      final fresh = await WalletService.getTopupById(id);
-      if (!mounted) return;
-      setState(() => _topup = fresh ?? topup);
-      _snack('Comprobante enviado para revisión.');
-    } catch (e) {
-      if (mounted) _snack('No se pudo subir el comprobante: $e', isError: true);
-    } finally {
-      if (mounted) setState(() => _uploadingProof = false);
-    }
+  void _showVerificationInfo(double base, double delta, double pay) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        final scheme = Theme.of(ctx).colorScheme;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Método de verificación', style: TextStyle(fontWeight: FontWeight.w900, color: scheme.onSurface)),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHigh,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: scheme.outline.withValues(alpha: 0.25)),
+                ),
+                child: Text(
+                  'Para identificar tu pago automáticamente, usamos un monto único en centavos.\n\n'
+                  'Monto a acreditar: Bs ${base.toStringAsFixed(2)}\n'
+                  'Centavos de verificación: Bs ${delta.toStringAsFixed(2)}\n'
+                  'Monto a pagar: Bs ${pay.toStringAsFixed(2)}\n\n'
+                  'Este monto en centavos es solo para verificación y no es un cargo por uso.',
+                  style: TextStyle(color: scheme.onSurfaceVariant, height: 1.35),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Widget _qrOrPlaceholder({
@@ -355,20 +334,17 @@ class _TopupQrScreenState extends State<TopupQrScreen> {
     final scheme = Theme.of(context).colorScheme;
     final topup = _topup;
     final code = topup?['reference_code']?.toString() ?? '';
-    final amount = topup?['amount']?.toString() ??
-        (widget.amount != null ? widget.amount!.toStringAsFixed(2) : '');
+    final double payAmount = (topup?['amount'] is num)
+        ? (topup!['amount'] as num).toDouble()
+        : double.tryParse(topup?['amount']?.toString() ?? '') ?? (widget.amount ?? 0).toDouble();
+    final double baseAmount =
+        topup == null ? (widget.amount ?? 0).toDouble() : WalletService.requestedAmountFromTopup(topup);
+    final double delta = topup == null ? 0.0 : WalletService.verificationDeltaFromTopup(topup);
     final raw = topup == null ? null : WalletService.rawQrTextFromTopup(topup);
     final hasQr = raw != null && raw.isNotEmpty;
     final waiting = !_creating && topup != null && !hasQr;
     final status = topup?['status']?.toString() ?? '';
     final expired = topup != null && WalletService.isTopupExpired(topup);
-    final hasProof = topup != null && WalletService.topupHasProof(topup);
-    final canUploadProof = topup != null &&
-        !_creating &&
-        _error == null &&
-        !expired &&
-        !hasProof &&
-        (status == 'pending_proof' || status == 'pending_review');
 
     final cd = topup != null && !expired ? _countdownLabel(topup) : null;
 
@@ -522,70 +498,53 @@ class _TopupQrScreenState extends State<TopupQrScreen> {
                         ),
                       ),
                       const SizedBox(height: 18),
-                      Text(
-                        'Bs $amount',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
-                      ),
+                      Text('Bs ${baseAmount.toStringAsFixed(2)}',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
                       const SizedBox(height: 6),
-                      Text(
-                        code,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: scheme.onSurfaceVariant,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.4,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      if (topup != null && !_creating && _error == null) ...[
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'Después de pagar',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              color: scheme.onSurface,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              code,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: scheme.onSurfaceVariant,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.4,
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Sube una captura del comprobante (Yape u otro) para acelerar la verificación.',
-                          style: TextStyle(color: scheme.onSurfaceVariant, height: 1.35),
-                        ),
-                        const SizedBox(height: 10),
-                        if (canUploadProof)
-                          OutlinedButton.icon(
-                            onPressed: _uploadingProof ? null : _pickAndUploadProof,
-                            icon: _uploadingProof
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  )
-                                : const Icon(Icons.upload_file_rounded),
-                            label: Text(_uploadingProof ? 'Subiendo...' : 'Subir comprobante'),
-                          )
-                        else if (hasProof && status == 'pending_review')
-                          Row(
-                            children: [
-                              Icon(Icons.check_circle_outline_rounded, color: scheme.primary, size: 22),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'Comprobante enviado. En revisión.',
-                                  style: TextStyle(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w600),
-                                ),
+                          const SizedBox(width: 8),
+                          InkWell(
+                            borderRadius: BorderRadius.circular(999),
+                            onTap: topup == null ? null : () => _showVerificationInfo(baseAmount, delta, payAmount),
+                            child: Container(
+                              width: 22,
+                              height: 22,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: scheme.surfaceContainerHigh,
+                                border: Border.all(color: scheme.outline.withValues(alpha: 0.25)),
                               ),
-                            ],
-                          )
-                        else if (status == 'approved')
-                          Text(
-                            'Recarga acreditada.',
-                            style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w700),
+                              child: Icon(Icons.priority_high_rounded, size: 16, color: scheme.onSurfaceVariant),
+                            ),
                           ),
-                      ],
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Método de verificación • Paga: Bs ${payAmount.toStringAsFixed(2)} (+${delta.toStringAsFixed(2)})',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant, fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 14),
+                      if (status == 'approved')
+                        Text(
+                          'Pago verificado. Saldo acreditado.',
+                          style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w800),
+                        ),
                     ],
                   ],
                 ),

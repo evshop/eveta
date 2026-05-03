@@ -71,16 +71,11 @@ class _WalletScreenState extends State<WalletScreen> {
 
     if (WalletService.isTopupExpired(t) &&
         status == 'pending_proof' &&
-        !WalletService.topupHasProof(t)) {
+        true) {
       return false;
     }
 
-    if (status == 'pending_review' && WalletService.topupHasProof(t)) return true;
-
-    if (status == 'pending_proof' && !WalletService.topupHasProof(t)) {
-      return _resumeIds.contains(id);
-    }
-    if (status == 'pending_review' && !WalletService.topupHasProof(t)) {
+    if (status == 'pending_proof') {
       return _resumeIds.contains(id);
     }
     return false;
@@ -226,7 +221,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            'El comprobante se sube en la misma pantalla del QR. Si sales sin pagar, la recarga aparecerá aquí con cuenta regresiva.',
+                            'Método de verificación: se agrega un monto pequeño en centavos para identificar tu pago. Si sales sin pagar, la recarga aparecerá aquí con cuenta regresiva.',
                             style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant, height: 1.35),
                           ),
                         ],

@@ -1,0 +1,24 @@
+<svg viewBox="0 0 400 200" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2.2" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <g filter="url(#glow)" transform="translate(200,100)">
+    <g transform="scale(0.028) translate(-940,-1180)">
+      <path fill="#fff" d="M1304 1119L1400 1392L1574 904L1373 904L1304 1119Z"/>
+      <path fill="#fff" d="M981 904L1194 904L1378 1421L1174 1421L981 904Z"/>
+      <path fill="#fff" d="M1701 1507L1711 1693L797 1738L788 1553L1701 1507Z"/>
+      <path fill="#fff" d="M681 962L358 961L357 776L833 775L681 962Z"/>
+      <path fill="#fff" d="M681 962L833 776L1019 1539L830 1549L681 962Z"/>
+    </g>
+  </g>
+
+  <text x="158" y="110" fill="#fff" font-size="32" font-family="Inter, sans-serif">e</text>
+  <text x="225" y="110" fill="#fff" font-size="32" font-family="Inter, sans-serif">eta</text>
+</svg>
