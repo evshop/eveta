@@ -12,6 +12,7 @@ import 'home_promotion_banners_screen.dart';
 import 'stores_hub_screen.dart';
 import 'products_screen.dart';
 import 'wallet_topups_screen.dart';
+import 'wallet_payment_match_screen.dart';
 import 'delivery_drivers_screen.dart';
 
 class AdminShellScreen extends StatefulWidget {
@@ -35,6 +36,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
     'Gestión de Eventos',
     'Dashboard Evento',
     'Recargas Wallet',
+    'Conciliar pagos',
     'Repartidores',
   ];
 
@@ -48,6 +50,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
     'CRUD de eventos, entradas y beneficios',
     'Métricas de acceso y canjes por evento',
     'Notificaciones bancarias y tokens Tasker',
+    'Petición vs notificaciones Tasker y mismo monto (046)',
     'Cuentas para eVetaDelivery',
   ];
 
@@ -61,6 +64,7 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
         EventsScreen(),
         EventDashboardScreen(),
         WalletTopupsScreen(),
+        WalletPaymentMatchScreen(),
         DeliveryDriversScreen(),
       ];
 
@@ -177,12 +181,21 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
                 },
               ),
               _MoreTile(
-                icon: Icons.delivery_dining_rounded,
-                label: 'Repartidores',
+                icon: Icons.compare_arrows_rounded,
+                label: 'Conciliar pagos',
                 selected: _index == 9,
                 onTap: () {
                   Navigator.pop(ctx);
                   setState(() => _index = 9);
+                },
+              ),
+              _MoreTile(
+                icon: Icons.delivery_dining_rounded,
+                label: 'Repartidores',
+                selected: _index == 10,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  setState(() => _index = 10);
                 },
               ),
             ],
@@ -382,7 +395,8 @@ class _AdminDrawer extends StatelessWidget {
       (Icons.event_rounded, 'Gestión de Eventos', 6),
       (Icons.insights_rounded, 'Dashboard Evento', 7),
       (Icons.account_balance_wallet_rounded, 'Recargas Wallet', 8),
-      (Icons.delivery_dining_rounded, 'Repartidores', 9),
+      (Icons.compare_arrows_rounded, 'Conciliar pagos', 9),
+      (Icons.delivery_dining_rounded, 'Repartidores', 10),
     ];
     return Drawer(
       backgroundColor: scheme.surfaceContainerHighest,
@@ -663,6 +677,16 @@ class _TabletShell extends StatelessWidget {
                       selectedIcon: Icon(Icons.account_balance_wallet_rounded),
                       label: Text('Wallet'),
                     ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.compare_arrows_outlined),
+                      selectedIcon: Icon(Icons.compare_arrows_rounded),
+                      label: Text('Conciliar'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.delivery_dining_outlined),
+                      selectedIcon: Icon(Icons.delivery_dining_rounded),
+                      label: Text('Reparto'),
+                    ),
                   ],
                 ),
               ),
@@ -757,7 +781,8 @@ class _Sidebar extends StatelessWidget {
       (Icons.event_outlined, 'Gestión de Eventos', 6),
       (Icons.insights_outlined, 'Dashboard Evento', 7),
       (Icons.account_balance_wallet_outlined, 'Recargas Wallet', 8),
-      (Icons.delivery_dining_outlined, 'Repartidores', 9),
+      (Icons.compare_arrows_outlined, 'Conciliar pagos', 9),
+      (Icons.delivery_dining_outlined, 'Repartidores', 10),
     ];
     return Container(
       width: AdminTokens.sidebarWidth,

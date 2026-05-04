@@ -70,10 +70,40 @@ class WalletAdminService {
         .select(
           'id, source, bank_app, title, body, detected_amount, detected_reference, '
           'detected_sender, detected_at, received_at, match_status, matched_topup_id, '
-          'raw_payload, wallet_topups(reference_code)',
+          'matched_reference_code, raw_payload, wallet_topups(reference_code)',
         )
         .order('received_at', ascending: false)
         .limit(limit);
+    return List<Map<String, dynamic>>.from(rows as List);
+  }
+
+  /// Peticiones pendientes elegibles para el mismo criterio que 046 (creadas <24h, no vencidas).
+  static Future<List<Map<String, dynamic>>> fetchPendingTopupsForMatch({
+    int limit = 60,
+  }) async {
+    final since = DateTime.now().toUtc().subtract(const Duration(hours: 24)).toIso8601String();
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    final rows = await _client
+        .from('wallet_topups')
+        .select(
+          'id, user_id, reference_code, amount, status, created_at, expires_at, '
+          'profiles:user_id(full_name, username, email)',
+        )
+        .inFilter('status', ['pending_review', 'pending_proof'])
+        .gte('created_at', since)
+        .gt('expires_at', nowIso)
+        .order('created_at', ascending: false)
+        .limit(limit);
+    return List<Map<String, dynamic>>.from(rows as List);
+  }
+
+  /// Re-ejecuta match_wallet_topups_with_bank_event (046) para un evento; requiere script 047 en Supabase.
+  static Future<List<Map<String, dynamic>>> adminRetryMatchBankEvent(String eventId) async {
+    final rows = await _client.rpc(
+      'admin_retry_match_bank_event',
+      params: {'p_event_id': eventId},
+    );
+    if (rows == null) return [];
     return List<Map<String, dynamic>>.from(rows as List);
   }
 
