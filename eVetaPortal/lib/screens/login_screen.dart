@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'forgot_password_otp_screen.dart';
+import '../services/portal_auth_gate.dart';
 import '../widgets/portal_auth_logo.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -42,25 +43,20 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       if (response.user != null) {
-        final portalProfile = await Supabase.instance.client
-            .from('profiles_portal')
-            .select('is_admin, is_seller, is_active')
-            .eq('auth_user_id', response.user!.id)
-            .maybeSingle();
-
-        final isActive = portalProfile?['is_active'] == true;
-        final isAdmin = portalProfile?['is_admin'] == true;
-        final isSeller = portalProfile?['is_seller'] == true;
-        if (!isActive || (!isAdmin && !isSeller)) {
-          await Supabase.instance.client.auth.signOut();
+        final gate = await PortalAuthGate.verifyCurrentSession();
+        if (!gate.allowed) {
           if (mounted) {
             setState(() {
-              _errorMessage =
+              _errorMessage = gate.errorMessage ??
                   'Tu cuenta no está vinculada a Portal. Usa una cuenta Portal separada.';
             });
           }
           return;
         }
+
+        final profile = gate.profile ?? const <String, dynamic>{};
+        final isAdmin = profile['is_admin'] == true;
+        final isSeller = profile['is_seller'] == true;
 
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('isLoggedIn', true);

@@ -192,14 +192,22 @@ class _SplashScreenState extends State<SplashScreen> {
     if (mounted) {
       if (supabaseSession != null) {
         // Bloquea sesión si esta cuenta pertenece a Portal/Delivery.
+        final email = supabaseSession.email?.trim().toLowerCase();
         try {
           final uid = supabaseSession.id;
-          final portal = await Supabase.instance.client
+          final portalByUid = await Supabase.instance.client
               .from('profiles_portal')
               .select('id')
               .eq('auth_user_id', uid)
               .maybeSingle();
-          if (portal != null) {
+          final portalByEmail = (portalByUid == null && email != null && email.isNotEmpty)
+              ? await Supabase.instance.client
+                  .from('profiles_portal')
+                  .select('id')
+                  .ilike('email', email)
+                  .maybeSingle()
+              : null;
+          if (portalByUid != null || portalByEmail != null) {
             await Supabase.instance.client.auth.signOut();
             if (!mounted) return;
             Navigator.pushReplacement(
@@ -211,12 +219,19 @@ class _SplashScreenState extends State<SplashScreen> {
         } catch (_) {}
         try {
           final uid = supabaseSession.id;
-          final delivery = await Supabase.instance.client
+          final deliveryByUid = await Supabase.instance.client
               .from('profiles_delivery')
               .select('id')
               .eq('auth_user_id', uid)
               .maybeSingle();
-          if (delivery != null) {
+          final deliveryByEmail = (deliveryByUid == null && email != null && email.isNotEmpty)
+              ? await Supabase.instance.client
+                  .from('profiles_delivery')
+                  .select('id')
+                  .ilike('email', email)
+                  .maybeSingle()
+              : null;
+          if (deliveryByUid != null || deliveryByEmail != null) {
             await Supabase.instance.client.auth.signOut();
             if (!mounted) return;
             Navigator.pushReplacement(

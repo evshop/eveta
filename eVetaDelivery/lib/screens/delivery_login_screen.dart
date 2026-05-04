@@ -3,6 +3,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'delivery_shell_screen.dart';
+import '../services/delivery_auth_gate.dart';
 import '../widgets/delivery_auth_logo.dart';
 
 class DeliveryLoginScreen extends StatefulWidget {
@@ -86,17 +87,12 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
-      final row = await Supabase.instance.client
-          .from('profiles_delivery')
-          .select('is_active')
-          .eq('auth_user_id', Supabase.instance.client.auth.currentUser!.id)
-          .maybeSingle();
-      final ok = row != null && row['is_active'] == true;
-      if (!ok) {
-        await Supabase.instance.client.auth.signOut();
+
+      final gate = await DeliveryAuthGate.verifyCurrentSession();
+      if (!gate.allowed) {
         if (!mounted) return;
         setState(() {
-          _errorMessage =
+          _errorMessage = gate.errorMessage ??
               'Esta cuenta no está vinculada a Delivery. Usa una cuenta Delivery separada.';
         });
         return;

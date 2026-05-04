@@ -23,6 +23,45 @@ class OrderService {
     return double.parse(d.toStringAsFixed(2));
   }
 
+  static Future<Map<String, Map<String, dynamic>>> _pickupBySellerIds(
+    List<String> sellerIds,
+  ) async {
+    final bySeller = <String, Map<String, dynamic>>{};
+    if (sellerIds.isEmpty) return bySeller;
+
+    // Fuente canónica para tiendas de Portal: profiles_portal por legacy_profile_id.
+    try {
+      final portalRaw = await _client
+          .from('profiles_portal')
+          .select('legacy_profile_id, shop_lat, shop_lng')
+          .inFilter('legacy_profile_id', sellerIds);
+      for (final row in List<Map<String, dynamic>>.from(portalRaw as List)) {
+        final legacyId = row['legacy_profile_id']?.toString().trim();
+        if (legacyId == null || legacyId.isEmpty) continue;
+        bySeller[legacyId] = row;
+      }
+    } catch (_) {
+      // Compatibilidad con entornos legacy sin tabla/policies nuevas.
+    }
+
+    // Fallback para cuentas Shop puras (perfiles aún en `profiles`).
+    final unresolved = sellerIds.where((id) => !bySeller.containsKey(id)).toList();
+    if (unresolved.isEmpty) return bySeller;
+    try {
+      final legacyRaw = await _client
+          .from('profiles')
+          .select('id, shop_lat, shop_lng')
+          .inFilter('id', unresolved);
+      for (final row in List<Map<String, dynamic>>.from(legacyRaw as List)) {
+        final id = row['id']?.toString().trim();
+        if (id == null || id.isEmpty) continue;
+        bySeller[id] = row;
+      }
+    } catch (_) {}
+
+    return bySeller;
+  }
+
   /// Crea uno o más pedidos (uno por tienda) desde el carrito. Vacía el carrito si todo OK.
   static Future<List<String>> placeOrdersFromCart({
     required double dropoffLat,
@@ -68,12 +107,24 @@ class OrderService {
 
     final sellerCount = bySeller.length;
     final feeEach = DeliveryPricing.splitFee(totalDeliveryFee, sellerCount);
+    final sellerIds = bySeller.keys.toList();
+    final sellerMap = await _pickupBySellerIds(sellerIds);
 
     final createdOrderIds = <String>[];
 
     for (final entry in bySeller.entries) {
       final sellerId = entry.key;
       final items = entry.value;
+      final sellerProfile = sellerMap[sellerId];
+      final sellerLat = (sellerProfile?['shop_lat'] is num)
+          ? (sellerProfile!['shop_lat'] as num).toDouble()
+          : double.tryParse(sellerProfile?['shop_lat']?.toString() ?? '');
+      final sellerLng = (sellerProfile?['shop_lng'] is num)
+          ? (sellerProfile!['shop_lng'] as num).toDouble()
+          : double.tryParse(sellerProfile?['shop_lng']?.toString() ?? '');
+      final pickup = (sellerLat != null && sellerLng != null)
+          ? LatLng(sellerLat, sellerLng)
+          : DeliveryPricing.defaultPickup;
 
       double subtotal = 0;
       final lineRows = <Map<String, dynamic>>[];
@@ -106,7 +157,10 @@ class OrderService {
       }
 
       final safeSubtotal = _safeMoney(subtotal);
-      final safeFeeEach = _safeMoney(feeEach);
+      final sellerDistanceKm = DeliveryPricing.haversineKm(pickup, drop);
+      final safeFeeEach = _safeMoney(
+        sellerCount <= 1 ? DeliveryPricing.feeForDistanceKm(sellerDistanceKm) : feeEach,
+      );
       final total = _safeMoney(safeSubtotal + safeFeeEach);
 
       final orderInsert = await _client
@@ -117,7 +171,7 @@ class OrderService {
             'subtotal': safeSubtotal,
             'delivery_fee': safeFeeEach,
             'total': total,
-            'distance_km': _safeMoney(distanceKm),
+            'distance_km': _safeMoney(sellerDistanceKm),
             // Portal / tienda usan `pending` para pedidos nuevos.
             'status': 'pending',
             'delivery_status': 'awaiting_driver',

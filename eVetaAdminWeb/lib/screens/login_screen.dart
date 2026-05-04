@@ -77,12 +77,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       await LoginPrefs.saveRememberedEmail(_emailController.text, _remember);
       final isAdmin = await AuthService.isCurrentUserAdmin();
       if (!isAdmin) {
-        final hasProfile = await AuthService.currentUserProfileExists();
+        final hasPortalProfile = await AuthService.currentPortalProfileExists();
         await AuthService.signOut();
         setState(() {
-          _error = hasProfile
-              ? 'Tu cuenta no tiene permisos de administrador (profiles.is_admin = false).'
-              : 'Tu cuenta autenticó, pero no existe perfil en la tabla profiles para este usuario. Debes crear la fila profiles(id=auth.uid()) y marcar is_admin=true.';
+          _error = hasPortalProfile
+              ? 'Tu cuenta autenticó, pero no tiene permiso de administrador (profiles_portal.is_admin debe ser true). Ejecuta scripts/058.'
+              : 'Tu cuenta autenticó, pero no existe perfil en profiles_portal vinculado a este usuario. Ejecuta scripts/058.';
         });
       }
     } catch (e) {

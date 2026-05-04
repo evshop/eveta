@@ -1,9 +1,12 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'store_location_picker_screen.dart';
 import '../services/cloudinary_service.dart';
+import '../services/portal_session.dart';
 import '../widgets/portal/eveta_portal_image_crop_screen.dart';
 import '../widgets/portal/eveta_portal_image_picker_sheet.dart';
 import '../widgets/portal/portal_tokens.dart';
@@ -21,6 +24,9 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
   final _nameCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   final _borderColorCtrl = TextEditingController();
+  final _addressCtrl = TextEditingController();
+  final _latCtrl = TextEditingController();
+  final _lngCtrl = TextEditingController();
 
   bool _loading = true;
   bool _saving = false;
@@ -33,6 +39,9 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
 
   String? _email;
   String? _shopId;
+  String? _portalProfileId;
+  String? _legacyProfileId;
+  List<String> _locationPhotoUrls = [];
 
   Color? _parseHexColor(String? raw) {
     final s = (raw ?? '').trim().replaceAll('#', '');
@@ -52,6 +61,17 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
     final qp = Map<String, String>.from(uri.queryParameters)
       ..['v'] = DateTime.now().millisecondsSinceEpoch.toString();
     return uri.replace(queryParameters: qp).toString();
+  }
+
+  List<String> _parseLocationPhotos(dynamic raw) {
+    if (raw is List) {
+      return raw
+          .map((e) => e.toString().trim())
+          .where((e) => e.isNotEmpty)
+          .take(3)
+          .toList();
+    }
+    return const [];
   }
 
   @override
@@ -76,26 +96,15 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
       _email = user.email;
       _shopId = user.id;
 
-      Map<String, dynamic>? row;
-      try {
-        row = await Supabase.instance.client
-            .from('profiles')
-            .select(
-              'id, shop_name, shop_description, shop_logo_url, shop_banner_url, shop_border_color, avatar_url',
-            )
-            .eq('id', user.id)
-            .maybeSingle();
-      } catch (e) {
-        if (e.toString().toLowerCase().contains('shop_banner_url')) {
-          row = await Supabase.instance.client
-              .from('profiles')
-            .select('id, shop_name, shop_description, shop_logo_url, shop_border_color, avatar_url')
-              .eq('id', user.id)
-              .maybeSingle();
-        } else {
-          rethrow;
-        }
+      // Carga el perfil Portal (con autolink si aplica) y guarda IDs útiles.
+      final portal = await PortalSession.currentPortalProfile(forceRefresh: true);
+      _portalProfileId = portal?['id']?.toString().trim();
+      _legacyProfileId = portal?['legacy_profile_id']?.toString().trim();
+      if (_legacyProfileId != null && _legacyProfileId!.isEmpty) {
+        _legacyProfileId = null;
       }
+
+      Map<String, dynamic>? row = portal;
 
       if (!mounted) return;
       if (row == null) {
@@ -106,6 +115,10 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
       _nameCtrl.text = row['shop_name']?.toString().trim() ?? '';
       _descCtrl.text = row['shop_description']?.toString().trim() ?? '';
       _borderColorCtrl.text = row['shop_border_color']?.toString().trim() ?? '';
+      _addressCtrl.text = row['shop_address']?.toString().trim() ?? '';
+      _latCtrl.text = row['shop_lat']?.toString().trim() ?? '';
+      _lngCtrl.text = row['shop_lng']?.toString().trim() ?? '';
+      _locationPhotoUrls = _parseLocationPhotos(row['shop_location_photos']);
       final legacyAvatar = row['avatar_url']?.toString().trim();
       final logo = row['shop_logo_url']?.toString().trim();
       final banner = row['shop_banner_url']?.toString().trim();
@@ -192,6 +205,75 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
     }
   }
 
+  Future<void> _pickStoreLocationOnMap() async {
+    final lat = double.tryParse(_latCtrl.text.trim());
+    final lng = double.tryParse(_lngCtrl.text.trim());
+    final initial = (lat != null && lng != null)
+        ? LatLng(lat, lng)
+        : const LatLng(-17.7833, -63.1821);
+    final selected = await Navigator.of(context).push<LatLng>(
+      MaterialPageRoute(
+        builder: (_) => StoreLocationPickerScreen(initial: initial),
+      ),
+    );
+    if (selected == null || !mounted) return;
+    setState(() {
+      _latCtrl.text = selected.latitude.toStringAsFixed(6);
+      _lngCtrl.text = selected.longitude.toStringAsFixed(6);
+    });
+  }
+
+  Future<void> _pickAndUploadLocationPhotos() async {
+    final remaining = 3 - _locationPhotoUrls.length;
+    if (remaining <= 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Máximo 3 fotos del lugar.')),
+      );
+      return;
+    }
+    final files = await EvetaPortalImagePicker.pick(
+      context,
+      EvetaPortalImagePickerOptions(
+        title: 'Fotos del lugar (máx 3)',
+        subtitle: 'Sube frente/interior para facilitar el recojo.',
+        allowMultiFromGallery: true,
+        maxFiles: remaining,
+        imageQuality: 85,
+        maxWidth: 2200,
+      ),
+    );
+    if (files == null || files.isEmpty || !mounted) return;
+    setState(() => _uploading = true);
+    try {
+      final next = List<String>.from(_locationPhotoUrls);
+      for (var i = 0; i < files.length; i++) {
+        final bytes = await files[i].readAsBytes();
+        final url = await CloudinaryService.uploadImage(
+          bytes: bytes,
+          fileName: 'store_place_${DateTime.now().microsecondsSinceEpoch}_$i.jpg',
+          folder: 'eveta/portal_store/place/${_shopId ?? 'unknown'}',
+        );
+        next.add(_cacheBustImageUrl(url));
+        if (next.length >= 3) break;
+      }
+      if (!mounted) return;
+      setState(() {
+        _locationPhotoUrls = next.take(3).toList();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Fotos cargadas. Guarda cambios para publicar.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudieron subir fotos: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
   Future<void> _save() async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) return;
@@ -204,38 +286,99 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
       return;
     }
 
+    double? parseCoord(String text) {
+      final t = text.trim();
+      if (t.isEmpty) return null;
+      return double.tryParse(t);
+    }
+
+    final shopLat = parseCoord(_latCtrl.text);
+    final shopLng = parseCoord(_lngCtrl.text);
+    final hasOneCoord = (shopLat == null) != (shopLng == null);
+    if (hasOneCoord) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Debes completar latitud y longitud, o dejar ambas vacías.')),
+      );
+      return;
+    }
+    if (shopLat != null && (shopLat < -90 || shopLat > 90)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Latitud inválida. Rango válido: -90 a 90.')),
+      );
+      return;
+    }
+    if (shopLng != null && (shopLng < -180 || shopLng > 180)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Longitud inválida. Rango válido: -180 a 180.')),
+      );
+      return;
+    }
+
     setState(() => _saving = true);
     try {
+      final shopBorderColor =
+          _borderColorCtrl.text.trim().isEmpty ? null : _borderColorCtrl.text.trim();
+      final shopAddress =
+          _addressCtrl.text.trim().isEmpty ? null : _addressCtrl.text.trim();
+
+      // Asegura una fila portal vinculada antes de guardar (por si fue creación reciente).
+      if (_portalProfileId == null || _portalProfileId!.isEmpty) {
+        final portal = await PortalSession.currentPortalProfile(forceRefresh: true);
+        _portalProfileId = portal?['id']?.toString().trim();
+        _legacyProfileId = portal?['legacy_profile_id']?.toString().trim();
+        if (_legacyProfileId != null && _legacyProfileId!.isEmpty) {
+          _legacyProfileId = null;
+        }
+      }
+      if (_portalProfileId == null || _portalProfileId!.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No se encontró tu perfil Portal. Cierra sesión e inicia de nuevo para crearlo.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      final portalPayload = <String, dynamic>{
+        'shop_name': name,
+        'shop_description': _descCtrl.text.trim(),
+        'shop_logo_url': _logoUrl,
+        'shop_banner_url': _bannerUrl,
+        'shop_border_color': shopBorderColor,
+        'shop_address': shopAddress,
+        'shop_lat': shopLat,
+        'shop_lng': shopLng,
+        'shop_location_photos': _locationPhotoUrls,
+        'is_seller': true,
+      };
+
       List<dynamic> updated;
       try {
         updated = await Supabase.instance.client
-            .from('profiles')
-            .upsert({
-              'id': user.id,
-              'email': user.email,
-              'shop_name': name,
-              'shop_description': _descCtrl.text.trim(),
-              'shop_logo_url': _logoUrl,
-              'shop_banner_url': _bannerUrl,
-              'shop_border_color': _borderColorCtrl.text.trim().isEmpty ? null : _borderColorCtrl.text.trim(),
-              'is_seller': true,
-            }, onConflict: 'id')
+            .from('profiles_portal')
+            .update(portalPayload)
+            .eq('id', _portalProfileId!)
             .select('id');
       } catch (e) {
-        if (e.toString().toLowerCase().contains('shop_banner_url')) {
+        final lower = e.toString().toLowerCase();
+        if (lower.contains('shop_lat') ||
+            lower.contains('shop_lng') ||
+            lower.contains('shop_location_photos') ||
+            lower.contains('shop_border_color') ||
+            lower.contains('shop_address')) {
+          final fallback = Map<String, dynamic>.from(portalPayload)
+            ..remove('shop_lat')
+            ..remove('shop_lng')
+            ..remove('shop_location_photos')
+            ..remove('shop_border_color')
+            ..remove('shop_address');
           updated = await Supabase.instance.client
-              .from('profiles')
-              .upsert({
-                'id': user.id,
-                'email': user.email,
-                'shop_name': name,
-                'shop_description': _descCtrl.text.trim(),
-                'shop_logo_url': _logoUrl,
-                // Fallback legacy: usar avatar_url si aún no existe shop_banner_url.
-                'avatar_url': _bannerUrl,
-                'shop_border_color': _borderColorCtrl.text.trim().isEmpty ? null : _borderColorCtrl.text.trim(),
-                'is_seller': true,
-              }, onConflict: 'id')
+              .from('profiles_portal')
+              .update(fallback)
+              .eq('id', _portalProfileId!)
               .select('id');
         } else {
           rethrow;
@@ -247,36 +390,15 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'No se aplicaron los cambios (permisos). Ejecuta en Supabase eVetaAdminWeb/scripts/019_rls_profiles_portal_seller.sql (vendedor: UPDATE propio; admin: UPDATE cualquier tienda) o revisa RLS en profiles.',
+              'No se aplicaron los cambios (permisos). Verifica RLS en profiles_portal (self update por auth_user_id) o ejecuta los scripts 034/051.',
             ),
           ),
         );
         return;
       }
 
-      final check = await Supabase.instance.client
-          .from('profiles')
-          .select('shop_logo_url, shop_banner_url, avatar_url')
-          .eq('id', user.id)
-          .maybeSingle();
-      final savedLogo = check?['shop_logo_url']?.toString().trim();
-      final savedBanner = check?['shop_banner_url']?.toString().trim();
-      final intendedLogo = _logoUrl?.toString().trim();
-      final intendedBanner = _bannerUrl?.toString().trim();
-      final logoOk = (intendedLogo == null || intendedLogo.isEmpty) || savedLogo == intendedLogo;
-      final bannerOk =
-          (intendedBanner == null || intendedBanner.isEmpty) || savedBanner == intendedBanner;
-      if (!logoOk || !bannerOk) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'No se reflejaron los cambios en la BD. Parece un tema de permisos/RLS en profiles. Ejecuta el script 019 en Supabase y vuelve a intentar.',
-            ),
-          ),
-        );
-        return;
-      }
+      // Actualiza cache para que `currentPortalProfile()` refleje los nuevos valores.
+      PortalSession.invalidateCache();
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -290,7 +412,7 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
           content: Text(
             e.toString().toLowerCase().contains('row-level security') ||
                     e.toString().toLowerCase().contains('rls')
-                ? 'Sin permiso para guardar la tienda. Un admin debe habilitar políticas RLS para vendedores (script 019).'
+                ? 'Sin permiso para guardar la tienda. Un admin debe habilitar políticas RLS para vendedores en profiles_portal.'
                 : 'No se pudo guardar: $e',
           ),
         ),
@@ -634,6 +756,108 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
                         hintText: '#09CB6B o vacío para sin color',
                       ).applyDefaults(Theme.of(ctx).inputDecorationTheme),
                     ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _addressCtrl,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: const InputDecoration(
+                        labelText: 'Dirección de recojo de tienda',
+                        hintText: 'Ej: Av. Busch #123, Santa Cruz',
+                        alignLabelWithHint: true,
+                      ).applyDefaults(Theme.of(ctx).inputDecorationTheme),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _latCtrl,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                            decoration: const InputDecoration(
+                              labelText: 'Latitud',
+                              hintText: '-17.7833',
+                            ).applyDefaults(Theme.of(ctx).inputDecorationTheme),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            controller: _lngCtrl,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                            decoration: const InputDecoration(
+                              labelText: 'Longitud',
+                              hintText: '-63.1821',
+                            ).applyDefaults(Theme.of(ctx).inputDecorationTheme),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        await _pickStoreLocationOnMap();
+                        if (ctx.mounted) Navigator.pop(ctx);
+                      },
+                      icon: const Icon(Icons.map_outlined),
+                      label: const Text('Elegir ubicación en mapa'),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Fotos del lugar (máx 3)',
+                      style: Theme.of(ctx).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (var i = 0; i < _locationPhotoUrls.length; i++)
+                          Stack(
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: Image.network(
+                                  _locationPhotoUrls[i],
+                                  width: 86,
+                                  height: 86,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                              Positioned(
+                                right: 0,
+                                top: 0,
+                                child: InkWell(
+                                  onTap: () => setState(() => _locationPhotoUrls.removeAt(i)),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withValues(alpha: 0.65),
+                                      borderRadius: const BorderRadius.only(
+                                        bottomLeft: Radius.circular(8),
+                                        topRight: Radius.circular(10),
+                                      ),
+                                    ),
+                                    padding: const EdgeInsets.all(4),
+                                    child: const Icon(Icons.close, color: Colors.white, size: 14),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        if (_locationPhotoUrls.length < 3)
+                          InkWell(
+                            onTap: _uploading ? null : _pickAndUploadLocationPhotos,
+                            child: Container(
+                              width: 86,
+                              height: 86,
+                              decoration: BoxDecoration(
+                                border: Border.all(color: scheme.outline.withValues(alpha: 0.5)),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Icon(Icons.add_a_photo_outlined, color: scheme.onSurfaceVariant),
+                            ),
+                          ),
+                      ],
+                    ),
                     const SizedBox(height: 20),
                     FilledButton(
                       onPressed: () => Navigator.pop(ctx),
@@ -655,6 +879,9 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
     _nameCtrl.dispose();
     _descCtrl.dispose();
     _borderColorCtrl.dispose();
+    _addressCtrl.dispose();
+    _latCtrl.dispose();
+    _lngCtrl.dispose();
     super.dispose();
   }
 

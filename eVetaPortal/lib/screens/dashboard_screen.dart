@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../services/portal_session.dart';
 import '../widgets/portal/portal_dashboard_skeleton.dart';
 import '../widgets/portal/portal_haptics.dart';
 import '../widgets/portal/portal_sales_chart.dart';
@@ -37,13 +38,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _fetchDashboardData() async {
     try {
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user == null) return;
+      final sellerId = await PortalSession.currentSellerId();
+      if (sellerId == null) return;
 
       final productsResponse = await Supabase.instance.client
           .from('products')
           .select('id')
-          .eq('seller_id', user.id)
+          .eq('seller_id', sellerId)
           .isFilter('event_ticket_type_id', null);
 
       final productsCount = (productsResponse as List).length;
@@ -51,7 +52,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final orderItemsResponse = await Supabase.instance.client
           .from('order_items')
           .select('*, orders(status, created_at, buyer_id), products(name)')
-          .eq('seller_id', user.id)
+          .eq('seller_id', sellerId)
           .order('created_at', ascending: false);
 
       double revenue = 0;

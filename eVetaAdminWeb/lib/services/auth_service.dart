@@ -3,6 +3,25 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class AuthService {
   static SupabaseClient get _client => Supabase.instance.client;
 
+  /// Columnas de tienda/partner vivir en `profiles_portal`, no en `profiles`.
+  static const _portalPartnerCols =
+      'id, auth_user_id, legacy_profile_id, email, full_name, '
+      'shop_name, shop_description, shop_logo_url, shop_banner_url, '
+      'is_partner_verified, partner_display_order, admin_portal_note';
+
+  static String sellerProductsIdFromPortal(Map<String, dynamic> portalRow) {
+    final legacy = portalRow['legacy_profile_id']?.toString().trim();
+    if (legacy != null && legacy.isNotEmpty) return legacy;
+    final uid = portalRow['auth_user_id']?.toString().trim();
+    return uid ?? '';
+  }
+
+  static Map<String, dynamic> decoratePortalPartnerRow(Map<String, dynamic> raw) {
+    final m = Map<String, dynamic>.from(raw);
+    m['seller_id_for_products'] = sellerProductsIdFromPortal(m);
+    return m;
+  }
+
   static Future<void> signIn({
     required String email,
     required String password,
@@ -38,16 +57,6 @@ class AuthService {
         // Fallback below.
       }
       try {
-        final profile = await _client
-            .from('profiles')
-            .select('id, is_admin')
-            .eq('id', user.id)
-            .maybeSingle();
-        if (profile?['is_admin'] == true) return true;
-      } catch (_) {
-        // Retry once for transient startup/session timing.
-      }
-      try {
         final portal = await _client
             .from('profiles_portal')
             .select('is_admin')
@@ -65,6 +74,19 @@ class AuthService {
     return false;
   }
 
+  /// Existe cualquier perfil Portal activo (admin o seller) para debugging/mensajes.
+  static Future<bool> currentPortalProfileExists() async {
+    final user = _client.auth.currentUser;
+    if (user == null) return false;
+    final portal = await _client
+        .from('profiles_portal')
+        .select('id')
+        .eq('auth_user_id', user.id)
+        .eq('is_active', true)
+        .maybeSingle();
+    return portal != null;
+  }
+
   static Future<bool> currentUserProfileExists() async {
     final user = _client.auth.currentUser;
     if (user == null) return false;
@@ -75,28 +97,39 @@ class AuthService {
   static Future<Map<String, dynamic>?> fetchMyProfile() async {
     final user = _client.auth.currentUser;
     if (user == null) return null;
+
+    Map<String, dynamic>? shop;
     try {
-      final row = await _client
+      final raw = await _client
           .from('profiles')
-          .select('id, full_name, email, shop_name, shop_description, shop_logo_url, shop_banner_url')
+          .select('id, full_name, email')
           .eq('id', user.id)
           .maybeSingle();
-      return row == null ? null : Map<String, dynamic>.from(row);
-    } catch (e) {
-      // Compatibilidad si la columna shop_banner_url aún no existe.
-      if (e.toString().toLowerCase().contains('shop_banner_url')) {
-        final row = await _client
-            .from('profiles')
-            .select('id, full_name, email, shop_name, shop_description, shop_logo_url, avatar_url')
-            .eq('id', user.id)
-            .maybeSingle();
-        if (row == null) return null;
-        final m = Map<String, dynamic>.from(row);
-        m['shop_banner_url'] = m['avatar_url'];
-        return m;
-      }
-      rethrow;
+      if (raw != null) shop = Map<String, dynamic>.from(raw as Map);
+    } catch (_) {}
+
+    Map<String, dynamic>? portal;
+    try {
+      final portalRaw = await _client
+          .from('profiles_portal')
+          .select(_portalPartnerCols)
+          .eq('auth_user_id', user.id)
+          .eq('is_active', true)
+          .maybeSingle();
+      if (portalRaw != null) portal = Map<String, dynamic>.from(portalRaw as Map);
+    } catch (_) {}
+
+    if (portal == null) return shop;
+
+    final merged = decoratePortalPartnerRow(portal);
+
+    final fnShop = shop?['full_name']?.toString().trim();
+    if (fnShop != null && fnShop.isNotEmpty) {
+      merged.putIfAbsent('full_name', () => fnShop);
     }
+    merged.putIfAbsent('email', () => merged['email'] ?? user.email);
+    merged['id'] = merged['auth_user_id'] ?? user.id;
+    return merged;
   }
 
   static Future<void> updateMyStoreProfile({
@@ -107,87 +140,67 @@ class AuthService {
   }) async {
     final user = _client.auth.currentUser;
     if (user == null) throw AuthException('No hay sesión activa');
-    final row = {
+
+    final row = <String, dynamic>{
       'shop_name': shopName.trim(),
       'shop_description': shopDescription.trim(),
       'shop_logo_url': shopLogoUrl,
       'shop_banner_url': shopBannerUrl,
       'is_seller': true,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
     };
+
+    Map<String, dynamic>? updatedPortal;
     try {
-      final updated = await _client.from('profiles').update(row).eq('id', user.id).select('id');
-      if ((updated as List).isEmpty) {
-        throw AuthException(
-          'La base de datos no aplicó el cambio (0 filas). Revisa políticas RLS en profiles para tu usuario.',
-        );
-      }
+      updatedPortal = await _client
+          .from('profiles_portal')
+          .update(row)
+          .eq('auth_user_id', user.id)
+          .select('id')
+          .maybeSingle();
     } catch (e) {
-      if (e is AuthException) rethrow;
       if (e.toString().toLowerCase().contains('shop_banner_url')) {
-        final updated = await _client.from('profiles').update({
-          'shop_name': shopName.trim(),
-          'shop_description': shopDescription.trim(),
-          'shop_logo_url': shopLogoUrl,
-          // Fallback temporal: avatar_url como banner
-          'avatar_url': shopBannerUrl,
-          'is_seller': true,
-        }).eq('id', user.id).select('id');
-        if ((updated as List).isEmpty) {
-          throw AuthException(
-            'La base de datos no aplicó el cambio (0 filas). Revisa políticas RLS en profiles.',
-          );
-        }
-        return;
+        row.remove('shop_banner_url');
+        updatedPortal = await _client
+            .from('profiles_portal')
+            .update(row)
+            .eq('auth_user_id', user.id)
+            .select('id')
+            .maybeSingle();
+      } else {
+        rethrow;
       }
-      rethrow;
+    }
+
+    if (updatedPortal == null) {
+      throw AuthException(
+        'No se encontró profiles_portal para tu usuario (o políticas RLS). Ejecutá scripts/058 y 061 en Supabase.',
+      );
     }
   }
 
-  static const _partnerColsBase =
-      'id,email,full_name,shop_name,shop_description,shop_logo_url,shop_banner_url,is_partner_verified,partner_display_order';
-
   /// Otras tiendas verificadas (excluye al usuario actual).
-  /// Incluye [admin_portal_note] si existe la columna en `profiles`.
+  /// Vive en `profiles_portal` (la tienda pública viene de ahí para Shop/Delivery).
   static Future<List<Map<String, dynamic>>> fetchVerifiedPartnerStores() async {
     final me = _client.auth.currentUser?.id;
     if (me == null) return [];
     try {
       final rows = await _client
-          .from('profiles')
-          .select('$_partnerColsBase,admin_portal_note')
+          .from('profiles_portal')
+          .select(_portalPartnerCols)
           .eq('is_partner_verified', true)
-          .neq('id', me)
+          .neq('auth_user_id', me)
           .order('partner_display_order', ascending: true)
           .order('shop_name', ascending: true);
-      return List<Map<String, dynamic>>.from(rows as List);
-    } catch (e) {
-      final s = e.toString().toLowerCase();
-      if (s.contains('admin_portal_note')) {
-        try {
-          final rows = await _client
-              .from('profiles')
-              .select(_partnerColsBase)
-              .eq('is_partner_verified', true)
-              .neq('id', me)
-              .order('partner_display_order', ascending: true)
-              .order('shop_name', ascending: true);
-          return List<Map<String, dynamic>>.from(rows as List);
-        } catch (e2) {
-          if (e2.toString().toLowerCase().contains('partner_display_order') ||
-              e2.toString().toLowerCase().contains('is_partner_verified')) {
-            return [];
-          }
-          rethrow;
-        }
-      }
-      if (s.contains('partner_display_order') || s.contains('is_partner_verified')) {
-        return [];
-      }
-      rethrow;
+      final list = List<Map<String, dynamic>>.from(rows as List);
+      return list.map(decoratePortalPartnerRow).toList();
+    } catch (_) {
+      return [];
     }
   }
 
-  /// Nota interna solo para admins (p. ej. contraseña o pista). Requiere columna `admin_portal_note` en Supabase.
+  /// Nota interna solo para admins (p. ej. contraseña o pista).
+  /// Vive en `profiles_portal.admin_portal_note` (script 062).
   static Future<void> updateAdminPortalNoteForAdmin({
     required String profileId,
     required String? note,
@@ -199,7 +212,7 @@ class AuthService {
     final value = (trimmed == null || trimmed.isEmpty) ? null : trimmed;
     try {
       final updated = await _client
-          .from('profiles')
+          .from('profiles_portal')
           .update({'admin_portal_note': value})
           .eq('id', profileId)
           .select('id');
@@ -210,7 +223,7 @@ class AuthService {
       if (e is AuthException) rethrow;
       if (e.toString().toLowerCase().contains('admin_portal_note')) {
         throw AuthException(
-          'Falta la columna admin_portal_note en profiles. Ejecuta scripts/016_profiles_admin_portal_note.sql en Supabase.',
+          'Falta la columna admin_portal_note en profiles_portal. Ejecuta scripts/062_admin_portal_note_on_profiles_portal.sql en Supabase.',
         );
       }
       rethrow;
@@ -225,42 +238,24 @@ class AuthService {
   }) async {
     if (!await isCurrentUserAdmin()) return;
     try {
-      await _client.from('profiles').update({
+      await _client.from('profiles_portal').update({
         'admin_portal_note':
             'Contraseña definida al crear la cuenta ($email): $password',
-      }).eq('id', userId);
+      }).eq('legacy_profile_id', userId);
     } catch (_) {
       // Columna ausente o política: ignorar.
     }
   }
 
-  static Future<Map<String, dynamic>?> fetchProfileByIdForAdmin(String profileId) async {
+  /// [partnerPortalProfileId] es profiles_portal.id (no auth.users.id).
+  static Future<Map<String, dynamic>?> fetchProfileByIdForAdmin(String partnerPortalProfileId) async {
     if (!await isCurrentUserAdmin()) return null;
-    try {
-      final row = await _client
-          .from('profiles')
-          .select(
-            'id, full_name, email, shop_name, shop_description, shop_logo_url, shop_banner_url',
-          )
-          .eq('id', profileId)
-          .maybeSingle();
-      return row == null ? null : Map<String, dynamic>.from(row);
-    } catch (e) {
-      if (e.toString().toLowerCase().contains('shop_banner_url')) {
-        final row = await _client
-            .from('profiles')
-            .select(
-              'id, full_name, email, shop_name, shop_description, shop_logo_url, avatar_url',
-            )
-            .eq('id', profileId)
-            .maybeSingle();
-        if (row == null) return null;
-        final m = Map<String, dynamic>.from(row);
-        m['shop_banner_url'] = m['avatar_url'];
-        return m;
-      }
-      rethrow;
-    }
+    final row = await _client
+        .from('profiles_portal')
+        .select(_portalPartnerCols)
+        .eq('id', partnerPortalProfileId)
+        .maybeSingle();
+    return row == null ? null : decoratePortalPartnerRow(Map<String, dynamic>.from(row as Map));
   }
 
   static Future<void> updatePartnerStoreProfileForAdmin({
@@ -278,28 +273,31 @@ class AuthService {
       'shop_description': shopDescription.trim(),
       'shop_logo_url': shopLogoUrl,
       'shop_banner_url': shopBannerUrl,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
       'is_seller': true,
     };
+
     try {
-      final updated = await _client.from('profiles').update(row).eq('id', profileId).select('id');
+      final updated = await _client
+          .from('profiles_portal')
+          .update(row)
+          .eq('id', profileId)
+          .select('id');
       if ((updated as List).isEmpty) {
         throw AuthException(
-          'No se actualizó la tienda (0 filas). El admin necesita permiso UPDATE (y SELECT de respuesta) en profiles para ese vendedor.',
+          'No se actualizó la tienda (0 filas). Revisa RLS/admin policy en profiles_portal (061).',
         );
       }
     } catch (e) {
       if (e is AuthException) rethrow;
       if (e.toString().toLowerCase().contains('shop_banner_url')) {
-        final updated = await _client.from('profiles').update({
-          'shop_name': shopName.trim(),
-          'shop_description': shopDescription.trim(),
-          'shop_logo_url': shopLogoUrl,
-          'avatar_url': shopBannerUrl,
-          'is_seller': true,
+        row.remove('shop_banner_url');
+        final updated = await _client.from('profiles_portal').update({
+          ...row,
         }).eq('id', profileId).select('id');
         if ((updated as List).isEmpty) {
           throw AuthException(
-            'No se actualizó la tienda (0 filas). Revisa políticas RLS en profiles.',
+            'No se actualizó la tienda (0 filas). Revisa políticas RLS en profiles_portal.',
           );
         }
         return;
@@ -462,56 +460,55 @@ class AuthService {
 
   /// Quita la tienda del listado de verificadas, borra sus productos y limpia datos de tienda.
   /// No elimina el usuario en Auth (hace falta borrarlo en Supabase Dashboard si lo necesitas).
-  static Future<void> deletePartnerStoreForAdmin(String profileId) async {
+  static Future<void> deletePartnerStoreForAdmin(String partnerPortalProfileId) async {
     if (!await isCurrentUserAdmin()) {
       throw AuthException('Sin permisos de administrador.');
     }
-    final me = _client.auth.currentUser?.id;
-    if (me != null && me == profileId) {
-      throw AuthException('No puedes eliminar tu propia cuenta desde aquí.');
+
+    final portalRow = await _client
+        .from('profiles_portal')
+        .select(_portalPartnerCols)
+        .eq('id', partnerPortalProfileId)
+        .maybeSingle();
+    if (portalRow == null) throw AuthException('No se encontró la tienda (profiles_portal).');
+
+    final m = decoratePortalPartnerRow(Map<String, dynamic>.from(portalRow as Map));
+    final sellerId = m['seller_id_for_products']?.toString() ?? '';
+    if (sellerId.isEmpty) {
+      throw AuthException('No se pudo resolver seller_id para borrar catálogo.');
     }
-    await _client.from('products').delete().eq('seller_id', profileId);
 
-    Future<void> patchProfile(Map<String, dynamic> row) async {
-      final updated = await _client.from('profiles').update(row).eq('id', profileId).select('id');
-      if ((updated as List).isEmpty) {
-        throw AuthException('No se actualizó el perfil (0 filas). Revisa RLS en profiles.');
-      }
+    final meUid = _client.auth.currentUser?.id;
+    if (meUid != null &&
+        ((m['auth_user_id']?.toString() == meUid) || (sellerId == meUid))) {
+      throw AuthException('No puedes eliminar tu propia cuenta/tienda desde aquí.');
     }
 
-    final core = <String, dynamic>{
-      'is_partner_verified': false,
-      'is_seller': false,
-      'shop_name': '',
-      'shop_description': '',
-      'shop_logo_url': null,
-    };
+    await _client.from('products').delete().eq('seller_id', sellerId);
 
-    try {
-      await patchProfile({
-        ...core,
-        'shop_banner_url': null,
-        'admin_portal_note': null,
-      });
-    } catch (e) {
-      if (e is AuthException) rethrow;
-      final msg = e.toString().toLowerCase();
-      if (msg.contains('admin_portal_note')) {
-        try {
-          await patchProfile({...core, 'shop_banner_url': null});
-        } catch (e2) {
-          if (e2 is AuthException) rethrow;
-          if (e2.toString().toLowerCase().contains('shop_banner_url')) {
-            await patchProfile({...core, 'avatar_url': null});
-          } else {
-            rethrow;
-          }
-        }
-      } else if (msg.contains('shop_banner_url')) {
-        await patchProfile({...core, 'avatar_url': null});
-      } else {
-        rethrow;
-      }
+    final cleared = await _client
+        .from('profiles_portal')
+        .update({
+          'shop_name': null,
+          'shop_description': null,
+          'shop_logo_url': null,
+          'shop_banner_url': null,
+          'shop_border_color': null,
+          'shop_address': null,
+          'shop_lat': null,
+          'shop_lng': null,
+          'shop_location_photos': [],
+          'is_partner_verified': false,
+          'partner_display_order': 0,
+          'admin_portal_note': null,
+          'is_seller': false,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .eq('id', partnerPortalProfileId)
+        .select('id');
+
+    if ((cleared as List).isEmpty) {
+      throw AuthException('No se pudo actualizar profiles_portal (0 filas). Revisa RLS (061).');
     }
   }
 }

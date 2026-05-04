@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/cloudinary_service.dart';
+import '../services/portal_session.dart';
 import '../widgets/portal/eveta_portal_image_picker_sheet.dart';
 import '../widgets/portal/portal_haptics.dart';
 import '../widgets/portal/portal_notice.dart';
@@ -340,8 +341,8 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     setState(() => _isUploading = true);
     var added = 0;
     try {
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user == null) throw Exception('No user logged in');
+      final sellerId = await PortalSession.currentSellerId();
+      if (sellerId == null) throw Exception('No user logged in');
 
       for (var i = 0; i < files.length; i++) {
         if (!mounted) return;
@@ -356,7 +357,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
         final imageUrl = await CloudinaryService.uploadImage(
           bytes: bytes,
           fileName: fileName,
-          folder: 'eveta/portal_store/products/${user.id}',
+          folder: 'eveta/portal_store/products/$sellerId',
         );
 
         if (!mounted) return;
@@ -427,8 +428,8 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user == null) throw Exception('No user logged in');
+      final sellerId = await PortalSession.currentSellerId();
+      if (sellerId == null) throw Exception('No user logged in');
 
       final specRows = _currentSpecLabels
           .map((label) => <String, String>{
@@ -445,7 +446,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
           .toList();
 
       final productData = {
-        'seller_id': user.id,
+        'seller_id': sellerId,
         'category_id': categoryId,
         'name': _nameController.text.trim(),
         'description': _descController.text.trim(),

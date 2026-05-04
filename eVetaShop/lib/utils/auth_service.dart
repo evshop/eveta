@@ -253,32 +253,53 @@ class AuthService {
   /// Evita que cuentas de Portal/Delivery entren a eVetaShop.
   static Future<void> _enforceShopOnlyAccess() async {
     final uid = _client.auth.currentUser?.id;
-    if (uid == null) return;
+    final email = _client.auth.currentUser?.email?.trim().toLowerCase();
+    if (uid == null && (email == null || email.isEmpty)) return;
+
+    bool isPortal = false;
+    bool isDelivery = false;
+
     try {
-      final portal = await _client
-          .from('profiles_portal')
-          .select('id')
-          .eq('auth_user_id', uid)
-          .maybeSingle();
-      if (portal != null) {
-        await _client.auth.signOut();
-        throw AuthException('Esta cuenta es de Portal. Usa tu cuenta de eVetaShop.');
+      final q = _client.from('profiles_portal').select('id');
+      final byUid = uid == null ? null : await q.eq('auth_user_id', uid).maybeSingle();
+      if (byUid != null) {
+        isPortal = true;
+      } else if (email != null && email.isNotEmpty) {
+        final byEmail = await _client
+            .from('profiles_portal')
+            .select('id')
+            .ilike('email', email)
+            .maybeSingle();
+        if (byEmail != null) isPortal = true;
       }
-    } catch (_) {
-      // ignore (tabla puede no existir aún en dev)
+    } on PostgrestException catch (_) {
+      // Tabla/políticas no disponibles en entornos antiguos.
     }
+
     try {
-      final delivery = await _client
-          .from('profiles_delivery')
-          .select('id')
-          .eq('auth_user_id', uid)
-          .maybeSingle();
-      if (delivery != null) {
-        await _client.auth.signOut();
-        throw AuthException('Esta cuenta es de Delivery. Usa tu cuenta de eVetaShop.');
+      final q = _client.from('profiles_delivery').select('id');
+      final byUid = uid == null ? null : await q.eq('auth_user_id', uid).maybeSingle();
+      if (byUid != null) {
+        isDelivery = true;
+      } else if (email != null && email.isNotEmpty) {
+        final byEmail = await _client
+            .from('profiles_delivery')
+            .select('id')
+            .ilike('email', email)
+            .maybeSingle();
+        if (byEmail != null) isDelivery = true;
       }
-    } catch (_) {
-      // ignore
+    } on PostgrestException catch (_) {
+      // Tabla/políticas no disponibles en entornos antiguos.
+    }
+
+    if (isPortal) {
+      await _client.auth.signOut();
+      throw AuthException('Esta cuenta es de Portal. Usa tu cuenta de eVetaShop.');
+    }
+    if (isDelivery) {
+      await _client.auth.signOut();
+      throw AuthException('Esta cuenta es de Delivery. Usa tu cuenta de eVetaShop.');
     }
   }
 

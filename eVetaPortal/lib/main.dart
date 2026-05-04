@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 
 import 'screens/login_screen.dart';
 import 'screens/main_navigation.dart';
+import 'services/portal_auth_gate.dart';
 import 'theme/eveta_shop_theme.dart';
 import 'theme/eveta_theme_controller.dart';
 
@@ -62,7 +63,7 @@ class MyApp extends StatelessWidget {
           themeMode: mode,
           theme: evetaPortalLightTheme,
           darkTheme: evetaPortalDarkTheme,
-          initialRoute: isLoggedIn ? '/home' : '/login',
+          home: _PortalAuthGate(initiallyLoggedIn: isLoggedIn),
           routes: {
             '/login': (context) => const LoginScreen(),
             '/home': (context) => const MainNavigation(),
@@ -80,5 +81,76 @@ class MyApp extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+class _PortalAuthGate extends StatefulWidget {
+  const _PortalAuthGate({required this.initiallyLoggedIn});
+
+  final bool initiallyLoggedIn;
+
+  @override
+  State<_PortalAuthGate> createState() => _PortalAuthGateState();
+}
+
+class _PortalAuthGateState extends State<_PortalAuthGate> {
+  bool _checking = true;
+  bool _allowed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _verifyInitial();
+  }
+
+  Future<void> _verifyInitial() async {
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session == null) {
+      // Si no hay sesión, limpia bandera local y manda a login.
+      if (widget.initiallyLoggedIn) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('isLoggedIn');
+        await prefs.remove('userEmail');
+        await prefs.remove('isAdmin');
+        await prefs.remove('isSeller');
+      }
+      if (!mounted) return;
+      setState(() {
+        _checking = false;
+        _allowed = false;
+      });
+      return;
+    }
+    final gate = await PortalAuthGate.verifyCurrentSession();
+    if (!mounted) return;
+    if (!gate.allowed) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('isLoggedIn');
+      await prefs.remove('userEmail');
+      await prefs.remove('isAdmin');
+      await prefs.remove('isSeller');
+    } else {
+      final prefs = await SharedPreferences.getInstance();
+      final profile = gate.profile ?? const <String, dynamic>{};
+      await prefs.setBool('isLoggedIn', true);
+      await prefs.setBool('isAdmin', profile['is_admin'] == true);
+      await prefs.setBool('isSeller', profile['is_seller'] == true);
+    }
+    if (!mounted) return;
+    setState(() {
+      _checking = false;
+      _allowed = gate.allowed;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_checking) {
+      final scheme = Theme.of(context).colorScheme;
+      return Scaffold(
+        body: Center(child: CircularProgressIndicator(color: scheme.primary)),
+      );
+    }
+    return _allowed ? const MainNavigation() : const LoginScreen();
   }
 }

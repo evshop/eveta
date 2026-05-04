@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../services/portal_auth_gate.dart';
 import '../widgets/portal/portal_haptics.dart';
 import '../widgets/portal/portal_tokens.dart';
 import 'admin_panel_screen.dart';
 import 'dashboard_screen.dart';
+import 'login_screen.dart';
 import 'orders_screen.dart';
 import 'products_screen.dart';
 import 'profile_screen.dart';
@@ -42,15 +44,25 @@ class _MainNavigationState extends State<MainNavigation> {
 
     final user = Supabase.instance.client.auth.currentUser;
     if (user != null) {
-      final profile = await Supabase.instance.client
-          .from('profiles')
-          .select('is_admin')
-          .eq('id', user.id)
-          .maybeSingle();
-      if (profile != null) {
-        resolvedIsAdmin = profile['is_admin'] == true;
-        await prefs.setBool('isAdmin', resolvedIsAdmin);
+      // Gate estricto: si la cuenta es Delivery o no tiene perfil portal activo,
+      // cierra sesión y vuelve al login.
+      final gate = await PortalAuthGate.verifyCurrentSession();
+      if (!gate.allowed) {
+        await prefs.remove('isLoggedIn');
+        await prefs.remove('userEmail');
+        await prefs.remove('isAdmin');
+        await prefs.remove('isSeller');
+        if (!mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
+        return;
       }
+      final profile = gate.profile ?? const <String, dynamic>{};
+      resolvedIsAdmin = profile['is_admin'] == true;
+      await prefs.setBool('isAdmin', resolvedIsAdmin);
+      await prefs.setBool('isSeller', profile['is_seller'] == true);
     }
     if (!mounted) return;
     setState(() {

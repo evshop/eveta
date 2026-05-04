@@ -25,7 +25,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final products = await client.from('products').select('id');
     final categories = await client.from('categories').select('id');
     final orders = await client.from('orders').select('id');
-    final sellers = await client.from('profiles').select('id').eq('is_seller', true);
+    final sellers = await client.from('profiles_portal').select('id').eq('is_seller', true).eq('is_active', true);
     return {
       'Productos': (products as List).length,
       'Categorías': (categories as List).length,

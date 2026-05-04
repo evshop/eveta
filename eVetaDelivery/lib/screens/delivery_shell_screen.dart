@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -11,6 +12,7 @@ import 'package:eveta_delivery/services/delivery_api.dart';
 import 'delivery_login_screen.dart';
 
 const LatLng _kCenter = LatLng(-16.9167, -62.6167);
+const double _kPickupMaxKm = 3.5;
 
 class DeliveryShellScreen extends StatefulWidget {
   const DeliveryShellScreen({super.key});
@@ -25,6 +27,7 @@ class _DeliveryShellScreenState extends State<DeliveryShellScreen> {
   List<Map<String, dynamic>> _mine = [];
   bool _loading = true;
   String? _actionError;
+  LatLng? _driverPos;
 
   int _homePeriod = 0; // 0 = hoy, 1 = mes
 
@@ -44,6 +47,7 @@ class _DeliveryShellScreenState extends State<DeliveryShellScreen> {
   Future<void> _refresh({bool silent = false}) async {
     if (!silent && mounted) setState(() => _loading = true);
     try {
+      await _ensureDriverPosition(silent: silent);
       final pool = await DeliveryApi.fetchPool();
       final mine = await DeliveryApi.fetchMine();
       if (!mounted) return;
@@ -59,6 +63,36 @@ class _DeliveryShellScreenState extends State<DeliveryShellScreen> {
         _loading = false;
         _actionError = '$e';
       });
+    }
+  }
+
+  Future<void> _ensureDriverPosition({bool silent = false}) async {
+    try {
+      final enabled = await Geolocator.isLocationServiceEnabled();
+      if (!enabled) {
+        if (!silent) DeliveryApi.debugLog('GPS desactivado');
+        return;
+      }
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        if (!silent) DeliveryApi.debugLog('Permiso de ubicación denegado');
+        return;
+      }
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
+      if (!mounted) return;
+      setState(() {
+        _driverPos = LatLng(pos.latitude, pos.longitude);
+      });
+    } catch (e) {
+      if (!silent) DeliveryApi.debugLog('No se pudo obtener ubicación: $e');
     }
   }
 
@@ -157,6 +191,7 @@ class _DeliveryShellScreenState extends State<DeliveryShellScreen> {
                   loading: _loading,
                   pool: _pool,
                   mine: _mine,
+                  driverPos: _driverPos,
                   actionError: _actionError,
                   onDismissError: () => setState(() => _actionError = null),
                   onAccept: _accept,
@@ -180,6 +215,14 @@ class _DeliveryShellScreenState extends State<DeliveryShellScreen> {
     final id = o['id']?.toString() ?? '';
     final addr = o['dropoff_address']?.toString() ?? '';
     final total = o['total']?.toString() ?? '';
+    final storeName = o['store_name']?.toString().trim();
+    final storeAddress = o['store_address']?.toString().trim();
+    final storePhotos = _storePhotos(o);
+    final pickup = _pickupPoint(o);
+    final nearKm = _driverPos == null || pickup == null
+        ? null
+        : _distanceKm(_driverPos!, pickup);
+    final canAccept = nearKm == null || nearKm <= _kPickupMaxKm;
     showCupertinoModalPopup<void>(
       context: context,
       builder: (ctx) => _GlassBottomSheet(
@@ -206,14 +249,76 @@ class _DeliveryShellScreenState extends State<DeliveryShellScreen> {
                 'Total Bs $total',
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
               ),
+              if (storeName != null && storeName.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(
+                  'Tienda: $storeName',
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                ),
+                if (storeAddress != null && storeAddress.isNotEmpty)
+                  Text(
+                    storeAddress,
+                    style: TextStyle(
+                      color: CupertinoColors.secondaryLabel.resolveFrom(context),
+                      fontSize: 12.5,
+                    ),
+                  ),
+              ],
+              if (storePhotos.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 70,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: storePhotos.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    itemBuilder: (context, i) {
+                      return ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image.network(
+                          storePhotos[i],
+                          width: 86,
+                          height: 70,
+                          fit: BoxFit.cover,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+              if (nearKm != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Distancia al punto de recojo: ${nearKm.toStringAsFixed(2)} km',
+                  style: TextStyle(
+                    color: canAccept
+                        ? CupertinoColors.activeGreen.resolveFrom(context)
+                        : CupertinoColors.systemOrange.resolveFrom(context),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
               const SizedBox(height: 14),
               CupertinoButton.filled(
-                onPressed: () {
-                  Navigator.of(ctx).pop();
-                  _accept(id);
-                },
-                child: const Text('Aceptar'),
+                onPressed: canAccept
+                    ? () {
+                        Navigator.of(ctx).pop();
+                        _accept(id);
+                      }
+                    : null,
+                child: Text(canAccept ? 'Aceptar' : 'Muy lejos para recoger'),
               ),
+              if (!canAccept) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Acércate a ${_kPickupMaxKm.toStringAsFixed(1)} km o menos para tomar este pedido.',
+                  style: TextStyle(
+                    color: CupertinoColors.secondaryLabel.resolveFrom(context),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
               const SizedBox(height: 6),
               CupertinoButton(
                 onPressed: () => Navigator.of(ctx).pop(),
@@ -226,9 +331,38 @@ class _DeliveryShellScreenState extends State<DeliveryShellScreen> {
     );
   }
 
+  LatLng? _pickupPoint(Map<String, dynamic> order) {
+    final lat = order['pickup_lat'];
+    final lng = order['pickup_lng'];
+    final la = lat is num ? lat.toDouble() : double.tryParse(lat?.toString() ?? '');
+    final ln = lng is num ? lng.toDouble() : double.tryParse(lng?.toString() ?? '');
+    if (la == null || ln == null) return null;
+    return LatLng(la, ln);
+  }
+
+  double _distanceKm(LatLng a, LatLng b) {
+    final d = const Distance();
+    return d.as(LengthUnit.Kilometer, a, b);
+  }
+
+  List<String> _storePhotos(Map<String, dynamic> o) {
+    final raw = o['store_location_photos'];
+    if (raw is List) {
+      return raw
+          .map((e) => e.toString().trim())
+          .where((e) => e.isNotEmpty)
+          .take(3)
+          .toList();
+    }
+    return const [];
+  }
+
   void _showMineSheet(Map<String, dynamic> o) {
     final id = o['id']?.toString() ?? '';
     final st = o['delivery_status']?.toString() ?? '';
+    final storeName = o['store_name']?.toString().trim();
+    final storeAddress = o['store_address']?.toString().trim();
+    final storePhotos = _storePhotos(o);
     showCupertinoModalPopup<void>(
       context: context,
       builder: (ctx) => _GlassBottomSheet(
@@ -242,6 +376,38 @@ class _DeliveryShellScreenState extends State<DeliveryShellScreen> {
                 'Estado: $st',
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
               ),
+              if (storeName != null && storeName.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text('Tienda: $storeName', style: const TextStyle(fontWeight: FontWeight.w700)),
+                if (storeAddress != null && storeAddress.isNotEmpty)
+                  Text(
+                    storeAddress,
+                    style: TextStyle(
+                      color: CupertinoColors.secondaryLabel.resolveFrom(context),
+                      fontSize: 12.5,
+                    ),
+                  ),
+              ],
+              if (storePhotos.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 60,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: storePhotos.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    itemBuilder: (context, i) => ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(
+                        storePhotos[i],
+                        width: 72,
+                        height: 60,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 14),
               if (st == 'driver_assigned')
                 CupertinoButton.filled(
@@ -429,6 +595,7 @@ class _MapsTab extends StatelessWidget {
     required this.loading,
     required this.pool,
     required this.mine,
+    required this.driverPos,
     required this.actionError,
     required this.onDismissError,
     required this.onAccept,
@@ -439,6 +606,7 @@ class _MapsTab extends StatelessWidget {
   final bool loading;
   final List<Map<String, dynamic>> pool;
   final List<Map<String, dynamic>> mine;
+  final LatLng? driverPos;
   final String? actionError;
   final VoidCallback onDismissError;
   final Future<void> Function(String orderId) onAccept;
@@ -452,23 +620,38 @@ class _MapsTab extends StatelessWidget {
 
     final markers = <Marker>[];
     final offers = hasAccepted ? const <Map<String, dynamic>>[] : pool;
+    final nearOffers = <Map<String, dynamic>>[];
+    final farOffers = <Map<String, dynamic>>[];
 
     for (final o in offers) {
-      final lat = o['dropoff_lat'];
-      final lng = o['dropoff_lng'];
-      final la = lat is num ? lat.toDouble() : double.tryParse(lat?.toString() ?? '');
-      final ln = lng is num ? lng.toDouble() : double.tryParse(lng?.toString() ?? '');
-      if (la == null || ln == null) continue;
+      final pickup = _pickupPoint(o);
+      if (pickup == null) continue;
+      if (driverPos == null) {
+        nearOffers.add(o);
+        continue;
+      }
+      final km = _distanceKm(driverPos!, pickup);
+      if (km <= _kPickupMaxKm) {
+        nearOffers.add(o);
+      } else {
+        farOffers.add(o);
+      }
+    }
+
+    for (final o in nearOffers) {
+      final pickup = _pickupPoint(o);
+      if (pickup == null) continue;
       markers.add(
         Marker(
           width: 54,
           height: 54,
-          point: LatLng(la, ln),
+          point: pickup,
           child: GestureDetector(
             onTap: () => onShowOffer(o),
             child: _AvatarMarker(
               accent: CupertinoColors.systemPink,
-              icon: CupertinoIcons.cube_box,
+              imageUrl: _firstOrderImage(o),
+              fallbackIcon: CupertinoIcons.cube_box,
             ),
           ),
         ),
@@ -476,21 +659,22 @@ class _MapsTab extends StatelessWidget {
     }
 
     for (final o in mine) {
-      final lat = o['dropoff_lat'];
-      final lng = o['dropoff_lng'];
-      final la = lat is num ? lat.toDouble() : double.tryParse(lat?.toString() ?? '');
-      final ln = lng is num ? lng.toDouble() : double.tryParse(lng?.toString() ?? '');
-      if (la == null || ln == null) continue;
+      final status = o['delivery_status']?.toString();
+      final point = (status == 'picked_up')
+          ? _dropoffPoint(o)
+          : _pickupPoint(o) ?? _dropoffPoint(o);
+      if (point == null) continue;
       markers.add(
         Marker(
           width: 54,
           height: 54,
-          point: LatLng(la, ln),
+          point: point,
           child: GestureDetector(
             onTap: () => onShowMine(o),
             child: _AvatarMarker(
               accent: CupertinoColors.systemPink,
-              icon: CupertinoIcons.bag_fill,
+              imageUrl: _firstOrderImage(o),
+              fallbackIcon: CupertinoIcons.bag_fill,
             ),
           ),
         ),
@@ -562,7 +746,7 @@ class _MapsTab extends StatelessWidget {
                                 child: Text(
                                   hasAccepted
                                       ? 'Pedido aceptado · mostrando ruta'
-                                      : '${offers.length} pedidos disponibles',
+                                      : '${nearOffers.length} pedidos cerca para recojo',
                                   style: const TextStyle(fontWeight: FontWeight.w700),
                                 ),
                               ),
@@ -578,6 +762,26 @@ class _MapsTab extends StatelessWidget {
                         ),
                       ),
                     ),
+                    if (!hasAccepted && (farOffers.isNotEmpty || driverPos == null))
+                      Positioned(
+                        left: 12,
+                        right: 12,
+                        bottom: 70,
+                        child: _GlassCard(
+                          child: Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Text(
+                              driverPos == null
+                                  ? 'Activa ubicación para filtrar pedidos cercanos al punto de recojo.'
+                                  : 'Hay ${farOffers.length} pedidos fuera de ${_kPickupMaxKm.toStringAsFixed(1)} km.',
+                              style: TextStyle(
+                                color: CupertinoColors.secondaryLabel.resolveFrom(context),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     if (loading && pool.isEmpty && mine.isEmpty)
                       const Positioned.fill(
                         child: Center(child: CupertinoActivityIndicator()),
@@ -628,6 +832,41 @@ class _MapsTab extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String? _firstOrderImage(Map<String, dynamic> o) {
+    final items = o['order_items'];
+    if (items is List && items.isNotEmpty) {
+      for (final item in items) {
+        if (item is Map && item['image_url']?.toString().trim().isNotEmpty == true) {
+          return item['image_url'].toString().trim();
+        }
+      }
+    }
+    return null;
+  }
+
+  LatLng? _pickupPoint(Map<String, dynamic> o) {
+    final lat = o['pickup_lat'];
+    final lng = o['pickup_lng'];
+    final la = lat is num ? lat.toDouble() : double.tryParse(lat?.toString() ?? '');
+    final ln = lng is num ? lng.toDouble() : double.tryParse(lng?.toString() ?? '');
+    if (la == null || ln == null) return null;
+    return LatLng(la, ln);
+  }
+
+  LatLng? _dropoffPoint(Map<String, dynamic> o) {
+    final lat = o['dropoff_lat'];
+    final lng = o['dropoff_lng'];
+    final la = lat is num ? lat.toDouble() : double.tryParse(lat?.toString() ?? '');
+    final ln = lng is num ? lng.toDouble() : double.tryParse(lng?.toString() ?? '');
+    if (la == null || ln == null) return null;
+    return LatLng(la, ln);
+  }
+
+  double _distanceKm(LatLng a, LatLng b) {
+    final d = const Distance();
+    return d.as(LengthUnit.Kilometer, a, b);
   }
 }
 
@@ -792,10 +1031,15 @@ class _GlassCard extends StatelessWidget {
 }
 
 class _AvatarMarker extends StatelessWidget {
-  const _AvatarMarker({required this.accent, required this.icon});
+  const _AvatarMarker({
+    required this.accent,
+    this.imageUrl,
+    required this.fallbackIcon,
+  });
 
   final Color accent;
-  final IconData icon;
+  final String? imageUrl;
+  final IconData fallbackIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -807,9 +1051,18 @@ class _AvatarMarker extends StatelessWidget {
             color: CupertinoColors.systemBackground.resolveFrom(context).withAlpha(210),
             border: Border.all(color: accent.withAlpha(140), width: 1),
           ),
-          child: Center(
-            child: Icon(icon, color: accent, size: 22),
-          ),
+          child: imageUrl != null && imageUrl!.isNotEmpty
+              ? ClipOval(
+                  child: Image.network(
+                    imageUrl!,
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                    height: double.infinity,
+                  ),
+                )
+              : Center(
+                  child: Icon(fallbackIcon, color: accent, size: 22),
+                ),
         ),
       ),
     );

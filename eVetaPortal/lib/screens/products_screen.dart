@@ -4,6 +4,7 @@ import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../services/portal_session.dart';
 import '../widgets/portal/portal_empty_state.dart';
 import '../widgets/portal/portal_haptics.dart';
 import '../widgets/portal/portal_tokens.dart';
@@ -32,8 +33,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
   Future<void> _fetchProducts() async {
     try {
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user == null) return;
+      final sellerId = await PortalSession.currentSellerId();
+      if (sellerId == null) return;
 
       final response = await Supabase.instance.client
           .from('products')
@@ -41,7 +42,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
             'id, name, price, stock, images, category_id, description, unit, '
             'tags, specs_json, is_active, is_featured, event_ticket_type_id',
           )
-          .eq('seller_id', user.id)
+          .eq('seller_id', sellerId)
           .order('created_at', ascending: false);
 
       setState(() {

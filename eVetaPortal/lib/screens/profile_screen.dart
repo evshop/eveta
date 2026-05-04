@@ -38,9 +38,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         });
 
         final response = await Supabase.instance.client
-            .from('profiles')
+            .from('profiles_portal')
             .select('full_name, shop_name, shop_logo_url')
-            .eq('id', user.id)
+            .eq('auth_user_id', user.id)
             .maybeSingle();
 
         if (response != null) {

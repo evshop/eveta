@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../services/portal_session.dart';
 import '../widgets/portal/portal_empty_state.dart';
 import '../widgets/portal/portal_haptics.dart';
 import '../widgets/portal/portal_ios_segmented_control.dart';
@@ -29,13 +30,13 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   Future<void> _fetchOrders() async {
     try {
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user == null) return;
+      final sellerId = await PortalSession.currentSellerId();
+      if (sellerId == null) return;
 
       final response = await Supabase.instance.client
           .from('order_items')
           .select('*, orders(status, created_at, buyer_id), products(name, images)')
-          .eq('seller_id', user.id)
+          .eq('seller_id', sellerId)
           .order('created_at', ascending: false);
 
       if (!mounted) return;
