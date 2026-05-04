@@ -7,6 +7,7 @@ import 'package:eveta/utils/wallet_resume_prefs.dart';
 import 'package:eveta/utils/wallet_service.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:gal/gal.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -30,6 +31,9 @@ class TopupQrScreen extends StatefulWidget {
 }
 
 class _TopupQrScreenState extends State<TopupQrScreen> {
+  final GlobalKey _qrCaptureKey = GlobalKey();
+  String? _lastPrecachedTopupIdForLogo;
+
   bool _creating = true;
   String? _error;
 
@@ -175,22 +179,55 @@ class _TopupQrScreenState extends State<TopupQrScreen> {
     });
   }
 
-  Future<Uint8List?> _buildQrPngBytes(String raw) async {
-    final painter = QrPainter(
-      data: raw,
-      version: QrVersions.auto,
-      gapless: true,
-      color: const Color(0xFF000000),
-      emptyColor: const Color(0xFFFFFFFF),
-    );
-    final ByteData? pngData = await painter.toImageData(900, format: ui.ImageByteFormat.png);
-    if (pngData == null) return null;
-    return pngData.buffer.asUint8List();
+  /// Nombre de archivo para galería (sin extensión; Gal la añade).
+  static String _qrGalleryStem(String referenceCode) {
+    var safe = referenceCode.replaceAll(RegExp(r'[^\w\-]'), '_');
+    if (safe.isEmpty) safe = 'recarga';
+    if (safe.length > 100) safe = safe.substring(0, 100);
+    return 'eveta_qr_$safe';
+  }
+
+  /// True hasta que exista texto QR escaneable (no aplica si hay error o expiró).
+  bool _locksNavigation({
+    required String? raw,
+    required bool expired,
+  }) {
+    if (_error != null) return false;
+    if (expired) return false;
+    final ok = raw != null && raw.isNotEmpty;
+    return !ok;
+  }
+
+  /// Misma imagen que en pantalla (incluye padding silencioso del QrImageView y logo).
+  Future<Uint8List?> _captureQrPngBytes() async {
+    for (var attempt = 0; attempt < 12; attempt++) {
+      if (!mounted) return null;
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return null;
+      final ctx = _qrCaptureKey.currentContext;
+      if (ctx == null || !ctx.mounted) {
+        await Future<void>.delayed(const Duration(milliseconds: 24));
+        continue;
+      }
+      final ro = ctx.findRenderObject();
+      if (ro is! RenderRepaintBoundary || !ro.hasSize || ro.size.shortestSide < 1) {
+        await Future<void>.delayed(const Duration(milliseconds: 24));
+        continue;
+      }
+      final ui.Image image = await ro.toImage(pixelRatio: 3);
+      try {
+        final ByteData? png = await image.toByteData(format: ui.ImageByteFormat.png);
+        if (png != null) return png.buffer.asUint8List();
+      } finally {
+        image.dispose();
+      }
+    }
+    return null;
   }
 
   Future<void> _shareQrPng(Uint8List bytes, String code) async {
     final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/eveta_topup_$code.png');
+    final file = File('${dir.path}/${_qrGalleryStem(code)}.png');
     await file.writeAsBytes(bytes, flush: true);
     await Share.shareXFiles([XFile(file.path)], text: 'QR de recarga $code');
   }
@@ -204,9 +241,9 @@ class _TopupQrScreenState extends State<TopupQrScreen> {
 
     setState(() => _savingQr = true);
     try {
-      final bytes = await _buildQrPngBytes(raw);
+      final bytes = await _captureQrPngBytes();
       if (bytes == null) {
-        _snack('No se pudo generar la imagen del QR.', isError: true);
+        _snack('No se pudo capturar el QR. Espera un segundo e inténtalo de nuevo.', isError: true);
         return;
       }
 
@@ -224,9 +261,15 @@ class _TopupQrScreenState extends State<TopupQrScreen> {
             return;
           }
         }
-        final name = 'eveta_topup_${code}_${DateTime.now().millisecondsSinceEpoch}';
-        await Gal.putImageBytes(bytes, name: name);
-        if (mounted) _snack('QR guardado en la galería (Fotos).');
+        final name = _qrGalleryStem(code);
+        await Gal.putImageBytes(
+          bytes,
+          album: 'EVETA QR',
+          name: name,
+        );
+        if (mounted) {
+          _snack('QR guardado en Fotos, álbum EVETA QR ($name).');
+        }
       } on GalException catch (e) {
         if (mounted) {
           _snack('No se pudo guardar en la galería (${e.type}). Usa Compartir.', isError: true);
@@ -247,9 +290,9 @@ class _TopupQrScreenState extends State<TopupQrScreen> {
     final raw = WalletService.rawQrTextFromTopup(topup);
     if (raw == null || raw.isEmpty) return;
     final code = topup['reference_code']?.toString() ?? 'topup';
-    final bytes = await _buildQrPngBytes(raw);
+    final bytes = await _captureQrPngBytes();
     if (bytes == null) {
-      _snack('No se pudo generar la imagen del QR.', isError: true);
+      _snack('No se pudo capturar el QR. Espera un segundo e inténtalo de nuevo.', isError: true);
       return;
     }
     await _shareQrPng(bytes, code);
@@ -311,12 +354,59 @@ class _TopupQrScreenState extends State<TopupQrScreen> {
         ),
       );
     }
-    return QrImageView(
-      data: q,
-      size: 260,
-      backgroundColor: Colors.white,
-      embeddedImage: const AssetImage('assets/images/ic_app_icon.png'),
-      embeddedImageStyle: const QrEmbeddedImageStyle(size: Size(56, 56)),
+    return RepaintBoundary(
+      key: _qrCaptureKey,
+      child: SizedBox(
+        width: 260,
+        height: 260,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            QrImageView(
+              data: q,
+              size: 260,
+              padding: const EdgeInsets.all(10),
+              backgroundColor: Colors.white,
+              gapless: true,
+              eyeStyle: const QrEyeStyle(
+                eyeShape: QrEyeShape.square,
+                color: Color(0xFF000000),
+              ),
+              dataModuleStyle: const QrDataModuleStyle(
+                dataModuleShape: QrDataModuleShape.square,
+                color: Color(0xFF000000),
+              ),
+            ),
+            Material(
+              color: Colors.transparent,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.08),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.asset(
+                    'assets/images/ic_app_icon.png',
+                    width: 48,
+                    height: 48,
+                    fit: BoxFit.cover,
+                    gaplessPlayback: true,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -356,26 +446,46 @@ class _TopupQrScreenState extends State<TopupQrScreen> {
 
     final cd = topup != null && !expired ? _countdownLabel(topup) : null;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('QR de recarga'),
-        actions: [
-          IconButton(
-            tooltip: 'Actualizar',
-            onPressed: () async {
-              final id = topup?['id']?.toString();
-              if (id == null || id.isEmpty) return;
-              final fresh = await WalletService.getTopupById(id);
-              if (!mounted || fresh == null) return;
-              setState(() => _topup = fresh);
-            },
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
+    final locksNav = _locksNavigation(raw: raw, expired: expired);
+    if (hasQr && !expired) {
+      final tid = topup?['id']?.toString();
+      if (tid != null && tid != _lastPrecachedTopupIdForLogo) {
+        _lastPrecachedTopupIdForLogo = tid;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          precacheImage(const AssetImage('assets/images/ic_app_icon.png'), context);
+        });
+      }
+    }
+
+    return PopScope(
+      canPop: !locksNav,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && locksNav) {
+          _snack('Espera a que aparezca el código QR.');
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('QR de recarga'),
+          automaticallyImplyLeading: !locksNav,
+          actions: [
+            IconButton(
+              tooltip: 'Actualizar',
+              onPressed: () async {
+                final id = topup?['id']?.toString();
+                if (id == null || id.isEmpty) return;
+                final fresh = await WalletService.getTopupById(id);
+                if (!mounted || fresh == null) return;
+                setState(() => _topup = fresh);
+              },
+              icon: const Icon(Icons.refresh_rounded),
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: Column(
+            children: [
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -601,6 +711,7 @@ class _TopupQrScreenState extends State<TopupQrScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 }

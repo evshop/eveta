@@ -20,7 +20,6 @@ class _WalletScreenState extends State<WalletScreen> {
   bool _showWithdraw = false;
   double _balance = 0;
   List<Map<String, dynamic>> _topups = const [];
-  Set<String> _resumeIds = {};
   Timer? _historyTick;
 
   @override
@@ -46,11 +45,10 @@ class _WalletScreenState extends State<WalletScreen> {
       ]);
       if (!mounted) return;
       final list = List<Map<String, dynamic>>.from(values[1] as List);
-      final resume = await WalletResumePrefs.pruneAndGetValid(list);
+      await WalletResumePrefs.pruneAndGetValid(list);
       setState(() {
         _balance = values[0] as double;
         _topups = list;
-        _resumeIds = resume;
       });
       _syncHistoryCountdownTimer();
     } finally {
@@ -64,20 +62,15 @@ class _WalletScreenState extends State<WalletScreen> {
 
   bool _includeTopupInHistory(Map<String, dynamic> t) {
     final status = t['status']?.toString() ?? '';
-    final id = t['id']?.toString() ?? '';
 
     if (status == 'approved' || status == 'rejected') return true;
     if (status == 'expired') return false;
 
-    if (WalletService.isTopupExpired(t) &&
-        status == 'pending_proof' &&
-        true) {
-      return false;
+    if (status == 'pending_proof' || status == 'pending_review') {
+      if (WalletService.isTopupExpired(t)) return false;
+      return true;
     }
 
-    if (status == 'pending_proof') {
-      return _resumeIds.contains(id);
-    }
     return false;
   }
 
@@ -85,8 +78,7 @@ class _WalletScreenState extends State<WalletScreen> {
     final visible = _visibleTopups();
     final needs = visible.any((t) {
       final st = t['status']?.toString() ?? '';
-      final id = t['id']?.toString() ?? '';
-      if (st != 'pending_proof' || !_resumeIds.contains(id)) return false;
+      if (st != 'pending_proof') return false;
       return !WalletService.isTopupExpired(t);
     });
     if (needs) {
@@ -221,7 +213,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            'Método de verificación: se agrega un monto pequeño en centavos para identificar tu pago. Si sales sin pagar, la recarga aparecerá aquí con cuenta regresiva.',
+                            'Método de verificación: se agrega un monto en centavos para identificar tu pago. Las recargas pendientes aparecen en el historial hasta que venzan o se acrediten.',
                             style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant, height: 1.35),
                           ),
                         ],
@@ -278,7 +270,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     )
                   else if (_visibleTopups().isEmpty)
                     Text(
-                      'No hay recargas para mostrar. Las pendientes solo aparecen si saliste de la pantalla del QR sin pagar, o si ya enviaste comprobante / fueron procesadas.',
+                      'No hay recargas para mostrar (revisa conexión o que existan movimientos en tu cuenta).',
                       style: TextStyle(color: scheme.onSurfaceVariant, height: 1.35),
                     )
                   else
@@ -290,9 +282,7 @@ class _WalletScreenState extends State<WalletScreen> {
                         _ => Colors.orange,
                       };
                       final id = t['id'].toString();
-                      final showCd = status == 'pending_proof' &&
-                          _resumeIds.contains(id) &&
-                          !WalletService.isTopupExpired(t);
+                      final showCd = status == 'pending_proof' && !WalletService.isTopupExpired(t);
                       return Card(
                         child: ListTile(
                           title: Text(
@@ -317,7 +307,7 @@ class _WalletScreenState extends State<WalletScreen> {
                             ],
                           ),
                           trailing: Icon(Icons.circle, size: 12, color: color),
-                          onTap: (status == 'approved' || status == 'rejected')
+                          onTap: (status == 'approved' || status == 'rejected' || status == 'expired')
                               ? null
                               : () => _openTopupFromHistory(id),
                         ),
@@ -332,7 +322,7 @@ class _WalletScreenState extends State<WalletScreen> {
   String _statusLabel(String status) {
     switch (status) {
       case 'pending_proof':
-        return 'Pendiente de comprobante';
+        return 'Pendiente de pago';
       case 'pending_review':
         return 'Pendiente de aprobación admin';
       case 'approved':
