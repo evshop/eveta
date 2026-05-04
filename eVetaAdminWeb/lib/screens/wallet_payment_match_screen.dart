@@ -96,7 +96,10 @@ class _WalletPaymentMatchScreenState extends State<WalletPaymentMatchScreen> {
       final em = p['email']?.toString().trim();
       if (em != null && em.isNotEmpty) return em;
     }
-    return topup['user_id']?.toString() ?? '—';
+    final uid = topup['user_id']?.toString().trim() ?? '';
+    if (uid.isEmpty) return '—';
+    if (uid.length > 14) return '${uid.substring(0, 8)}…';
+    return 'Usuario $uid';
   }
 
   Future<void> _runMatch(String eventId) async {
@@ -171,8 +174,9 @@ class _WalletPaymentMatchScreenState extends State<WalletPaymentMatchScreen> {
               ],
             ),
             Text(
-              'Misma lógica que el webhook y el script 046: notificación <24 h, petición creada <24 h, no vencida, monto exacto. '
-              'Ejecutar “Conciliar” llama al RPC del servidor (requiere aplicar 047_admin_retry_match_bank_event.sql).',
+              'Comparación en servidor (046): round(detected_amount,2) del evento Tasker = round(amount,2) de la petición en eVetaShop (incluye centavos de verificación). '
+              'Además: notificación reciente (<24 h), petición creada <24 h, sin vencer, estados pending_review / pending_proof. '
+              '“Conciliar” re-ejecuta el RPC (script 047).',
               style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12, height: 1.35),
             ),
             const SizedBox(height: 14),

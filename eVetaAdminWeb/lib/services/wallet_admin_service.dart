@@ -83,12 +83,11 @@ class WalletAdminService {
   }) async {
     final since = DateTime.now().toUtc().subtract(const Duration(hours: 24)).toIso8601String();
     final nowIso = DateTime.now().toUtc().toIso8601String();
+    // Sin embed a profiles: PostgREST exige FK explícita wallet_topups.user_id → profiles;
+    // si no existe en tu DB, `profiles:user_id(...)` falla con PGRST200.
     final rows = await _client
         .from('wallet_topups')
-        .select(
-          'id, user_id, reference_code, amount, status, created_at, expires_at, '
-          'profiles:user_id(full_name, username, email)',
-        )
+        .select('id, user_id, reference_code, amount, status, created_at, expires_at')
         .inFilter('status', ['pending_review', 'pending_proof'])
         .gte('created_at', since)
         .gt('expires_at', nowIso)
