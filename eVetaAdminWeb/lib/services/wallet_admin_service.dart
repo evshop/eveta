@@ -96,6 +96,33 @@ class WalletAdminService {
     return List<Map<String, dynamic>>.from(rows as List);
   }
 
+  /// Recargas aprobadas por flujo banco (hint con bank_match_status = confirmed), recientes.
+  static Future<List<Map<String, dynamic>>> fetchRecentlyAutoBankApprovedTopups({
+    int hours = 72,
+    int fetchCap = 80,
+    int limit = 25,
+  }) async {
+    final since = DateTime.now().toUtc().subtract(Duration(hours: hours)).toIso8601String();
+    final rows = await _client
+        .from('wallet_topups')
+        .select(
+          'id, user_id, reference_code, amount, requested_amount, verification_delta, '
+          'approved_at, reconciliation_hint',
+        )
+        .eq('status', 'approved')
+        .gte('approved_at', since)
+        .order('approved_at', ascending: false)
+        .limit(fetchCap);
+    final list = List<Map<String, dynamic>>.from(rows as List);
+    bool bankAuto(Map<String, dynamic> t) {
+      final h = t['reconciliation_hint'];
+      if (h is! Map) return false;
+      return h['bank_match_status']?.toString() == 'confirmed';
+    }
+
+    return list.where(bankAuto).take(limit).toList();
+  }
+
   /// Re-ejecuta match_wallet_topups_with_bank_event (046) para un evento; requiere script 047 en Supabase.
   static Future<List<Map<String, dynamic>>> adminRetryMatchBankEvent(String eventId) async {
     final rows = await _client.rpc(

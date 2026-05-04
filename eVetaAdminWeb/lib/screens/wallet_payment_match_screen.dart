@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../services/wallet_admin_service.dart';
@@ -11,10 +13,24 @@ class WalletPaymentMatchScreen extends StatefulWidget {
   State<WalletPaymentMatchScreen> createState() => _WalletPaymentMatchScreenState();
 }
 
+class _ConciliarScrollBehavior extends MaterialScrollBehavior {
+  const _ConciliarScrollBehavior();
+
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.stylus,
+        PointerDeviceKind.trackpad,
+      };
+}
+
 class _WalletPaymentMatchScreenState extends State<WalletPaymentMatchScreen> {
   late Future<_MatchData> _future;
   Map<String, dynamic>? _selected;
   final Set<String> _busyEventIds = {};
+  final ScrollController _pendingScroll = ScrollController();
+  final ScrollController _recentScroll = ScrollController();
 
   @override
   void initState() {
@@ -22,10 +38,18 @@ class _WalletPaymentMatchScreenState extends State<WalletPaymentMatchScreen> {
     _future = _load();
   }
 
+  @override
+  void dispose() {
+    _pendingScroll.dispose();
+    _recentScroll.dispose();
+    super.dispose();
+  }
+
   Future<_MatchData> _load() async {
     final topups = await WalletAdminService.fetchPendingTopupsForMatch();
-    final events = await WalletAdminService.fetchBankIncomingEvents(limit: 120);
-    return _MatchData(topups: topups, events: events);
+    final recent = await WalletAdminService.fetchRecentlyAutoBankApprovedTopups();
+    final events = await WalletAdminService.fetchBankIncomingEvents(limit: 200);
+    return _MatchData(topups: topups, recentBankApproved: recent, events: events);
   }
 
   Future<void> _reload() async {
@@ -71,6 +95,16 @@ class _WalletPaymentMatchScreenState extends State<WalletPaymentMatchScreen> {
       }
     }
     return best;
+  }
+
+  Map<String, dynamic>? _eventForMatchedTopup(String topupId, List<Map<String, dynamic>> events) {
+    for (final e in events) {
+      if (e['matched_topup_id']?.toString() == topupId &&
+          e['match_status']?.toString() == 'matched_confirmed') {
+        return e;
+      }
+    }
+    return null;
   }
 
   List<Map<String, dynamic>> _eventsSameAmount(
@@ -151,6 +185,7 @@ class _WalletPaymentMatchScreenState extends State<WalletPaymentMatchScreen> {
         }
         final data = snap.data!;
         final topups = data.topups;
+        final recentOk = data.recentBankApproved;
         final events = data.events;
         final selected = _selected;
         final selAmount = selected == null ? null : _roundAmount(selected['amount']);
@@ -180,64 +215,182 @@ class _WalletPaymentMatchScreenState extends State<WalletPaymentMatchScreen> {
               style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12, height: 1.35),
             ),
             const SizedBox(height: 14),
+            Text(
+              'Últimas acreditadas automáticamente (banco)',
+              style: TextStyle(fontWeight: FontWeight.w800, color: scheme.onSurface),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Petición aprobada con hint de conciliación banco; se compara monto de la petición con el detectado en la notificación.',
+              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 11, height: 1.3),
+            ),
+            const SizedBox(height: 8),
+            if (recentOk.isEmpty)
+              Text(
+                'Ninguna reciente con marca de banco en reconciliation_hint.',
+                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+              )
+            else
+              SizedBox(
+                height: 132,
+                child: ScrollConfiguration(
+                  behavior: const _ConciliarScrollBehavior(),
+                  child: Scrollbar(
+                    controller: _recentScroll,
+                    thumbVisibility: kIsWeb,
+                    notificationPredicate: (n) => n.metrics.axis == Axis.horizontal,
+                    child: ListView.separated(
+                      controller: _recentScroll,
+                      primary: false,
+                      scrollDirection: Axis.horizontal,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      itemCount: recentOk.length,
+                      separatorBuilder: (_, _) => const SizedBox(width: 8),
+                      itemBuilder: (ctx, i) {
+                        final t = recentOk[i];
+                        final tid = t['id'].toString();
+                        final ev = _eventForMatchedTopup(tid, events);
+                        final topAmt = _roundAmount(t['amount']);
+                        final detAmt = ev == null ? null : _roundAmount(ev['detected_amount']);
+                        final ok = topAmt != null && detAmt != null && topAmt == detAmt;
+                        return SizedBox(
+                          width: 236,
+                          child: Material(
+                            color: scheme.primaryContainer.withValues(alpha: 0.35),
+                            borderRadius: BorderRadius.circular(12),
+                            child: Padding(
+                              padding: const EdgeInsets.all(10),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(Icons.check_circle_rounded, size: 18, color: scheme.primary),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          t['reference_code']?.toString() ?? '—',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w900,
+                                            color: scheme.onSurface,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const Spacer(),
+                                  Text(
+                                    'Petición ${_fmtMoney(topAmt)}',
+                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: scheme.onSurface),
+                                  ),
+                                  if (ev != null)
+                                    Text(
+                                      'Notif. ${_fmtMoney(detAmt)}',
+                                      style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+                                    ),
+                                  Text(
+                                    ev == null
+                                        ? 'Evento no listado (recarga lista de notif.)'
+                                        : (ok ? 'Montos coinciden ✓' : 'Revisar montos (≠)'),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: ok ? scheme.primary : scheme.error,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Aprobada: ${t['approved_at'] ?? '—'}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(fontSize: 10, color: scheme.onSurfaceVariant),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 18),
             Text('Peticiones pendientes', style: TextStyle(fontWeight: FontWeight.w800, color: scheme.onSurface)),
+            const SizedBox(height: 4),
+            Text(
+              'Arrastra con el ratón o desliza: el carril es horizontal.',
+              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 11),
+            ),
             const SizedBox(height: 8),
             if (topups.isEmpty)
               Text('No hay recargas pendientes en ventana 24 h.', style: TextStyle(color: scheme.onSurfaceVariant))
             else
               SizedBox(
                 height: 120,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: topups.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 8),
-                  itemBuilder: (ctx, i) {
-                    final t = topups[i];
-                    final id = t['id'].toString();
-                    final sel = selected != null && selected['id'].toString() == id;
-                    final amt = _roundAmount(t['amount']);
-                    return SizedBox(
-                      width: 200,
-                      child: Material(
-                        color: sel ? scheme.primaryContainer : scheme.surfaceContainerHigh,
-                        borderRadius: BorderRadius.circular(12),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(12),
-                          onTap: () => setState(() => _selected = Map<String, dynamic>.from(t)),
-                          child: Padding(
-                            padding: const EdgeInsets.all(10),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  t['reference_code']?.toString() ?? '—',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w900,
-                                    color: sel ? scheme.onPrimaryContainer : scheme.onSurface,
-                                  ),
+                child: ScrollConfiguration(
+                  behavior: const _ConciliarScrollBehavior(),
+                  child: Scrollbar(
+                    controller: _pendingScroll,
+                    thumbVisibility: kIsWeb,
+                    notificationPredicate: (n) => n.metrics.axis == Axis.horizontal,
+                    child: ListView.separated(
+                      controller: _pendingScroll,
+                      primary: false,
+                      scrollDirection: Axis.horizontal,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      itemCount: topups.length,
+                      separatorBuilder: (_, _) => const SizedBox(width: 8),
+                      itemBuilder: (ctx, i) {
+                        final t = topups[i];
+                        final id = t['id'].toString();
+                        final sel = selected != null && selected['id'].toString() == id;
+                        final amt = _roundAmount(t['amount']);
+                        return SizedBox(
+                          width: 200,
+                          child: Material(
+                            color: sel ? scheme.primaryContainer : scheme.surfaceContainerHigh,
+                            borderRadius: BorderRadius.circular(12),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: () => setState(() => _selected = Map<String, dynamic>.from(t)),
+                              child: Padding(
+                                padding: const EdgeInsets.all(10),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      t['reference_code']?.toString() ?? '—',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w900,
+                                        color: sel ? scheme.onPrimaryContainer : scheme.onSurface,
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    Text(
+                                      _fmtMoney(amt),
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w800,
+                                        color: sel ? scheme.onPrimaryContainer : scheme.primary,
+                                      ),
+                                    ),
+                                    Text(
+                                      t['status']?.toString() ?? '',
+                                      style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+                                    ),
+                                  ],
                                 ),
-                                const Spacer(),
-                                Text(
-                                  _fmtMoney(amt),
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w800,
-                                    color: sel ? scheme.onPrimaryContainer : scheme.primary,
-                                  ),
-                                ),
-                                Text(
-                                  t['status']?.toString() ?? '',
-                                  style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
-                                ),
-                              ],
+                              ),
                             ),
                           ),
-                        ),
-                      ),
-                    );
-                  },
+                        );
+                      },
+                    ),
+                  ),
                 ),
               ),
             const SizedBox(height: 16),
@@ -394,8 +547,13 @@ class _WalletPaymentMatchScreenState extends State<WalletPaymentMatchScreen> {
 }
 
 class _MatchData {
-  _MatchData({required this.topups, required this.events});
+  _MatchData({
+    required this.topups,
+    required this.recentBankApproved,
+    required this.events,
+  });
 
   final List<Map<String, dynamic>> topups;
+  final List<Map<String, dynamic>> recentBankApproved;
   final List<Map<String, dynamic>> events;
 }
