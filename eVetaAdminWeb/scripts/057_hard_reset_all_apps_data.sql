@@ -6,7 +6,9 @@
 -- - Portal/Admin: profiles_portal
 -- - Delivery: profiles_delivery
 -- - Catálogo/pedidos: products, order_items, orders
--- - Opcional: auth.users (comentado; usar solo si quieres borrar logins también)
+-- - Authentication: auth.users (todas las cuentas de login; luego créalas de nuevo en Dashboard)
+--
+-- Si quieres conservar usuarios de Auth, comenta el paso 3) (delete auth.users).
 --
 -- Importante:
 -- - NO elimina estructura (tablas, funciones, policies).
@@ -25,18 +27,49 @@ truncate table public.profiles_portal restart identity cascade;
 truncate table public.profiles_delivery restart identity cascade;
 truncate table public.profiles restart identity cascade;
 
--- 3) Si también quieres borrar TODAS las cuentas de login de Supabase Auth,
--- descomenta este bloque (dejar comentado por defecto para evitar lockout).
---
--- do $$
--- begin
---   delete from auth.users;
--- end $$;
+-- 2b) Storage: filas en storage.objects suelen tener FK a auth.users (owner / owner_id).
+--     Sin esto, DELETE FROM auth.users falla y en el dashboard siguen todos los usuarios
+--     (email y Google OAuth siguen en auth.users + auth.identities).
+do $storage_unlock$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'storage'
+      and table_name = 'objects'
+      and column_name = 'owner_id'
+  ) then
+    execute 'update storage.objects set owner_id = null where owner_id is not null';
+  end if;
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'storage'
+      and table_name = 'objects'
+      and column_name = 'owner'
+  ) then
+    execute 'update storage.objects set owner = null where owner is not null';
+  end if;
+end
+$storage_unlock$;
+
+-- 3) Borrar todas las cuentas de Supabase Auth (email, Google, etc.).
+--    Revisa en el panel "Messages" del SQL Editor la línea NOTICE con filas borradas.
+do $wipe_auth$
+declare
+  n bigint;
+begin
+  delete from auth.users;
+  get diagnostics n = row_count;
+  raise notice '057: filas borradas en auth.users = %', n;
+end
+$wipe_auth$;
 
 commit;
 
 -- Verificación rápida
 select
+  (select count(*) from auth.users) as auth_users_rows,
   (select count(*) from public.profiles) as profiles_rows,
   (select count(*) from public.profiles_portal) as profiles_portal_rows,
   (select count(*) from public.profiles_delivery) as profiles_delivery_rows,
