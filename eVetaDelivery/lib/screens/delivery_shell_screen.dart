@@ -2,13 +2,15 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:eveta_delivery/mapbox_env.dart';
 import 'package:eveta_delivery/services/delivery_api.dart';
+import 'package:eveta_delivery/services/mapbox_directions.dart';
+import 'package:eveta_delivery/widgets/delivery_offer_sheet.dart';
 import 'delivery_login_screen.dart';
 
 const LatLng _kCenter = LatLng(-16.9167, -62.6167);
@@ -28,6 +30,9 @@ class _DeliveryShellScreenState extends State<DeliveryShellScreen> {
   bool _loading = true;
   String? _actionError;
   LatLng? _driverPos;
+  final MapController _mapController = MapController();
+  List<LatLng>? _offerRoutePoints;
+  List<LatLng>? _activeOrderRoute;
 
   int _homePeriod = 0; // 0 = hoy, 1 = mes
 
@@ -41,6 +46,7 @@ class _DeliveryShellScreenState extends State<DeliveryShellScreen> {
   @override
   void dispose() {
     _poll?.cancel();
+    _mapController.dispose();
     super.dispose();
   }
 
@@ -50,13 +56,38 @@ class _DeliveryShellScreenState extends State<DeliveryShellScreen> {
       await _ensureDriverPosition(silent: silent);
       final pool = await DeliveryApi.fetchPool();
       final mine = await DeliveryApi.fetchMine();
+
+      List<LatLng>? activeRoute;
+      if (mine.isNotEmpty) {
+        final o = mine.first;
+        final pu = _pickupPoint(o);
+        final dr = _dropoffPoint(o);
+        if (pu != null && dr != null) {
+          activeRoute = await MapboxDirections.fetchDrivingRoute(pu, dr);
+        }
+      }
+
       if (!mounted) return;
       setState(() {
         _pool = pool;
         _mine = mine;
         _loading = false;
         _actionError = null;
+        _activeOrderRoute = activeRoute;
       });
+
+      final fitPts = activeRoute;
+      if (fitPts != null && fitPts.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _mapController.fitCamera(
+            CameraFit.coordinates(
+              coordinates: fitPts,
+              padding: const EdgeInsets.fromLTRB(36, 120, 36, 140),
+            ),
+          );
+        });
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -97,10 +128,7 @@ class _DeliveryShellScreenState extends State<DeliveryShellScreen> {
   }
 
   Future<void> _signOut() async {
-    final offlineDemo = (dotenv.env['DELIVERY_OFFLINE_DEMO'] ?? '').toLowerCase() == 'true';
-    if (!offlineDemo) {
-      await Supabase.instance.client.auth.signOut();
-    }
+    await Supabase.instance.client.auth.signOut();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       CupertinoPageRoute<void>(builder: (_) => const DeliveryLoginScreen()),
@@ -188,6 +216,8 @@ class _DeliveryShellScreenState extends State<DeliveryShellScreen> {
                 );
               case 1:
                 return _MapsTab(
+                  mapController: _mapController,
+                  routePolyline: _offerRoutePoints ?? _activeOrderRoute,
                   loading: _loading,
                   pool: _pool,
                   mine: _mine,
@@ -197,11 +227,15 @@ class _DeliveryShellScreenState extends State<DeliveryShellScreen> {
                   onAccept: _accept,
                   onShowMine: _showMineSheet,
                   onShowOffer: _showOfferSheet,
+                  onOpenChatMine: () => _showChatComingSoon(context),
                 );
               case 2:
                 return const _ChatsTab();
               case 3:
-                return _SettingsTab(onSignOut: _signOut);
+                return _SettingsTab(
+                  onSignOut: _signOut,
+                  onOnlineChanged: () => _refresh(silent: true),
+                );
               default:
                 return const SizedBox.shrink();
             }
@@ -211,129 +245,112 @@ class _DeliveryShellScreenState extends State<DeliveryShellScreen> {
     );
   }
 
-  void _showOfferSheet(Map<String, dynamic> o) {
+  Future<void> _showOfferSheet(Map<String, dynamic> o) async {
     final id = o['id']?.toString() ?? '';
-    final addr = o['dropoff_address']?.toString() ?? '';
-    final total = o['total']?.toString() ?? '';
-    final storeName = o['store_name']?.toString().trim();
-    final storeAddress = o['store_address']?.toString().trim();
-    final storePhotos = _storePhotos(o);
     final pickup = _pickupPoint(o);
+    final drop = _dropoffPoint(o);
     final nearKm = _driverPos == null || pickup == null
         ? null
         : _distanceKm(_driverPos!, pickup);
     final canAccept = nearKm == null || nearKm <= _kPickupMaxKm;
-    showCupertinoModalPopup<void>(
-      context: context,
-      builder: (ctx) => _GlassBottomSheet(
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Pedido',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                addr,
-                style: TextStyle(
-                  color: CupertinoColors.secondaryLabel.resolveFrom(context),
-                  fontSize: 14,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'Total Bs $total',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-              ),
-              if (storeName != null && storeName.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                Text(
-                  'Tienda: $storeName',
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                ),
-                if (storeAddress != null && storeAddress.isNotEmpty)
-                  Text(
-                    storeAddress,
-                    style: TextStyle(
-                      color: CupertinoColors.secondaryLabel.resolveFrom(context),
-                      fontSize: 12.5,
-                    ),
-                  ),
-              ],
-              if (storePhotos.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                SizedBox(
-                  height: 70,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: storePhotos.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 8),
-                    itemBuilder: (context, i) {
-                      return ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: Image.network(
-                          storePhotos[i],
-                          width: 86,
-                          height: 70,
-                          fit: BoxFit.cover,
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-              if (nearKm != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'Distancia al punto de recojo: ${nearKm.toStringAsFixed(2)} km',
-                  style: TextStyle(
-                    color: canAccept
-                        ? CupertinoColors.activeGreen.resolveFrom(context)
-                        : CupertinoColors.systemOrange.resolveFrom(context),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-              const SizedBox(height: 14),
-              CupertinoButton.filled(
-                onPressed: canAccept
-                    ? () {
-                        Navigator.of(ctx).pop();
-                        _accept(id);
-                      }
-                    : null,
-                child: Text(canAccept ? 'Aceptar' : 'Muy lejos para recoger'),
-              ),
-              if (!canAccept) ...[
-                const SizedBox(height: 6),
-                Text(
-                  'Acércate a ${_kPickupMaxKm.toStringAsFixed(1)} km o menos para tomar este pedido.',
-                  style: TextStyle(
-                    color: CupertinoColors.secondaryLabel.resolveFrom(context),
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-              const SizedBox(height: 6),
-              CupertinoButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Cerrar'),
-              ),
-            ],
+
+    setState(() => _offerRoutePoints = null);
+    _loadOfferRouteForPreview(pickup, drop);
+
+    final storeName = (o['store_name']?.toString().trim().isNotEmpty == true)
+        ? o['store_name'].toString().trim()
+        : 'Tienda';
+    final productLine = _productNamesSummary(o);
+    final buyer = (o['buyer_display_name']?.toString().trim().isNotEmpty == true)
+        ? o['buyer_display_name'].toString().trim()
+        : 'Cliente';
+    final fee = o['delivery_fee'];
+    final feeStr = fee is num ? fee.toStringAsFixed(0) : (fee?.toString() ?? '—');
+    final dist = o['distance_km'];
+    final distStr = dist is num
+        ? '${dist.toStringAsFixed(1)} km (tienda → entrega)'
+        : '—';
+
+    if (!mounted) return;
+    await showDeliveryOfferBottomSheet(
+      context,
+      productLine: productLine,
+      storeName: storeName,
+      buyerName: buyer,
+      deliveryEarningsLabel: 'Bs $feeStr',
+      storeToHomeKmLabel: distStr,
+      driverToPickupKmLabel: nearKm == null
+          ? null
+          : 'Hasta el recojo: ${nearKm.toStringAsFixed(2)} km (máx. ${_kPickupMaxKm.toStringAsFixed(1)} km)',
+      canAccept: canAccept,
+      onAccept: () => _accept(id),
+      onChat: () => _showChatComingSoon(context),
+    );
+    if (mounted) setState(() => _offerRoutePoints = null);
+  }
+
+  void _loadOfferRouteForPreview(LatLng? pickup, LatLng? drop) {
+    if (pickup == null || drop == null) return;
+    MapboxDirections.fetchDrivingRoute(pickup, drop).then((pts) {
+      if (!mounted) return;
+      setState(() => _offerRoutePoints = pts);
+      final fit = pts;
+      if (fit == null || fit.isEmpty) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _mapController.fitCamera(
+          CameraFit.coordinates(
+            coordinates: fit,
+            padding: const EdgeInsets.fromLTRB(36, 120, 36, 160),
           ),
+        );
+      });
+    });
+  }
+
+  void _showChatComingSoon(BuildContext context) {
+    showCupertinoDialog<void>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('Chat'),
+        content: const Text(
+          'Pronto podrás conversar con el cliente desde la app de reparto.',
         ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('OK'),
+          ),
+        ],
       ),
     );
+  }
+
+  String _productNamesSummary(Map<String, dynamic> o) {
+    final items = o['order_items'];
+    if (items is! List || items.isEmpty) return 'Pedido';
+    final names = <String>[];
+    for (final it in items) {
+      if (it is Map) {
+        final n = it['name_snapshot']?.toString().trim();
+        if (n != null && n.isNotEmpty) names.add(n);
+      }
+    }
+    return names.isEmpty ? 'Pedido' : names.join(' · ');
   }
 
   LatLng? _pickupPoint(Map<String, dynamic> order) {
     final lat = order['pickup_lat'];
     final lng = order['pickup_lng'];
+    final la = lat is num ? lat.toDouble() : double.tryParse(lat?.toString() ?? '');
+    final ln = lng is num ? lng.toDouble() : double.tryParse(lng?.toString() ?? '');
+    if (la == null || ln == null) return null;
+    return LatLng(la, ln);
+  }
+
+  LatLng? _dropoffPoint(Map<String, dynamic> order) {
+    final lat = order['dropoff_lat'];
+    final lng = order['dropoff_lng'];
     final la = lat is num ? lat.toDouble() : double.tryParse(lat?.toString() ?? '');
     final ln = lng is num ? lng.toDouble() : double.tryParse(lng?.toString() ?? '');
     if (la == null || ln == null) return null;
@@ -592,6 +609,8 @@ class _HomeTab extends StatelessWidget {
 
 class _MapsTab extends StatelessWidget {
   const _MapsTab({
+    required this.mapController,
+    required this.routePolyline,
     required this.loading,
     required this.pool,
     required this.mine,
@@ -601,8 +620,11 @@ class _MapsTab extends StatelessWidget {
     required this.onAccept,
     required this.onShowOffer,
     required this.onShowMine,
+    required this.onOpenChatMine,
   });
 
+  final MapController mapController;
+  final List<LatLng>? routePolyline;
   final bool loading;
   final List<Map<String, dynamic>> pool;
   final List<Map<String, dynamic>> mine;
@@ -612,6 +634,7 @@ class _MapsTab extends StatelessWidget {
   final Future<void> Function(String orderId) onAccept;
   final void Function(Map<String, dynamic> o) onShowOffer;
   final void Function(Map<String, dynamic> o) onShowMine;
+  final VoidCallback onOpenChatMine;
 
   @override
   Widget build(BuildContext context) {
@@ -643,8 +666,8 @@ class _MapsTab extends StatelessWidget {
       if (pickup == null) continue;
       markers.add(
         Marker(
-          width: 54,
-          height: 54,
+          width: 62,
+          height: 62,
           point: pickup,
           child: GestureDetector(
             onTap: () => onShowOffer(o),
@@ -666,8 +689,8 @@ class _MapsTab extends StatelessWidget {
       if (point == null) continue;
       markers.add(
         Marker(
-          width: 54,
-          height: 54,
+          width: 62,
+          height: 62,
           point: point,
           child: GestureDetector(
             onTap: () => onShowMine(o),
@@ -703,6 +726,7 @@ class _MapsTab extends StatelessWidget {
                   children: [
                     Positioned.fill(
                       child: FlutterMap(
+                        mapController: mapController,
                         options: MapOptions(
                           initialCenter: _kCenter,
                           initialZoom: 13.5,
@@ -716,15 +740,12 @@ class _MapsTab extends StatelessWidget {
                             userAgentPackageName: 'com.eveta.delivery',
                           ),
                           PolylineLayer(
-                            polylines: hasAccepted
+                            polylines: (routePolyline != null && routePolyline!.length >= 2)
                                 ? <Polyline<Object>>[
                                     Polyline<Object>(
-                                      points: const [
-                                        LatLng(-16.9167, -62.6167),
-                                        LatLng(-16.9100, -62.6100),
-                                      ],
-                                      strokeWidth: 4,
-                                      color: CupertinoColors.systemPink.withAlpha(180),
+                                      points: routePolyline!,
+                                      strokeWidth: 5,
+                                      color: CupertinoColors.systemPink.withAlpha(200),
                                     ),
                                   ]
                                 : const <Polyline<Object>>[],
@@ -745,7 +766,7 @@ class _MapsTab extends StatelessWidget {
                               Expanded(
                                 child: Text(
                                   hasAccepted
-                                      ? 'Pedido aceptado · mostrando ruta'
+                                      ? 'Pedido aceptado · ruta tienda → cliente'
                                       : '${nearOffers.length} pedidos cerca para recojo',
                                   style: const TextStyle(fontWeight: FontWeight.w700),
                                 ),
@@ -827,7 +848,7 @@ class _MapsTab extends StatelessWidget {
             Positioned(
               right: 16,
               bottom: 84,
-              child: _FloatingChatButton(onPressed: () {}),
+              child: _FloatingChatButton(onPressed: onOpenChatMine),
             ),
         ],
       ),
@@ -931,10 +952,69 @@ class _ChatsTab extends StatelessWidget {
   }
 }
 
-class _SettingsTab extends StatelessWidget {
-  const _SettingsTab({required this.onSignOut});
+class _SettingsTab extends StatefulWidget {
+  const _SettingsTab({
+    required this.onSignOut,
+    required this.onOnlineChanged,
+  });
 
   final Future<void> Function() onSignOut;
+  final VoidCallback onOnlineChanged;
+
+  @override
+  State<_SettingsTab> createState() => _SettingsTabState();
+}
+
+class _SettingsTabState extends State<_SettingsTab> {
+  bool _onlineBusy = true;
+  bool _isOnline = false;
+  String? _onlineError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOnline();
+  }
+
+  Future<void> _loadOnline() async {
+    setState(() {
+      _onlineBusy = true;
+      _onlineError = null;
+    });
+    try {
+      final v = await DeliveryApi.fetchMyOnlineStatus();
+      if (!mounted) return;
+      setState(() {
+        _isOnline = v;
+        _onlineBusy = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _onlineBusy = false;
+        _onlineError = '$e';
+      });
+    }
+  }
+
+  Future<void> _setOnline(bool value) async {
+    setState(() => _onlineBusy = true);
+    try {
+      await DeliveryApi.setMyOnlineStatus(value);
+      if (!mounted) return;
+      setState(() {
+        _isOnline = value;
+        _onlineBusy = false;
+      });
+      widget.onOnlineChanged();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _onlineBusy = false;
+        _onlineError = '$e';
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -949,16 +1029,59 @@ class _SettingsTab extends StatelessWidget {
             border: const Border(
               bottom: BorderSide(color: CupertinoColors.separator, width: 0.0),
             ),
+            trailing: CupertinoButton(
+              padding: EdgeInsets.zero,
+              onPressed: _onlineBusy ? null : _loadOnline,
+              child: const Icon(CupertinoIcons.refresh, size: 20),
+            ),
           ),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 22),
-              child: CupertinoListSection.insetGrouped(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  const Text(
+                    'Disponibilidad',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (_onlineError != null) ...[
+                    Text(
+                      _onlineError!,
+                      style: const TextStyle(
+                        color: CupertinoColors.systemRed,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  CupertinoListSection.insetGrouped(
+                    children: [
+                  CupertinoListTile(
+                    title: const Text('En línea para entregas'),
+                    subtitle: Text(
+                      _isOnline
+                          ? 'Visible para nuevos pedidos'
+                          : 'No recibirás ofertas en el mapa',
+                      maxLines: 2,
+                    ),
+                    trailing: _onlineBusy
+                        ? const CupertinoActivityIndicator()
+                        : CupertinoSwitch(
+                            value: _isOnline,
+                            onChanged: _onlineBusy ? null : (v) => _setOnline(v),
+                          ),
+                  ),
                   CupertinoListTile(
                     title: const Text('Cerrar sesión'),
                     leading: const Icon(CupertinoIcons.square_arrow_right),
-                    onTap: onSignOut,
+                    onTap: widget.onSignOut,
+                  ),
+                    ],
                   ),
                 ],
               ),
@@ -1043,26 +1166,35 @@ class _AvatarMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipOval(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          decoration: BoxDecoration(
-            color: CupertinoColors.systemBackground.resolveFrom(context).withAlpha(210),
-            border: Border.all(color: accent.withAlpha(140), width: 1),
+    return Container(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: accent, width: 3),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withAlpha(70),
+            blurRadius: 10,
+            spreadRadius: 0,
           ),
-          child: imageUrl != null && imageUrl!.isNotEmpty
-              ? ClipOval(
-                  child: Image.network(
+        ],
+      ),
+      padding: const EdgeInsets.all(2),
+      child: ClipOval(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Container(
+            color: CupertinoColors.systemBackground.resolveFrom(context).withAlpha(220),
+            child: imageUrl != null && imageUrl!.isNotEmpty
+                ? Image.network(
                     imageUrl!,
                     fit: BoxFit.cover,
                     width: double.infinity,
                     height: double.infinity,
+                  )
+                : Center(
+                    child: Icon(fallbackIcon, color: accent, size: 24),
                   ),
-                )
-              : Center(
-                  child: Icon(fallbackIcon, color: accent, size: 22),
-                ),
+          ),
         ),
       ),
     );
@@ -1091,14 +1223,9 @@ class _FloatingChatButton extends StatelessWidget {
 
 class _MapboxConfig {
   static String? tileUrlTemplateOrNull(BuildContext context) {
-    // Activa Mapbox agregando esto en `assets/env/app.env`:
-    // MAPBOX_ACCESS_TOKEN=pk.xxxxx
-    // MAPBOX_STYLE_ID=mapbox/streets-v12
-    final token = ((dotenv.env['MAPBOX_ACCESS_TOKEN'] ?? '').trim().isNotEmpty
-            ? (dotenv.env['MAPBOX_ACCESS_TOKEN'] ?? '').trim()
-            : (dotenv.env['NEXT_PUBLIC_MAPBOX_TOKEN'] ?? '').trim());
+    final token = mapboxPublicTokenFromEnv();
     if (token.isEmpty) return null;
-    final style = (dotenv.env['MAPBOX_STYLE_ID'] ?? 'mapbox/streets-v12').trim();
+    final style = mapboxStyleIdFromEnv();
     return 'https://api.mapbox.com/styles/v1/$style/tiles/256/{z}/{x}/{y}@2x?access_token=$token';
   }
 }

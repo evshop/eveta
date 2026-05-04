@@ -47,17 +47,9 @@ class _AuthGateState extends State<_AuthGate> {
   bool _allowed = false;
   StreamSubscription<AuthState>? _sub;
 
-  bool get _offlineDemo =>
-      (dotenv.env['DELIVERY_OFFLINE_DEMO'] ?? '').toLowerCase() == 'true';
-
   @override
   void initState() {
     super.initState();
-    if (_offlineDemo) {
-      _checking = false;
-      _allowed = true;
-      return;
-    }
     _verifyInitial();
     _sub = Supabase.instance.client.auth.onAuthStateChange.listen((event) {
       final session = Supabase.instance.client.auth.currentSession;
@@ -81,7 +73,6 @@ class _AuthGateState extends State<_AuthGate> {
   }
 
   Future<void> _verifyInitial() async {
-    if (_offlineDemo) return;
     final session = Supabase.instance.client.auth.currentSession;
     if (session == null) {
       if (mounted) {
@@ -103,9 +94,6 @@ class _AuthGateState extends State<_AuthGate> {
 
   @override
   Widget build(BuildContext context) {
-    if (_offlineDemo) {
-      return const DeliveryShellScreen();
-    }
     if (_checking) {
       return const CupertinoPageScaffold(
         child: Center(child: CupertinoActivityIndicator(radius: 14)),

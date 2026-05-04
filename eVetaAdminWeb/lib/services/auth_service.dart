@@ -406,11 +406,11 @@ class AuthService {
         }
       }
       throw AuthException('Respuesta inesperada del servidor.');
+    } on FunctionException catch (e) {
+      throw AuthException(_messageFromFunctionException(e));
     } catch (e) {
       if (e is AuthException) rethrow;
-      throw AuthException(
-        'No se pudo crear la cuenta. ¿Desplegaste la Edge Function create-partner-seller? $e',
-      );
+      throw AuthException('No se pudo crear la cuenta de vendedor: $e');
     }
   }
 
@@ -479,9 +479,11 @@ class AuthService {
         }
       }
       throw AuthException('Respuesta inesperada del servidor.');
+    } on FunctionException catch (e) {
+      throw AuthException(_messageFromFunctionException(e));
     } catch (e) {
       if (e is AuthException) rethrow;
-      throw AuthException('No se pudo crear la cuenta. ¿Desplegaste create-delivery-driver? $e');
+      throw AuthException('No se pudo crear la cuenta de delivery: $e');
     }
   }
 
@@ -490,6 +492,30 @@ class AuthService {
       return data['error'].toString();
     }
     return null;
+  }
+
+  /// Cuerpo JSON de una Edge Function cuando `invoke` lanza [FunctionException] (HTTP ≠ 2xx).
+  static String _messageFromFunctionException(FunctionException e) {
+    final fromPayload = _extractFunctionError(e.details);
+    if (fromPayload != null && fromPayload.trim().isNotEmpty) {
+      return _humanizeEdgeFunctionError(fromPayload);
+    }
+    if (e.details is String && (e.details as String).trim().isNotEmpty) {
+      return _humanizeEdgeFunctionError((e.details as String).trim());
+    }
+    return 'Error del servidor (HTTP ${e.status}).';
+  }
+
+  static String _humanizeEdgeFunctionError(String raw) {
+    final lower = raw.toLowerCase();
+    if (lower.contains('already been registered') ||
+        lower.contains('already registered') ||
+        lower.contains('user already registered')) {
+      return 'Ese correo ya tiene una cuenta en Supabase Auth. '
+          'Usa otro email o elimina ese usuario en Dashboard → Authentication → Users '
+          '(si era una prueba). Luego vuelve a crear el repartidor.';
+    }
+    return raw;
   }
 
   /// Quita la tienda del listado de verificadas, borra sus productos y limpia datos de tienda.

@@ -34,7 +34,8 @@ class DeliveryApi {
         .from('orders')
         .select(
           'id, seller_id, total, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, dropoff_address, '
-          'delivery_status, created_at, order_items(image_url)',
+          'delivery_fee, distance_km, buyer_display_name, '
+          'delivery_status, created_at, order_items(image_url, name_snapshot)',
         )
         .eq('delivery_status', 'awaiting_driver')
         .order('created_at', ascending: true);
@@ -66,7 +67,8 @@ class DeliveryApi {
         .from('orders')
         .select(
           'id, seller_id, total, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, dropoff_address, '
-          'delivery_status, created_at',
+          'delivery_fee, distance_km, buyer_display_name, '
+          'delivery_status, created_at, order_items(image_url, name_snapshot)',
         )
         .eq('driver_id', uid)
         .inFilter('delivery_status', ['driver_assigned', 'picked_up'])
@@ -106,6 +108,32 @@ class DeliveryApi {
         'p_next': next,
       },
     );
+  }
+
+  /// Estado en línea del repartidor actual (`profiles_delivery.is_online`).
+  static Future<bool> fetchMyOnlineStatus() async {
+    final uid = _client.auth.currentUser?.id;
+    if (uid == null) return false;
+    try {
+      final row = await _client
+          .from('profiles_delivery')
+          .select('is_online')
+          .eq('auth_user_id', uid)
+          .maybeSingle();
+      if (row == null) return false;
+      return row['is_online'] == true;
+    } on PostgrestException catch (_) {
+      return false;
+    }
+  }
+
+  static Future<void> setMyOnlineStatus(bool online) async {
+    final uid = _client.auth.currentUser?.id;
+    if (uid == null) return;
+    await _client
+        .from('profiles_delivery')
+        .update({'is_online': online})
+        .eq('auth_user_id', uid);
   }
 
   static void debugLog(Object o) => debugPrint('[Delivery] $o');

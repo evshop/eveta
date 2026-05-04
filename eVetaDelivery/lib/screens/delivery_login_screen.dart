@@ -1,8 +1,6 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'delivery_shell_screen.dart';
 import '../services/delivery_auth_gate.dart';
 import '../widgets/delivery_auth_logo.dart';
 
@@ -20,15 +18,6 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
   bool _isLoading = false;
   bool _obscurePassword = true;
   String? _errorMessage;
-
-  @override
-  void initState() {
-    super.initState();
-    final demoEmail = dotenv.env['DELIVERY_DEMO_EMAIL'];
-    if (demoEmail != null && demoEmail.trim().isNotEmpty) {
-      _emailController.text = demoEmail.trim();
-    }
-  }
 
   @override
   void dispose() {
@@ -64,25 +53,6 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
     });
 
     try {
-      final offlineDemo = (dotenv.env['DELIVERY_OFFLINE_DEMO'] ?? '').toLowerCase() == 'true';
-      if (offlineDemo) {
-        final demoEmail = (dotenv.env['DELIVERY_DEMO_EMAIL'] ?? '').trim();
-        final demoPass = (dotenv.env['DELIVERY_DEMO_PASSWORD'] ?? '');
-        final email = _emailController.text.trim();
-        final pass = _passwordController.text;
-        if (demoEmail.isEmpty || demoPass.isEmpty) {
-          throw const AuthException('Configura DELIVERY_DEMO_EMAIL y DELIVERY_DEMO_PASSWORD en app.env');
-        }
-        if (email.toLowerCase() != demoEmail.toLowerCase() || pass != demoPass) {
-          throw const AuthException('Credenciales demo inválidas');
-        }
-        if (!mounted) return;
-        Navigator.of(context).pushReplacement(
-          CupertinoPageRoute<void>(builder: (_) => const DeliveryShellScreen()),
-        );
-        return;
-      }
-
       await Supabase.instance.client.auth.signInWithPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
@@ -104,14 +74,6 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  void _fillDemo() {
-    final email = dotenv.env['DELIVERY_DEMO_EMAIL']?.trim();
-    final pass = dotenv.env['DELIVERY_DEMO_PASSWORD'] ?? '';
-    setState(() => _errorMessage = null);
-    if (email != null && email.isNotEmpty) _emailController.text = email;
-    if (pass.isNotEmpty) _passwordController.text = pass;
   }
 
   @override
@@ -146,7 +108,7 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Usa el correo y contraseña de tu cuenta eDelivery.',
+                      'Ingresa el mismo correo y contraseña del repartidor que creaste desde eVeta Admin (web).',
                       style: theme.textTheme.textStyle.copyWith(
                         color: CupertinoColors.secondaryLabel.resolveFrom(context),
                         fontSize: 15,
@@ -245,27 +207,6 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
                           ),
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 10),
-                    CupertinoButton(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      onPressed: _isLoading ? null : _fillDemo,
-                      child: Text(
-                        'Usar cuenta demo',
-                        style: theme.textTheme.textStyle.copyWith(
-                          color: CupertinoColors.systemPink,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Tip: define DELIVERY_DEMO_EMAIL y DELIVERY_DEMO_PASSWORD en assets/env/app.env',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.textStyle.copyWith(
-                        color: CupertinoColors.tertiaryLabel.resolveFrom(context),
-                        fontSize: 12,
-                      ),
                     ),
                   ],
                 ),

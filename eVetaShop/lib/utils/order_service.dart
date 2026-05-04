@@ -59,6 +59,17 @@ class OrderService {
     final cart = await CartService.getCartItems();
     if (cart.isEmpty) throw Exception('El carrito está vacío.');
 
+    try {
+      final online = await _client.rpc('has_online_delivery_couriers');
+      if (online != true) {
+        throw Exception(
+          'No hay repartidores disponibles en este momento. Intenta más tarde o elige retiro en tienda.',
+        );
+      }
+    } on PostgrestException catch (_) {
+      // Si el RPC aún no existe en la BD (script 070 no aplicado), no bloqueamos el checkout.
+    }
+
     final ids = cart.map((e) => e.productId).toList();
     final rows = await _client
         .from('products')
@@ -92,6 +103,22 @@ class OrderService {
     final feeEach = DeliveryPricing.splitFee(totalDeliveryFee, sellerCount);
     final sellerIds = bySeller.keys.toList();
     final sellerMap = await _pickupBySellerIds(sellerIds);
+
+    var buyerDisplayName = user.userMetadata?['full_name']?.toString().trim() ?? '';
+    if (buyerDisplayName.isEmpty) {
+      try {
+        final prof = await _client
+            .from('profiles')
+            .select('full_name')
+            .eq('id', user.id)
+            .maybeSingle();
+        buyerDisplayName = prof?['full_name']?.toString().trim() ?? '';
+      } catch (_) {}
+    }
+    if (buyerDisplayName.isEmpty) {
+      buyerDisplayName = (user.email ?? '').trim();
+    }
+    if (buyerDisplayName.isEmpty) buyerDisplayName = 'Cliente';
 
     final createdOrderIds = <String>[];
 
@@ -151,6 +178,7 @@ class OrderService {
           .insert({
             'buyer_id': user.id,
             'seller_id': sellerId,
+            'buyer_display_name': buyerDisplayName,
             'subtotal': safeSubtotal,
             'delivery_fee': safeFeeEach,
             'total': total,

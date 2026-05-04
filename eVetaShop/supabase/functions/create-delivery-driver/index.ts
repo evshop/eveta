@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -19,6 +19,31 @@ function json(body: Record<string, unknown>, status = 200): Response {
 
 function normalizeEmail(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function isDuplicateAuthEmailError(msg: string): boolean {
+  const m = msg.toLowerCase();
+  return (
+    m.includes('already been registered') ||
+    m.includes('already registered') ||
+    m.includes('user already registered') ||
+    m.includes('duplicate') && m.includes('email')
+  );
+}
+
+/** Busca `auth.users.id` por email (listUsers paginado; OK para volúmenes típicos de admin). */
+async function findAuthUserIdByEmail(admin: SupabaseClient, email: string): Promise<string | null> {
+  const target = normalizeEmail(email);
+  for (let page = 1; page <= 25; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 });
+    if (error) return null;
+    const users = data?.users ?? [];
+    for (const u of users) {
+      if (normalizeEmail(u.email ?? '') === target) return u.id;
+    }
+    if (users.length < 200) break;
+  }
+  return null;
 }
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
@@ -53,7 +78,6 @@ Deno.serve(async (req) => {
     if (!password || password.length < 6) return json({ error: 'Contraseña inválida (mín. 6).' }, 400);
     if (!fullName) return json({ error: 'Nombre vacío.' }, 400);
 
-    // Validar admin usando el JWT del usuario (RLS / auth.uid()).
     const supabaseUser = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: `Bearer ${token}` } },
     });
@@ -61,7 +85,6 @@ Deno.serve(async (req) => {
     if (adminErr) return json({ error: `No se pudo validar admin: ${adminErr.message}` }, 403);
     if (isAdmin !== true) return json({ error: 'Sin permisos de administrador.' }, 403);
 
-    // Crear usuario en Auth.
     const { data: created, error: createErr } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
@@ -71,12 +94,65 @@ Deno.serve(async (req) => {
         app: 'delivery',
       },
     });
-    if (createErr) return json({ error: `No se pudo crear auth user: ${createErr.message}` }, 400);
-    const userId = created.user?.id;
-    if (!userId) return json({ error: 'Respuesta inesperada al crear usuario.' }, 500);
 
-    // Estricto: delivery no vive en profiles. Borra fila auto-creada por triggers si la hubiera.
-    await supabaseAdmin.from('profiles').delete().eq('id', userId).catch(() => {});
+    let userId: string | null = created.user?.id ?? null;
+    let linkedExistingAuth = false;
+
+    if (createErr) {
+      const errMsg = createErr.message ?? '';
+      if (!isDuplicateAuthEmailError(errMsg)) {
+        return json({ error: `No se pudo crear auth user: ${errMsg}` }, 400);
+      }
+      userId = await findAuthUserIdByEmail(supabaseAdmin, email);
+      if (!userId) {
+        return json({ error: `No se pudo crear auth user: ${errMsg}` }, 400);
+      }
+      linkedExistingAuth = true;
+
+      const { data: portalRow } = await supabaseAdmin
+        .from('profiles_portal')
+        .select('id')
+        .eq('auth_user_id', userId)
+        .maybeSingle();
+      if (portalRow?.id) {
+        return json(
+          {
+            error:
+              'Este correo ya pertenece a una cuenta Portal/Tienda. Delivery debe usar un correo distinto o un usuario que no sea vendedor Portal.',
+          },
+          400,
+        );
+      }
+
+      const { data: existingDelivery } = await supabaseAdmin
+        .from('profiles_delivery')
+        .select('id')
+        .eq('auth_user_id', userId)
+        .maybeSingle();
+      if (existingDelivery?.id) {
+        return json({
+          ok: true,
+          user_id: userId,
+          delivery_profile_id: existingDelivery.id,
+          email,
+          already_delivery: true,
+        });
+      }
+
+      const { error: upErr } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+        password,
+        user_metadata: {
+          full_name: fullName,
+          app: 'delivery',
+        },
+      });
+      if (upErr) {
+        return json({ error: `No se pudo actualizar el usuario existente: ${upErr.message}` }, 400);
+      }
+    } else {
+      if (!userId) return json({ error: 'Respuesta inesperada al crear usuario.' }, 500);
+      await supabaseAdmin.from('profiles').delete().eq('id', userId).catch(() => {});
+    }
 
     const { data: deliveryRow, error: profErr } = await supabaseAdmin
       .from('profiles_delivery')
@@ -88,8 +164,11 @@ Deno.serve(async (req) => {
       })
       .select('id')
       .single();
+
     if (profErr || !deliveryRow?.id) {
-      await supabaseAdmin.auth.admin.deleteUser(userId).catch(() => {});
+      if (!linkedExistingAuth && userId) {
+        await supabaseAdmin.auth.admin.deleteUser(userId).catch(() => {});
+      }
       return json(
         { error: `No se pudo crear profiles_delivery: ${profErr?.message ?? 'unknown'}` },
         400,
@@ -101,9 +180,9 @@ Deno.serve(async (req) => {
       user_id: userId,
       delivery_profile_id: deliveryRow.id,
       email,
+      ...(linkedExistingAuth ? { linked_existing_auth: true } : {}),
     });
   } catch (e) {
     return json({ error: `Error interno: ${e}` }, 500);
   }
 });
-
