@@ -557,3 +557,4 @@ class _MatchData {
   final List<Map<String, dynamic>> recentBankApproved;
   final List<Map<String, dynamic>> events;
 }
+.
