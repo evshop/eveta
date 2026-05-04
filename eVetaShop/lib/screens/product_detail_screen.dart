@@ -970,7 +970,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> with TickerPr
   }
 
   Widget _buildSellerBadge(Map<String, dynamic> product, double scale) {
-    final seller = product['profiles'];
+    final seller = product['profiles_portal'] ?? product['profiles'];
     String? shopName;
     String? fullName;
     String? email;

@@ -51,8 +51,15 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
   }
 
   Future<void> _openMyStore() async {
-    final uid = Supabase.instance.client.auth.currentUser?.id;
-    if (uid == null) return;
+    final portalId = _myProfile?['id']?.toString().trim() ?? '';
+    if (portalId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No tienes tienda en Portal todavía. Crea una desde "Nueva tienda".'),
+        ),
+      );
+      return;
+    }
     final name = _myProfile?['shop_name']?.toString().trim();
     final email = _myProfile?['email']?.toString() ??
         Supabase.instance.client.auth.currentUser?.email ??
@@ -60,7 +67,7 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (ctx) => StoreProductsScreen(
-          sellerId: uid,
+          sellerId: portalId,
           storeTitle: (name != null && name.isNotEmpty) ? name : 'Mi tienda',
           subtitle: email,
           isOfficialAdminStore: true,

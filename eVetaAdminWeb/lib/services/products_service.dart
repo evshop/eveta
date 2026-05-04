@@ -224,13 +224,32 @@ class ProductsService {
   static const _selectMyProductsLayoutNoSpecs =
       'id, name, description, category_id, price, stock, images, images_layout, tags, is_active, is_featured, unit, categories(name, parent_id)';
 
-  static Future<List<Map<String, dynamic>>> fetchMyProducts() async {
+  static Future<String?> _currentSellerPortalId() async {
     final user = _client.auth.currentUser;
-    if (user == null) return [];
-    return fetchProductsForSeller(user.id);
+    if (user == null) return null;
+    try {
+      final row = await _client
+          .from('profiles_portal')
+          .select('id')
+          .eq('auth_user_id', user.id)
+          .eq('is_active', true)
+          .maybeSingle();
+      final id = row?['id']?.toString().trim();
+      if (id == null || id.isEmpty) return null;
+      return id;
+    } catch (_) {
+      return null;
+    }
   }
 
-  static const _profilesEmbed = ', seller_id, categories(name, parent_id), profiles(shop_name, email)';
+  static Future<List<Map<String, dynamic>>> fetchMyProducts() async {
+    final portalId = await _currentSellerPortalId();
+    if (portalId == null) return [];
+    return fetchProductsForSeller(portalId);
+  }
+
+  static const _profilesEmbed =
+      ', seller_id, categories(name, parent_id), profiles_portal!products_seller_id_profiles_portal_fkey(shop_name, email, full_name)';
 
   /// Todos los productos (solo administrador). Requiere RLS que permita SELECT a filas de cualquier `seller_id`.
   static Future<List<Map<String, dynamic>>> fetchAllProductsForAdmin() async {
@@ -252,7 +271,9 @@ class ProductsService {
         return await query('$baseCols$_profilesEmbed');
       } catch (e) {
         final msg = e.toString().toLowerCase();
-        if (msg.contains('profiles') || msg.contains('relationship')) {
+        if (msg.contains('profiles_portal') ||
+            msg.contains('profiles') ||
+            msg.contains('relationship')) {
           try {
             return await query('$baseCols, seller_id, categories(name, parent_id)');
           } catch (_) {
@@ -292,7 +313,7 @@ class ProductsService {
     }
   }
 
-  /// Productos de una tienda (mismo `seller_id` que en `profiles.id`).
+  /// Productos de una tienda (`seller_id` en `products` referencia `profiles_portal.id`).
   static Future<List<Map<String, dynamic>>> fetchProductsForSeller(String sellerId) async {
     if (sellerId.isEmpty) return [];
 
@@ -327,19 +348,24 @@ class ProductsService {
     }
   }
 
-  /// [sellerIdOverride]: solo administradores pueden crear para otro [seller_id].
+  /// [sellerIdOverride]: `profiles_portal.id` de la tienda destino.
+  /// Solo administradores pueden crear para otra tienda.
   static Future<void> createProduct(ProductFormData form, {String? sellerIdOverride}) async {
     final user = _client.auth.currentUser;
     if (user == null) throw AuthException('No hay sesión activa');
-    var sid = user.id;
+
+    String? sid;
     final o = sellerIdOverride?.trim();
     if (o != null && o.isNotEmpty) {
-      if (o != user.id) {
-        if (!await AuthService.isCurrentUserAdmin()) {
-          throw AuthException('Solo un administrador puede crear productos para otra tienda.');
-        }
-        sid = o;
+      if (!await AuthService.isCurrentUserAdmin()) {
+        throw AuthException('Solo un administrador puede crear productos para otra tienda.');
       }
+      sid = o;
+    } else {
+      sid = await _currentSellerPortalId();
+    }
+    if (sid == null || sid.isEmpty) {
+      throw AuthException('No se pudo resolver tu tienda en Portal.');
     }
     try {
       await _client.from('products').insert({

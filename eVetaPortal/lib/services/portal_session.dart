@@ -4,9 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 ///
 /// Reglas:
 /// - Toda lectura/escritura de tienda se hace contra `profiles_portal`.
-/// - Para querys de productos/pedidos cuyos seller_id apuntan a `profiles.id`
-///   (esquema legacy), usamos `legacy_profile_id` cuando esté disponible.
-/// - Si no hay legacy_profile_id (cuenta Portal nueva), caemos a `auth.uid()`.
+/// - Tras 064, `products.seller_id` y `orders.seller_id` referencian
+///   `profiles_portal.id`. Por eso `currentSellerId()` devuelve ese id.
 class PortalSession {
   PortalSession._();
 
@@ -40,7 +39,7 @@ class PortalSession {
       final raw = await _client
           .from('profiles_portal')
           .select(
-            'id, auth_user_id, legacy_profile_id, email, full_name, '
+            'id, auth_user_id, email, full_name, '
             'avatar_url, phone, address, username, '
             'shop_name, shop_description, shop_logo_url, shop_banner_url, '
             'shop_border_color, shop_address, shop_lat, shop_lng, '
@@ -53,7 +52,7 @@ class PortalSession {
       row = null;
     }
 
-    // Autovincula si aún no existe pero hay legacy en profiles.
+    // Autovincula si aún no existe (admin del Dashboard sin auth_user_id seteado).
     if (row == null) {
       try {
         final ensured =
@@ -71,17 +70,13 @@ class PortalSession {
     return row;
   }
 
-  /// Identificador a usar para filtrar productos/pedidos cuyos `seller_id`
-  /// referencian a `profiles.id` (esquema legacy).
-  /// - Si hay `legacy_profile_id` en `profiles_portal`, lo usa.
-  /// - En caso contrario, usa `auth.uid()`.
+  /// Identificador a usar para filtrar productos/pedidos.
+  /// Devuelve `profiles_portal.id` (alineado con FK `products.seller_id`).
   static Future<String?> currentSellerId() async {
-    final user = _client.auth.currentUser;
-    if (user == null) return null;
     final portal = await currentPortalProfile();
-    final legacy = portal?['legacy_profile_id']?.toString().trim();
-    if (legacy != null && legacy.isNotEmpty) return legacy;
-    return user.id;
+    final id = portal?['id']?.toString().trim();
+    if (id == null || id.isEmpty) return null;
+    return id;
   }
 
   /// Identificador del registro en `profiles_portal` (si existe).

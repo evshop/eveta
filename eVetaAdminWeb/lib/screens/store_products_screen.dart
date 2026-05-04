@@ -45,9 +45,21 @@ class _StoreProductsScreenState extends State<StoreProductsScreen> {
   Future<void> _loadCanManage() async {
     final uid = Supabase.instance.client.auth.currentUser?.id;
     final admin = await AuthService.isCurrentUserAdmin();
+    bool ownsStore = false;
+    if (!admin && uid != null) {
+      try {
+        final row = await Supabase.instance.client
+            .from('profiles_portal')
+            .select('id')
+            .eq('id', widget.sellerId)
+            .eq('auth_user_id', uid)
+            .maybeSingle();
+        ownsStore = row != null;
+      } catch (_) {}
+    }
     if (!mounted) return;
     setState(() {
-      _canManageCatalog = admin || (uid != null && uid == widget.sellerId);
+      _canManageCatalog = admin || ownsStore;
     });
   }
 

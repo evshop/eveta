@@ -40,7 +40,6 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
   String? _email;
   String? _shopId;
   String? _portalProfileId;
-  String? _legacyProfileId;
   List<String> _locationPhotoUrls = [];
 
   Color? _parseHexColor(String? raw) {
@@ -99,10 +98,6 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
       // Carga el perfil Portal (con autolink si aplica) y guarda IDs útiles.
       final portal = await PortalSession.currentPortalProfile(forceRefresh: true);
       _portalProfileId = portal?['id']?.toString().trim();
-      _legacyProfileId = portal?['legacy_profile_id']?.toString().trim();
-      if (_legacyProfileId != null && _legacyProfileId!.isEmpty) {
-        _legacyProfileId = null;
-      }
 
       Map<String, dynamic>? row = portal;
 
@@ -325,10 +320,6 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
       if (_portalProfileId == null || _portalProfileId!.isEmpty) {
         final portal = await PortalSession.currentPortalProfile(forceRefresh: true);
         _portalProfileId = portal?['id']?.toString().trim();
-        _legacyProfileId = portal?['legacy_profile_id']?.toString().trim();
-        if (_legacyProfileId != null && _legacyProfileId!.isEmpty) {
-          _legacyProfileId = null;
-        }
       }
       if (_portalProfileId == null || _portalProfileId!.isEmpty) {
         if (!mounted) return;

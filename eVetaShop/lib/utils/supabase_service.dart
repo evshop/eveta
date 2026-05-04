@@ -78,24 +78,26 @@ class SupabaseService {
     }
   }
 
+  /// [sellerId] es `profiles_portal.id` tras la migración 064.
   static Future<Map<String, dynamic>?> getShopBySellerId(String sellerId) async {
     try {
       final response = await client
-          .from('profiles')
-          .select('id, shop_name, shop_description, shop_logo_url, shop_banner_url, shop_border_color, full_name, email, avatar_url')
+          .from('profiles_portal')
+          .select(
+            'id, shop_name, shop_description, shop_logo_url, shop_banner_url, '
+            'shop_border_color, full_name, email, avatar_url',
+          )
           .eq('id', sellerId)
           .maybeSingle();
       if (response == null) return null;
 
       final m = Map<String, dynamic>.from(response);
-      // Fallback: si no hay banner en columna de tienda, usamos avatar_url (perfiles antiguos).
       final bannerStr = m['shop_banner_url']?.toString().trim() ?? '';
       if (bannerStr.isEmpty &&
           m['avatar_url'] != null &&
           m['avatar_url'].toString().trim().isNotEmpty) {
         m['shop_banner_url'] = m['avatar_url'];
       }
-      // Mismo criterio que en búsqueda: logo de tienda vacío → avatar del perfil.
       final logoStr = m['shop_logo_url']?.toString().trim() ?? '';
       if (logoStr.isEmpty &&
           m['avatar_url'] != null &&
@@ -104,10 +106,10 @@ class SupabaseService {
       }
       return m;
     } catch (e) {
-      // Si aún no existe `shop_banner_url` en DB, reintentamos sin esa columna.
-      if (e.toString().toLowerCase().contains('shop_banner_url') || e.toString().toLowerCase().contains('shop_border_color')) {
+      if (e.toString().toLowerCase().contains('shop_banner_url') ||
+          e.toString().toLowerCase().contains('shop_border_color')) {
         final response = await client
-            .from('profiles')
+            .from('profiles_portal')
             .select('id, shop_name, shop_description, shop_logo_url, full_name, email, avatar_url')
             .eq('id', sellerId)
             .maybeSingle();
@@ -146,14 +148,17 @@ class SupabaseService {
       debugPrint('Buscando producto con ID: $id');
       final response = await client
           .from('products')
-          .select('*, categories(spec_group_title), profiles(full_name, shop_name, email)')
+          .select(
+            '*, categories(spec_group_title), '
+            'profiles_portal!products_seller_id_profiles_portal_fkey(full_name, shop_name, email)',
+          )
           .eq('id', id)
           .eq('is_active', true)
           .maybeSingle();
       debugPrint('Resultado getProductById: $response');
       return response;
     } catch (e) {
-      debugPrint('Error al obtener producto (reintento sin categoría embebida): $e');
+      debugPrint('Error al obtener producto (reintento sin embed): $e');
       try {
         final response = await client
             .from('products')
@@ -385,9 +390,10 @@ class SupabaseService {
     try {
       final q = _escapeIlike(query.trim());
       final response = await client
-          .from('profiles')
+          .from('profiles_portal')
           .select('id, shop_name, shop_logo_url, full_name, avatar_url')
           .eq('is_seller', true)
+          .eq('is_active', true)
           .or('shop_name.ilike.%$q%,full_name.ilike.%$q%')
           .limit(12);
       final list = List<Map<String, dynamic>>.from(response);
@@ -407,9 +413,12 @@ class SupabaseService {
   static Future<List<Map<String, dynamic>>> getFeaturedSellers({int limit = 12}) async {
     try {
       final response = await client
-          .from('profiles')
-          .select('id, shop_name, shop_logo_url, full_name, avatar_url')
+          .from('profiles_portal')
+          .select('id, shop_name, shop_logo_url, full_name, avatar_url, is_partner_verified, partner_display_order')
           .eq('is_seller', true)
+          .eq('is_active', true)
+          .order('is_partner_verified', ascending: false)
+          .order('partner_display_order', ascending: true)
           .limit(limit);
       final list = List<Map<String, dynamic>>.from(response);
       list.removeWhere((row) {

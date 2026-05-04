@@ -90,41 +90,41 @@ Deno.serve(async (req: Request) => {
 
     const userId = created.user.id;
 
-    // Crear perfil mínimo Shop para compatibilidad products.seller_id
-    const { error: profErr } = await supabaseAdmin.from("profiles").upsert({
-      id: userId,
-      email,
-      full_name: fullName,
-      updated_at: new Date().toISOString(),
-    });
+    // Limpia fila auto-creada en profiles si algún trigger la insertó.
+    // Estricto: tiendas no viven en profiles.
+    await supabaseAdmin.from("profiles").delete().eq("id", userId).catch(() => {});
 
-    if (profErr) {
+    const { data: portalRow, error: portalErr } = await supabaseAdmin
+      .from("profiles_portal")
+      .insert({
+        auth_user_id: userId,
+        email,
+        full_name: fullName,
+        shop_name: shopName,
+        shop_description: shopDescription,
+        is_admin: false,
+        is_seller: true,
+        is_partner_verified: true,
+        partner_display_order: 0,
+        is_active: true,
+      })
+      .select("id")
+      .single();
+
+    if (portalErr || !portalRow?.id) {
       await supabaseAdmin.auth.admin.deleteUser(userId).catch(() => {});
-      return json({ error: `profiles_insert_failed: ${profErr.message}` }, 400);
+      return json(
+        { error: `profiles_portal_insert_failed: ${portalErr?.message ?? "unknown"}` },
+        400,
+      );
     }
 
-    // Crear perfil Portal seller
-    const { error: portalErr } = await supabaseAdmin.from("profiles_portal").insert({
-      auth_user_id: userId,
-      legacy_profile_id: userId,
+    return json({
+      ok: true,
+      user_id: userId,
+      portal_profile_id: portalRow.id,
       email,
-      full_name: fullName,
-      shop_name: shopName,
-      shop_description: shopDescription,
-      is_admin: false,
-      is_seller: true,
-      is_partner_verified: true,
-      partner_display_order: 0,
-      is_active: true,
     });
-
-    if (portalErr) {
-      await supabaseAdmin.from("profiles").delete().eq("id", userId).catch(() => {});
-      await supabaseAdmin.auth.admin.deleteUser(userId).catch(() => {});
-      return json({ error: `profiles_portal_insert_failed: ${portalErr.message}` }, 400);
-    }
-
-    return json({ ok: true, user_id: userId, email });
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : "unexpected_error" }, 500);
   }

@@ -75,24 +75,33 @@ Deno.serve(async (req) => {
     const userId = created.user?.id;
     if (!userId) return json({ error: 'Respuesta inesperada al crear usuario.' }, 500);
 
-    // Crear perfil Delivery.
-    const { error: profErr } = await supabaseAdmin.from('profiles_delivery').insert({
-      auth_user_id: userId,
-      email,
-      full_name: fullName,
-      is_active: true,
-    });
-    if (profErr) {
-      // Si falla, intenta rollback del usuario (mejor que dejar huérfano).
-      try {
-        await supabaseAdmin.auth.admin.deleteUser(userId);
-      } catch (_) {
-        // ignore
-      }
-      return json({ error: `No se pudo crear profiles_delivery: ${profErr.message}` }, 400);
+    // Estricto: delivery no vive en profiles. Borra fila auto-creada por triggers si la hubiera.
+    await supabaseAdmin.from('profiles').delete().eq('id', userId).catch(() => {});
+
+    const { data: deliveryRow, error: profErr } = await supabaseAdmin
+      .from('profiles_delivery')
+      .insert({
+        auth_user_id: userId,
+        email,
+        full_name: fullName,
+        is_active: true,
+      })
+      .select('id')
+      .single();
+    if (profErr || !deliveryRow?.id) {
+      await supabaseAdmin.auth.admin.deleteUser(userId).catch(() => {});
+      return json(
+        { error: `No se pudo crear profiles_delivery: ${profErr?.message ?? 'unknown'}` },
+        400,
+      );
     }
 
-    return json({ ok: true, user_id: userId, email });
+    return json({
+      ok: true,
+      user_id: userId,
+      delivery_profile_id: deliveryRow.id,
+      email,
+    });
   } catch (e) {
     return json({ error: `Error interno: ${e}` }, 500);
   }

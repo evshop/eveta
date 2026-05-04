@@ -6,36 +6,19 @@ class DeliveryApi {
 
   static final _client = Supabase.instance.client;
 
-  static Future<Map<String, Map<String, dynamic>>> _sellerStoreByLegacyId(
+  /// [sellerIds] son `profiles_portal.id` (FK desde orders.seller_id tras 064).
+  static Future<Map<String, Map<String, dynamic>>> _sellerStoreByPortalId(
     List<String> sellerIds,
   ) async {
     final bySeller = <String, Map<String, dynamic>>{};
     if (sellerIds.isEmpty) return bySeller;
 
-    // Primero prioriza datos de Portal (fuente canónica de tienda).
     try {
       final portalRaw = await _client
           .from('profiles_portal')
-          .select('legacy_profile_id, shop_name, shop_address, shop_location_photos')
-          .inFilter('legacy_profile_id', sellerIds);
-      for (final row in List<Map<String, dynamic>>.from(portalRaw as List)) {
-        final legacyId = row['legacy_profile_id']?.toString().trim();
-        if (legacyId == null || legacyId.isEmpty) continue;
-        bySeller[legacyId] = row;
-      }
-    } catch (_) {
-      // Entornos sin tabla/policies nuevas: cae a legacy `profiles`.
-    }
-
-    // Fallback para cuentas Shop puras (o entornos legacy).
-    final unresolved = sellerIds.where((id) => !bySeller.containsKey(id)).toList();
-    if (unresolved.isEmpty) return bySeller;
-    try {
-      final sellersRaw = await _client
-          .from('profiles')
           .select('id, shop_name, shop_address, shop_location_photos')
-          .inFilter('id', unresolved);
-      for (final row in List<Map<String, dynamic>>.from(sellersRaw as List)) {
+          .inFilter('id', sellerIds);
+      for (final row in List<Map<String, dynamic>>.from(portalRaw as List)) {
         final id = row['id']?.toString().trim();
         if (id == null || id.isEmpty) continue;
         bySeller[id] = row;
@@ -63,7 +46,7 @@ class DeliveryApi {
         .toSet()
         .toList();
     if (sellerIds.isEmpty) return rows;
-    final bySeller = await _sellerStoreByLegacyId(sellerIds);
+    final bySeller = await _sellerStoreByPortalId(sellerIds);
     for (final order in rows) {
       final sid = order['seller_id']?.toString() ?? '';
       final shop = bySeller[sid];
@@ -96,7 +79,7 @@ class DeliveryApi {
         .toSet()
         .toList();
     if (sellerIds.isEmpty) return rows;
-    final bySeller = await _sellerStoreByLegacyId(sellerIds);
+    final bySeller = await _sellerStoreByPortalId(sellerIds);
     for (final order in rows) {
       final sid = order['seller_id']?.toString() ?? '';
       final shop = bySeller[sid];

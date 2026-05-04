@@ -23,36 +23,19 @@ class OrderService {
     return double.parse(d.toStringAsFixed(2));
   }
 
+  /// [sellerIds] son `profiles_portal.id` (FK desde products/orders.seller_id).
   static Future<Map<String, Map<String, dynamic>>> _pickupBySellerIds(
     List<String> sellerIds,
   ) async {
     final bySeller = <String, Map<String, dynamic>>{};
     if (sellerIds.isEmpty) return bySeller;
 
-    // Fuente canónica para tiendas de Portal: profiles_portal por legacy_profile_id.
     try {
       final portalRaw = await _client
           .from('profiles_portal')
-          .select('legacy_profile_id, shop_lat, shop_lng')
-          .inFilter('legacy_profile_id', sellerIds);
-      for (final row in List<Map<String, dynamic>>.from(portalRaw as List)) {
-        final legacyId = row['legacy_profile_id']?.toString().trim();
-        if (legacyId == null || legacyId.isEmpty) continue;
-        bySeller[legacyId] = row;
-      }
-    } catch (_) {
-      // Compatibilidad con entornos legacy sin tabla/policies nuevas.
-    }
-
-    // Fallback para cuentas Shop puras (perfiles aún en `profiles`).
-    final unresolved = sellerIds.where((id) => !bySeller.containsKey(id)).toList();
-    if (unresolved.isEmpty) return bySeller;
-    try {
-      final legacyRaw = await _client
-          .from('profiles')
           .select('id, shop_lat, shop_lng')
-          .inFilter('id', unresolved);
-      for (final row in List<Map<String, dynamic>>.from(legacyRaw as List)) {
+          .inFilter('id', sellerIds);
+      for (final row in List<Map<String, dynamic>>.from(portalRaw as List)) {
         final id = row['id']?.toString().trim();
         if (id == null || id.isEmpty) continue;
         bySeller[id] = row;

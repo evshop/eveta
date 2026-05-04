@@ -76,6 +76,18 @@ class EventsService {
       throw AuthException('Debes iniciar sesión para gestionar entradas.');
     }
 
+    // products.seller_id referencia profiles_portal.id (script 064).
+    final portalRow = await _client
+        .from('profiles_portal')
+        .select('id')
+        .eq('auth_user_id', user.id)
+        .eq('is_active', true)
+        .maybeSingle();
+    final portalId = portalRow?['id']?.toString().trim();
+    if (portalId == null || portalId.isEmpty) {
+      throw AuthException('Tu cuenta no está vinculada a Portal (profiles_portal).');
+    }
+
     final payload = {
       'event_id': eventId,
       'name': name.trim(),
@@ -95,7 +107,7 @@ class EventsService {
     }
 
     await _syncTicketTypeProduct(
-      sellerId: user.id,
+      sellerId: portalId,
       eventId: eventId,
       ticketTypeId: ticketTypeId,
       name: name,

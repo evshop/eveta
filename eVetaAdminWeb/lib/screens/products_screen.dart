@@ -256,9 +256,21 @@ class _ProductsScreenState extends State<ProductsScreen> {
     setState(() => _loading = true);
     try {
       final scope = widget.managedSellerId?.trim();
-      final uid = Supabase.instance.client.auth.currentUser?.id;
       if (scope != null && scope.isNotEmpty) {
-        if (scope != uid && !await AuthService.isCurrentUserAdmin()) {
+        final uid = Supabase.instance.client.auth.currentUser?.id;
+        bool ownsStore = false;
+        if (uid != null) {
+          try {
+            final row = await Supabase.instance.client
+                .from('profiles_portal')
+                .select('id')
+                .eq('id', scope)
+                .eq('auth_user_id', uid)
+                .maybeSingle();
+            ownsStore = row != null;
+          } catch (_) {}
+        }
+        if (!ownsStore && !await AuthService.isCurrentUserAdmin()) {
           if (!mounted) return;
           setState(() {
             _products = [];

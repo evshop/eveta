@@ -3,17 +3,17 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class AuthService {
   static SupabaseClient get _client => Supabase.instance.client;
 
-  /// Columnas de tienda/partner vivir en `profiles_portal`, no en `profiles`.
+  /// Columnas de tienda/partner viven en `profiles_portal`, no en `profiles`.
+  /// Tras 064, `products.seller_id` referencia `profiles_portal.id`, así que
+  /// `seller_id_for_products` es directamente el `id` del row Portal.
   static const _portalPartnerCols =
-      'id, auth_user_id, legacy_profile_id, email, full_name, '
+      'id, auth_user_id, email, full_name, '
       'shop_name, shop_description, shop_logo_url, shop_banner_url, '
       'is_partner_verified, partner_display_order, admin_portal_note';
 
   static String sellerProductsIdFromPortal(Map<String, dynamic> portalRow) {
-    final legacy = portalRow['legacy_profile_id']?.toString().trim();
-    if (legacy != null && legacy.isNotEmpty) return legacy;
-    final uid = portalRow['auth_user_id']?.toString().trim();
-    return uid ?? '';
+    final id = portalRow['id']?.toString().trim();
+    return id ?? '';
   }
 
   static Map<String, dynamic> decoratePortalPartnerRow(Map<String, dynamic> raw) {
@@ -128,7 +128,7 @@ class AuthService {
       merged.putIfAbsent('full_name', () => fnShop);
     }
     merged.putIfAbsent('email', () => merged['email'] ?? user.email);
-    merged['id'] = merged['auth_user_id'] ?? user.id;
+    // `merged['id']` ya es `profiles_portal.id` (lo que `products.seller_id` espera).
     return merged;
   }
 
@@ -179,17 +179,14 @@ class AuthService {
     }
   }
 
-  /// Otras tiendas verificadas (excluye al usuario actual).
+  /// Tiendas verificadas para el panel admin.
   /// Vive en `profiles_portal` (la tienda pública viene de ahí para Shop/Delivery).
   static Future<List<Map<String, dynamic>>> fetchVerifiedPartnerStores() async {
-    final me = _client.auth.currentUser?.id;
-    if (me == null) return [];
     try {
       final rows = await _client
           .from('profiles_portal')
           .select(_portalPartnerCols)
           .eq('is_partner_verified', true)
-          .neq('auth_user_id', me)
           .order('partner_display_order', ascending: true)
           .order('shop_name', ascending: true);
       final list = List<Map<String, dynamic>>.from(rows as List);
@@ -241,7 +238,7 @@ class AuthService {
       await _client.from('profiles_portal').update({
         'admin_portal_note':
             'Contraseña definida al crear la cuenta ($email): $password',
-      }).eq('legacy_profile_id', userId);
+      }).eq('auth_user_id', userId);
     } catch (_) {
       // Columna ausente o política: ignorar.
     }
