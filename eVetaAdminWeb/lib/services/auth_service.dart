@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AuthService {
@@ -6,10 +7,13 @@ class AuthService {
   /// Columnas de tienda/partner viven en `profiles_portal`, no en `profiles`.
   /// Tras 064, `products.seller_id` referencia `profiles_portal.id`, así que
   /// `seller_id_for_products` es directamente el `id` del row Portal.
-  static const _portalPartnerCols =
+  /// Columnas base (sin `admin_portal_note`: falla si no corriste scripts/062).
+  static const _portalPartnerColsCore =
       'id, auth_user_id, email, full_name, '
       'shop_name, shop_description, shop_logo_url, shop_banner_url, '
-      'is_partner_verified, partner_display_order, admin_portal_note';
+      'is_partner_verified, partner_display_order, is_seller, is_active';
+
+  static const _portalPartnerColsWithNote = '$_portalPartnerColsCore, admin_portal_note';
 
   static String sellerProductsIdFromPortal(Map<String, dynamic> portalRow) {
     final id = portalRow['id']?.toString().trim();
@@ -110,13 +114,25 @@ class AuthService {
 
     Map<String, dynamic>? portal;
     try {
-      final portalRaw = await _client
-          .from('profiles_portal')
-          .select(_portalPartnerCols)
-          .eq('auth_user_id', user.id)
-          .eq('is_active', true)
-          .maybeSingle();
-      if (portalRaw != null) portal = Map<String, dynamic>.from(portalRaw as Map);
+      Map<String, dynamic>? portalRaw;
+      try {
+        final raw = await _client
+            .from('profiles_portal')
+            .select(_portalPartnerColsWithNote)
+            .eq('auth_user_id', user.id)
+            .eq('is_active', true)
+            .maybeSingle();
+        if (raw != null) portalRaw = Map<String, dynamic>.from(raw as Map);
+      } catch (_) {
+        final raw = await _client
+            .from('profiles_portal')
+            .select(_portalPartnerColsCore)
+            .eq('auth_user_id', user.id)
+            .eq('is_active', true)
+            .maybeSingle();
+        if (raw != null) portalRaw = Map<String, dynamic>.from(raw as Map);
+      }
+      portal = portalRaw;
     } catch (_) {}
 
     if (portal == null) return shop;
@@ -182,16 +198,28 @@ class AuthService {
   /// Tiendas verificadas para el panel admin.
   /// Vive en `profiles_portal` (la tienda pública viene de ahí para Shop/Delivery).
   static Future<List<Map<String, dynamic>>> fetchVerifiedPartnerStores() async {
-    try {
+    Future<List<Map<String, dynamic>>> load(String cols) async {
       final rows = await _client
           .from('profiles_portal')
-          .select(_portalPartnerCols)
-          .eq('is_partner_verified', true)
+          .select(cols)
+          .eq('is_active', true)
+          .or('is_seller.eq.true,is_partner_verified.eq.true')
           .order('partner_display_order', ascending: true)
           .order('shop_name', ascending: true);
-      final list = List<Map<String, dynamic>>.from(rows as List);
-      return list.map(decoratePortalPartnerRow).toList();
-    } catch (_) {
+      return List<Map<String, dynamic>>.from(rows as List);
+    }
+
+    try {
+      try {
+        final list = await load(_portalPartnerColsWithNote);
+        return list.map(decoratePortalPartnerRow).toList();
+      } catch (e1) {
+        debugPrint('fetchVerifiedPartnerStores (con admin_portal_note): $e1');
+        final list = await load(_portalPartnerColsCore);
+        return list.map(decoratePortalPartnerRow).toList();
+      }
+    } catch (e2, st) {
+      debugPrint('fetchVerifiedPartnerStores: $e2\n$st');
       return [];
     }
   }
@@ -247,12 +275,21 @@ class AuthService {
   /// [partnerPortalProfileId] es profiles_portal.id (no auth.users.id).
   static Future<Map<String, dynamic>?> fetchProfileByIdForAdmin(String partnerPortalProfileId) async {
     if (!await isCurrentUserAdmin()) return null;
-    final row = await _client
-        .from('profiles_portal')
-        .select(_portalPartnerCols)
-        .eq('id', partnerPortalProfileId)
-        .maybeSingle();
-    return row == null ? null : decoratePortalPartnerRow(Map<String, dynamic>.from(row as Map));
+    try {
+      final row = await _client
+          .from('profiles_portal')
+          .select(_portalPartnerColsWithNote)
+          .eq('id', partnerPortalProfileId)
+          .maybeSingle();
+      return row == null ? null : decoratePortalPartnerRow(Map<String, dynamic>.from(row as Map));
+    } catch (_) {
+      final row = await _client
+          .from('profiles_portal')
+          .select(_portalPartnerColsCore)
+          .eq('id', partnerPortalProfileId)
+          .maybeSingle();
+      return row == null ? null : decoratePortalPartnerRow(Map<String, dynamic>.from(row as Map));
+    }
   }
 
   static Future<void> updatePartnerStoreProfileForAdmin({
@@ -464,7 +501,7 @@ class AuthService {
 
     final portalRow = await _client
         .from('profiles_portal')
-        .select(_portalPartnerCols)
+        .select(_portalPartnerColsCore)
         .eq('id', partnerPortalProfileId)
         .maybeSingle();
     if (portalRow == null) throw AuthException('No se encontró la tienda (profiles_portal).');

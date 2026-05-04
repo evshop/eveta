@@ -19,7 +19,10 @@ for select
 to anon, authenticated
 using (
   is_active = true
-  and coalesce(is_seller, false) = true
+  and (
+    coalesce(is_seller, false) = true
+    or coalesce(is_partner_verified, false) = true
+  )
 );
 
 -- 2) RLS de orders.

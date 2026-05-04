@@ -2,15 +2,18 @@
 --
 -- Problema: policy "profiles_portal_admin_all" usa public.profile_is_admin(), y esa
 -- función consulta profiles_portal bajo RLS -> recursión / bloqueos.
+-- Además, sin `set row_security = off` el helper puede seguir viendo 0 filas bajo RLS
+-- y el admin NO puede listar/editar otras filas de profiles_portal (panel web vacío).
 --
--- Solución: helper SECURITY DEFINER que lee profiles_portal sin RLS para decidir si
--- la sesión actual es admin de Portal.
+-- Solución: helper SECURITY DEFINER con `set row_security = off` en la definición
+-- para leer profiles_portal y decidir si la sesión es admin de Portal.
 
 create or replace function public.is_profiles_portal_admin(p_uid uuid)
 returns boolean
 language sql
 security definer
 set search_path = public
+set row_security = off
 stable
 as $$
   select coalesce(
@@ -34,6 +37,7 @@ returns boolean
 language sql
 security definer
 set search_path = public
+set row_security = off
 stable
 as $$
   select public.is_profiles_portal_admin(auth.uid());

@@ -144,32 +144,38 @@ class SupabaseService {
   }
 
   static Future<Map<String, dynamic>?> getProductById(String id) async {
-    try {
-      debugPrint('Buscando producto con ID: $id');
-      final response = await client
+    debugPrint('Buscando producto con ID: $id');
+    const embedSimple =
+        '*, categories(spec_group_title), profiles_portal(shop_name, full_name, email, avatar_url)';
+    const embedHint =
+        '*, categories(spec_group_title), '
+        'profiles_portal!products_seller_id_profiles_portal_fkey(shop_name, full_name, email, avatar_url)';
+    Future<Map<String, dynamic>?> oneSelect(String columns) async {
+      return await client
           .from('products')
-          .select(
-            '*, categories(spec_group_title), '
-            'profiles_portal!products_seller_id_profiles_portal_fkey(full_name, shop_name, email)',
-          )
+          .select(columns)
           .eq('id', id)
           .eq('is_active', true)
           .maybeSingle();
+    }
+    try {
+      final response = await oneSelect(embedSimple);
       debugPrint('Resultado getProductById: $response');
       return response;
     } catch (e) {
-      debugPrint('Error al obtener producto (reintento sin embed): $e');
+      debugPrint('getProductById embed simple falló: $e');
       try {
-        final response = await client
-            .from('products')
-            .select()
-            .eq('id', id)
-            .eq('is_active', true)
-            .maybeSingle();
+        final response = await oneSelect(embedHint);
+        debugPrint('Resultado getProductById (hint FK): $response');
         return response;
       } catch (e2) {
-        debugPrint('Error al obtener producto: $e2');
-        return null;
+        debugPrint('getProductById embed hint falló: $e2');
+        try {
+          return await oneSelect('*');
+        } catch (e3) {
+          debugPrint('Error al obtener producto: $e3');
+          return null;
+        }
       }
     }
   }
@@ -388,21 +394,24 @@ class SupabaseService {
   /// Vendedores cuyo nombre de tienda o nombre coincide con la búsqueda.
   static Future<List<Map<String, dynamic>>> searchStores(String query) async {
     try {
-      final q = _escapeIlike(query.trim());
+      final raw = query.trim().toLowerCase();
+      if (raw.length < 2) return [];
+      // Una sola cláusula .or (RLS 065: is_seller o is_partner_verified); el texto se filtra en cliente.
       final response = await client
           .from('profiles_portal')
           .select('id, shop_name, shop_logo_url, full_name, avatar_url')
-          .eq('is_seller', true)
           .eq('is_active', true)
-          .or('shop_name.ilike.%$q%,full_name.ilike.%$q%')
-          .limit(12);
+          .or('is_seller.eq.true,is_partner_verified.eq.true')
+          .limit(40);
       final list = List<Map<String, dynamic>>.from(response);
       list.removeWhere((row) {
         final sn = row['shop_name']?.toString().trim() ?? '';
         final fn = row['full_name']?.toString().trim() ?? '';
-        return sn.isEmpty && fn.isEmpty;
+        if (sn.isEmpty && fn.isEmpty) return true;
+        final hay = '${sn.toLowerCase()} ${fn.toLowerCase()}';
+        return !hay.contains(raw);
       });
-      return list;
+      return list.take(12).toList();
     } catch (e) {
       debugPrint('Error en búsqueda de tiendas: $e');
       return [];
@@ -415,8 +424,8 @@ class SupabaseService {
       final response = await client
           .from('profiles_portal')
           .select('id, shop_name, shop_logo_url, full_name, avatar_url, is_partner_verified, partner_display_order')
-          .eq('is_seller', true)
           .eq('is_active', true)
+          .or('is_seller.eq.true,is_partner_verified.eq.true')
           .order('is_partner_verified', ascending: false)
           .order('partner_display_order', ascending: true)
           .limit(limit);
