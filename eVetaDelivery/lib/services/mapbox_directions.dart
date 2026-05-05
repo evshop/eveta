@@ -5,6 +5,14 @@ import 'package:latlong2/latlong.dart';
 
 import 'package:eveta_delivery/mapbox_env.dart';
 
+/// Resultado de una petición a Directions (geometría + duración aproximada).
+class MapboxDrivingMeta {
+  MapboxDrivingMeta({required this.points, this.durationSec});
+
+  final List<LatLng> points;
+  final int? durationSec;
+}
+
 /// Ruta en carretera (Mapbox Directions API). Devuelve null si no hay token o falla la petición.
 class MapboxDirections {
   MapboxDirections._();
@@ -14,12 +22,11 @@ class MapboxDirections {
     return t.isEmpty ? null : t;
   }
 
-  /// Geometría en coordenadas WGS84 para [flutter_map] (lat, lng).
-  static Future<List<LatLng>?> fetchDrivingRoute(LatLng from, LatLng to) async {
+  /// Geometría + duración estimada (segundos) del primer tramo.
+  static Future<MapboxDrivingMeta?> fetchDrivingRouteMeta(LatLng from, LatLng to) async {
     final token = _accessToken();
     if (token == null) return null;
 
-    // Mapbox espera lng,lat
     final coords =
         '${from.longitude},${from.latitude};${to.longitude},${to.latitude}';
     final uri = Uri.parse(
@@ -34,7 +41,8 @@ class MapboxDirections {
       final map = jsonDecode(res.body) as Map<String, dynamic>;
       final routes = map['routes'];
       if (routes is! List || routes.isEmpty) return null;
-      final geometry = (routes.first as Map<String, dynamic>)['geometry'];
+      final first = routes.first as Map<String, dynamic>;
+      final geometry = first['geometry'];
       if (geometry is! Map<String, dynamic>) return null;
       final coordsList = geometry['coordinates'];
       if (coordsList is! List) return null;
@@ -46,9 +54,18 @@ class MapboxDirections {
           out.add(LatLng(lat, lng));
         }
       }
-      return out.isEmpty ? null : out;
+      if (out.isEmpty) return null;
+      final dur = first['duration'];
+      final sec = dur is num ? dur.round() : int.tryParse(dur?.toString() ?? '');
+      return MapboxDrivingMeta(points: out, durationSec: sec);
     } catch (_) {
       return null;
     }
+  }
+
+  /// Geometría en coordenadas WGS84 para [flutter_map] (lat, lng).
+  static Future<List<LatLng>?> fetchDrivingRoute(LatLng from, LatLng to) async {
+    final m = await fetchDrivingRouteMeta(from, to);
+    return m?.points;
   }
 }

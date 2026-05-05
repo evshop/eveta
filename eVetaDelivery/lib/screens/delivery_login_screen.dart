@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/cupertino.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -69,8 +71,27 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
       }
     } on AuthException catch (e) {
       if (mounted) setState(() => _errorMessage = e.message);
-    } catch (_) {
-      if (mounted) setState(() => _errorMessage = 'Error de conexión. Intenta de nuevo.');
+    } on SocketException catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage =
+              'Sin conexión a Internet o no se puede resolver el servidor. '
+              'Revisa Wi‑Fi/datos y que en assets/env/app.env la URL de Supabase '
+              'sea exactamente https://TU_REF.supabase.co sin espacios.\n(${e.message})';
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        final msg = e.toString();
+        final isDns = msg.contains('Failed host lookup') ||
+            msg.contains('No address associated with hostname');
+        setState(() {
+          _errorMessage = isDns
+              ? 'No se pudo contactar a Supabase (DNS). Revisa la red y la URL en app.env; '
+                  'si copiaste el .env, asegúrate de que no haya espacios dentro de la URL.'
+              : 'Error de conexión: $e';
+        });
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

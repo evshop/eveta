@@ -4,18 +4,23 @@ import 'package:flutter/material.dart';
 /// Panel inferior deslizable (hasta ~medio pantalla) con detalle del pedido y acciones.
 Future<void> showDeliveryOfferBottomSheet(
   BuildContext context, {
+  String? productImageUrl,
   required String productLine,
   required String storeName,
   required String buyerName,
   required String deliveryEarningsLabel,
   required String storeToHomeKmLabel,
   required String? driverToPickupKmLabel,
+  String? pickupEtaLabel,
+  String? originAddress,
+  String? destAddress,
   required bool canAccept,
   required VoidCallback onAccept,
   required VoidCallback onChat,
 }) {
   return showModalBottomSheet<void>(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     builder: (ctx) {
@@ -49,6 +54,26 @@ Future<void> showDeliveryOfferBottomSheet(
                         ),
                       ),
                       const SizedBox(height: 18),
+                      if (productImageUrl != null && productImageUrl.trim().isNotEmpty) ...[
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: AspectRatio(
+                              aspectRatio: 16 / 9,
+                              child: Image.network(
+                                productImageUrl.trim(),
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => ColoredBox(
+                                  color: scheme.surfaceContainerHighest,
+                                  child: Icon(Icons.image_not_supported_outlined, color: scheme.onSurfaceVariant),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: Text(
@@ -63,11 +88,25 @@ Future<void> showDeliveryOfferBottomSheet(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: _detailRow(ctx, 'Tienda', storeName),
                       ),
+                      if (originAddress != null && originAddress.trim().isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: _detailRow(ctx, 'Origen (tienda)', originAddress.trim()),
+                        ),
+                      ],
                       const SizedBox(height: 10),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: _detailRow(ctx, 'Cliente', buyerName),
                       ),
+                      if (destAddress != null && destAddress.trim().isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: _detailRow(ctx, 'Entrega', destAddress.trim()),
+                        ),
+                      ],
                       const SizedBox(height: 10),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -94,6 +133,13 @@ Future<void> showDeliveryOfferBottomSheet(
                                   fontWeight: FontWeight.w600,
                                 ),
                           ),
+                        ),
+                      ],
+                      if (pickupEtaLabel != null && pickupEtaLabel.trim().isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: _detailRow(ctx, 'Tiempo estimado', pickupEtaLabel.trim()),
                         ),
                       ],
                       if (!canAccept) ...[
@@ -129,7 +175,7 @@ Future<void> showDeliveryOfferBottomSheet(
                                   disabledBackgroundColor:
                                       scheme.onSurfaceVariant.withValues(alpha: 0.25),
                                 ),
-                                child: const Text('Aceptar'),
+                                child: const Text('Aceptar pedido'),
                               ),
                             ),
                             const SizedBox(width: 12),

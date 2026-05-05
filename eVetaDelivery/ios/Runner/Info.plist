@@ -66,5 +66,9 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>eDelivery usa tu ubicación con precisión para mostrarte en el mapa en tiempo real y ofrecerte pedidos de entrega cercanos.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>eDelivery usa tu ubicación mientras usas la app para el mapa y las entregas.</string>
 </dict>
 </plist>

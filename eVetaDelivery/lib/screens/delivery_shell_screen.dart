@@ -23,77 +23,268 @@ class DeliveryShellScreen extends StatefulWidget {
   State<DeliveryShellScreen> createState() => _DeliveryShellScreenState();
 }
 
-class _DeliveryShellScreenState extends State<DeliveryShellScreen> {
+class _DeliveryShellScreenState extends State<DeliveryShellScreen> with WidgetsBindingObserver {
   Timer? _poll;
+  StreamSubscription<Position>? _positionSub;
   List<Map<String, dynamic>> _pool = [];
   List<Map<String, dynamic>> _mine = [];
   bool _loading = true;
   String? _actionError;
   LatLng? _driverPos;
+  /// Mensaje en pestaña Maps si falta GPS o permisos.
+  String? _locationBanner;
+  /// Si true, el aviso es por GPS/apagado del sistema (no solo permiso de app).
+  bool _locationBannerIsSystemGpsOff = false;
+  bool _sessionLocationExplained = false;
+  Map<String, dynamic>? _myDeliveryProfile;
   final MapController _mapController = MapController();
-  List<LatLng>? _offerRoutePoints;
-  List<LatLng>? _activeOrderRoute;
+  List<LatLng>? _offerPreviewYellowRoute;
+  List<LatLng>? _offerPreviewGreenRoute;
+  Map<String, dynamic>? _offerPreviewOrder;
+  /// Con pedido aceptado: tramo repartidor → recojo (amarillo).
+  List<LatLng>? _activeYellowRoute;
+  /// Con pedido aceptado: tienda → cliente (verde).
+  List<LatLng>? _activeGreenRoute;
 
   int _homePeriod = 0; // 0 = hoy, 1 = mes
+
+  static const LocationSettings _kGpsStreamSettings = LocationSettings(
+    accuracy: LocationAccuracy.bestForNavigation,
+    distanceFilter: 5,
+  );
+
+  static const LocationSettings _kGpsOneShotSettings = LocationSettings(
+    accuracy: LocationAccuracy.bestForNavigation,
+  );
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrapLocationPermissionAndGps());
     _refresh();
     _poll = Timer.periodic(const Duration(seconds: 12), (_) => _refresh(silent: true));
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _poll?.cancel();
+    _positionSub?.cancel();
     _mapController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _bootstrapLocationPermissionAndGps();
+    }
+  }
+
+  bool _locationPermissionOk(LocationPermission p) =>
+      p == LocationPermission.whileInUse || p == LocationPermission.always;
+
+  Future<void> _bootstrapLocationPermissionAndGps() async {
+    try {
+      final enabled = await Geolocator.isLocationServiceEnabled();
+      if (!mounted) return;
+      if (!enabled) {
+        setState(() {
+          _locationBannerIsSystemGpsOff = true;
+          _locationBanner = 'Activa la ubicación (GPS) del teléfono para ver tu posición en el mapa.';
+        });
+        return;
+      }
+      if (mounted) setState(() => _locationBannerIsSystemGpsOff = false);
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        if (!_sessionLocationExplained && mounted) {
+          _sessionLocationExplained = true;
+          final ok = await showCupertinoDialog<bool>(
+            context: context,
+            builder: (ctx) => CupertinoAlertDialog(
+              title: const Text('Ubicación en tiempo real'),
+              content: const Text(
+                'eDelivery necesita permiso de ubicación precisa para mostrarte en el mapa mientras repartes y para filtrar pedidos cerca del punto de recojo.',
+              ),
+              actions: [
+                CupertinoDialogAction(
+                  onPressed: () => Navigator.of(ctx).pop(false),
+                  child: const Text('Ahora no'),
+                ),
+                CupertinoDialogAction(
+                  isDefaultAction: true,
+                  onPressed: () => Navigator.of(ctx).pop(true),
+                  child: const Text('Continuar'),
+                ),
+              ],
+            ),
+          );
+          if (ok != true) {
+            if (mounted) {
+              setState(() {
+                _locationBanner =
+                    'Sin permiso de ubicación no podemos mostrar tu posición en el mapa. Pulsa Reintentar.';
+              });
+            }
+            return;
+          }
+        }
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (!mounted) return;
+      if (permission == LocationPermission.deniedForever) {
+        setState(() {
+          _locationBanner =
+              'Ubicación bloqueada para esta app. Ábrela en Ajustes del teléfono y permite ubicación.';
+        });
+        return;
+      }
+      if (!_locationPermissionOk(permission)) {
+        setState(() {
+          _locationBanner =
+              'Permiso de ubicación denegado. Pulsa Reintentar para solicitarlo de nuevo.';
+        });
+        return;
+      }
+
+      setState(() => _locationBanner = null);
+      await _subscribePositionStream();
+      await _ensureDriverPosition(silent: true);
+    } catch (e) {
+      DeliveryApi.debugLog('Ubicación: $e');
+    }
+  }
+
+  Future<void> _subscribePositionStream() async {
+    await _positionSub?.cancel();
+    _positionSub = null;
+    final p = await Geolocator.checkPermission();
+    if (!_locationPermissionOk(p)) return;
+
+    try {
+      _positionSub = Geolocator.getPositionStream(
+        locationSettings: _kGpsStreamSettings,
+      ).listen(
+        (pos) {
+          if (!mounted) return;
+          setState(() {
+            _driverPos = LatLng(pos.latitude, pos.longitude);
+            _locationBanner = null;
+          });
+        },
+        onError: (Object e) => DeliveryApi.debugLog('Stream GPS: $e'),
+      );
+    } catch (e) {
+      DeliveryApi.debugLog('No se pudo iniciar stream GPS: $e');
+    }
+  }
+
+  String _driverMapInitial() {
+    final name = _myDeliveryProfile?['full_name']?.toString().trim() ?? '';
+    if (name.isNotEmpty) {
+      return name.substring(0, 1).toUpperCase();
+    }
+    final em =
+        _myDeliveryProfile?['email']?.toString().trim() ??
+            Supabase.instance.client.auth.currentUser?.email?.trim() ??
+            '';
+    if (em.isNotEmpty) return em.substring(0, 1).toUpperCase();
+    return '?';
   }
 
   Future<void> _refresh({bool silent = false}) async {
     if (!silent && mounted) setState(() => _loading = true);
     try {
       await _ensureDriverPosition(silent: silent);
+      final prof = await DeliveryApi.fetchMyDeliveryProfile();
       final pool = await DeliveryApi.fetchPool();
       final mine = await DeliveryApi.fetchMine();
 
-      List<LatLng>? activeRoute;
+      List<LatLng>? yLeg;
+      List<LatLng>? gLeg;
       if (mine.isNotEmpty) {
         final o = mine.first;
         final pu = _pickupPoint(o);
         final dr = _dropoffPoint(o);
+        final st = o['delivery_status']?.toString() ?? '';
         if (pu != null && dr != null) {
-          activeRoute = await MapboxDirections.fetchDrivingRoute(pu, dr);
+          gLeg = await MapboxDirections.fetchDrivingRoute(pu, dr);
+          final dp = _driverPos;
+          if (st == 'driver_assigned' && dp != null) {
+            yLeg = await MapboxDirections.fetchDrivingRoute(dp, pu);
+          } else if (st == 'picked_up' && dp != null) {
+            yLeg = await MapboxDirections.fetchDrivingRoute(dp, dr);
+          }
         }
       }
 
       if (!mounted) return;
       setState(() {
+        _myDeliveryProfile = prof;
         _pool = pool;
         _mine = mine;
         _loading = false;
         _actionError = null;
-        _activeOrderRoute = activeRoute;
+        _activeYellowRoute = yLeg;
+        _activeGreenRoute = gLeg;
       });
 
-      final fitPts = activeRoute;
-      if (fitPts != null && fitPts.isNotEmpty) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          _mapController.fitCamera(
-            CameraFit.coordinates(
-              coordinates: fitPts,
-              padding: const EdgeInsets.fromLTRB(36, 120, 36, 140),
-            ),
-          );
-        });
-      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (mine.isNotEmpty) {
+          final o = mine.first;
+          final pu = _pickupPoint(o);
+          final dr = _dropoffPoint(o);
+          final coords = <LatLng>[];
+          void addLeg(List<LatLng>? leg) {
+            if (leg == null || leg.isEmpty) return;
+            coords.addAll(leg);
+          }
+
+          addLeg(yLeg);
+          addLeg(gLeg);
+          if (_driverPos != null) coords.add(_driverPos!);
+          if (pu != null) coords.add(pu);
+          if (dr != null) coords.add(dr);
+          if (coords.length >= 2) {
+            _mapController.fitCamera(
+              CameraFit.coordinates(
+                coordinates: coords,
+                padding: const EdgeInsets.fromLTRB(36, 120, 36, 140),
+              ),
+            );
+            return;
+          }
+        }
+        if (mine.isEmpty && pool.isEmpty && _driverPos != null) {
+          _mapController.move(_driverPos!, 15.2);
+        }
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
         _actionError = '$e';
       });
+    }
+  }
+
+  Future<void> _recenterMapOnMe() async {
+    await _bootstrapLocationPermissionAndGps();
+    await _ensureDriverPosition(silent: false);
+    if (!mounted || _driverPos == null) return;
+    _mapController.move(_driverPos!, 15.4);
+  }
+
+  Future<void> _openLocationOsSettings() async {
+    if (_locationBannerIsSystemGpsOff) {
+      await Geolocator.openLocationSettings();
+    } else {
+      await Geolocator.openAppSettings();
     }
   }
 
@@ -105,18 +296,18 @@ class _DeliveryShellScreenState extends State<DeliveryShellScreen> {
         return;
       }
       var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        if (!silent) DeliveryApi.debugLog('Permiso de ubicación denegado');
-        return;
+      if (!_locationPermissionOk(permission)) {
+        if (!silent) {
+          await _bootstrapLocationPermissionAndGps();
+          permission = await Geolocator.checkPermission();
+        }
+        if (!_locationPermissionOk(permission)) {
+          if (!silent) DeliveryApi.debugLog('Permiso de ubicación no concedido');
+          return;
+        }
       }
       final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-        ),
+        locationSettings: _kGpsOneShotSettings,
       );
       if (!mounted) return;
       setState(() {
@@ -217,17 +408,26 @@ class _DeliveryShellScreenState extends State<DeliveryShellScreen> {
               case 1:
                 return _MapsTab(
                   mapController: _mapController,
-                  routePolyline: _offerRoutePoints ?? _activeOrderRoute,
+                  offerPreviewYellowRoute: _offerPreviewYellowRoute,
+                  offerPreviewGreenRoute: _offerPreviewGreenRoute,
+                  offerPreviewOrder: _offerPreviewOrder,
+                  activeYellowRoute: _mine.isNotEmpty ? _activeYellowRoute : null,
+                  activeGreenRoute: _mine.isNotEmpty ? _activeGreenRoute : null,
+                  driverMapInitial: _driverMapInitial(),
                   loading: _loading,
                   pool: _pool,
                   mine: _mine,
                   driverPos: _driverPos,
+                  locationBanner: _locationBanner,
+                  onRetryLocation: _bootstrapLocationPermissionAndGps,
+                  onOpenLocationSettings: _openLocationOsSettings,
                   actionError: _actionError,
                   onDismissError: () => setState(() => _actionError = null),
                   onAccept: _accept,
                   onShowMine: _showMineSheet,
                   onShowOffer: _showOfferSheet,
                   onOpenChatMine: () => _showChatComingSoon(context),
+                  onRecenter: _recenterMapOnMe,
                 );
               case 2:
                 return const _ChatsTab();
@@ -254,7 +454,11 @@ class _DeliveryShellScreenState extends State<DeliveryShellScreen> {
         : _distanceKm(_driverPos!, pickup);
     final canAccept = nearKm == null || nearKm <= _kPickupMaxKm;
 
-    setState(() => _offerRoutePoints = null);
+    setState(() {
+      _offerPreviewOrder = o;
+      _offerPreviewYellowRoute = null;
+      _offerPreviewGreenRoute = null;
+    });
     _loadOfferRouteForPreview(pickup, drop);
 
     final storeName = (o['store_name']?.toString().trim().isNotEmpty == true)
@@ -271,9 +475,23 @@ class _DeliveryShellScreenState extends State<DeliveryShellScreen> {
         ? '${dist.toStringAsFixed(1)} km (tienda → entrega)'
         : '—';
 
+    String? pickupEtaLabel;
+    if (_driverPos != null && pickup != null) {
+      final meta = await MapboxDirections.fetchDrivingRouteMeta(_driverPos!, pickup);
+      final sec = meta?.durationSec;
+      if (sec != null && sec > 0) {
+        pickupEtaLabel = '~${(sec / 60).ceil()} min hasta el recojo';
+      }
+    }
+
+    final originAddr = o['store_address']?.toString().trim();
+    final destAddr = o['dropoff_address']?.toString().trim();
+    final img = _firstOrderImage(o);
+
     if (!mounted) return;
     await showDeliveryOfferBottomSheet(
       context,
+      productImageUrl: img,
       productLine: productLine,
       storeName: storeName,
       buyerName: buyer,
@@ -282,20 +500,40 @@ class _DeliveryShellScreenState extends State<DeliveryShellScreen> {
       driverToPickupKmLabel: nearKm == null
           ? null
           : 'Hasta el recojo: ${nearKm.toStringAsFixed(2)} km (máx. ${_kPickupMaxKm.toStringAsFixed(1)} km)',
+      pickupEtaLabel: pickupEtaLabel,
+      originAddress: originAddr != null && originAddr.isNotEmpty ? originAddr : null,
+      destAddress: destAddr != null && destAddr.isNotEmpty ? destAddr : null,
       canAccept: canAccept,
       onAccept: () => _accept(id),
       onChat: () => _showChatComingSoon(context),
     );
-    if (mounted) setState(() => _offerRoutePoints = null);
+    if (mounted) {
+      setState(() {
+        _offerPreviewOrder = null;
+        _offerPreviewYellowRoute = null;
+        _offerPreviewGreenRoute = null;
+      });
+    }
   }
 
   void _loadOfferRouteForPreview(LatLng? pickup, LatLng? drop) {
     if (pickup == null || drop == null) return;
-    MapboxDirections.fetchDrivingRoute(pickup, drop).then((pts) {
+    final fromDriver = _driverPos;
+    Future.wait<List<LatLng>?>([
+      if (fromDriver != null) MapboxDirections.fetchDrivingRoute(fromDriver, pickup) else Future.value(null),
+      MapboxDirections.fetchDrivingRoute(pickup, drop),
+    ]).then((routes) {
       if (!mounted) return;
-      setState(() => _offerRoutePoints = pts);
-      final fit = pts;
-      if (fit == null || fit.isEmpty) return;
+      final y = routes[0];
+      final g = routes[1];
+      setState(() {
+        _offerPreviewYellowRoute = y;
+        _offerPreviewGreenRoute = g;
+      });
+      final fit = <LatLng>[];
+      if (y != null && y.isNotEmpty) fit.addAll(y);
+      if (g != null && g.isNotEmpty) fit.addAll(g);
+      if (fit.length < 2) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         _mapController.fitCamera(
@@ -337,6 +575,17 @@ class _DeliveryShellScreenState extends State<DeliveryShellScreen> {
       }
     }
     return names.isEmpty ? 'Pedido' : names.join(' · ');
+  }
+
+  String? _firstOrderImage(Map<String, dynamic> o) {
+    final items = o['order_items'];
+    if (items is! List || items.isEmpty) return null;
+    for (final item in items) {
+      if (item is Map && item['image_url']?.toString().trim().isNotEmpty == true) {
+        return item['image_url'].toString().trim();
+      }
+    }
+    return null;
   }
 
   LatLng? _pickupPoint(Map<String, dynamic> order) {
@@ -610,31 +859,50 @@ class _HomeTab extends StatelessWidget {
 class _MapsTab extends StatelessWidget {
   const _MapsTab({
     required this.mapController,
-    required this.routePolyline,
+    required this.offerPreviewYellowRoute,
+    required this.offerPreviewGreenRoute,
+    required this.offerPreviewOrder,
+    required this.activeYellowRoute,
+    required this.activeGreenRoute,
+    required this.driverMapInitial,
     required this.loading,
     required this.pool,
     required this.mine,
     required this.driverPos,
+    this.locationBanner,
+    required this.onRetryLocation,
+    required this.onOpenLocationSettings,
     required this.actionError,
     required this.onDismissError,
     required this.onAccept,
     required this.onShowOffer,
     required this.onShowMine,
     required this.onOpenChatMine,
+    required this.onRecenter,
   });
 
   final MapController mapController;
-  final List<LatLng>? routePolyline;
+  final List<LatLng>? offerPreviewYellowRoute;
+  final List<LatLng>? offerPreviewGreenRoute;
+  final Map<String, dynamic>? offerPreviewOrder;
+  final List<LatLng>? activeYellowRoute;
+  final List<LatLng>? activeGreenRoute;
+  /// Inicial en el marcador "yo" (repartidor) si no hay foto.
+  final String driverMapInitial;
   final bool loading;
   final List<Map<String, dynamic>> pool;
   final List<Map<String, dynamic>> mine;
   final LatLng? driverPos;
+  final String? locationBanner;
+  final Future<void> Function() onRetryLocation;
+  final Future<void> Function() onOpenLocationSettings;
   final String? actionError;
   final VoidCallback onDismissError;
   final Future<void> Function(String orderId) onAccept;
   final void Function(Map<String, dynamic> o) onShowOffer;
   final void Function(Map<String, dynamic> o) onShowMine;
   final VoidCallback onOpenChatMine;
+  final Future<void> Function() onRecenter;
 
   @override
   Widget build(BuildContext context) {
@@ -670,6 +938,7 @@ class _MapsTab extends StatelessWidget {
           height: 62,
           point: pickup,
           child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onTap: () => onShowOffer(o),
             child: _AvatarMarker(
               accent: CupertinoColors.systemPink,
@@ -677,6 +946,17 @@ class _MapsTab extends StatelessWidget {
               fallbackIcon: CupertinoIcons.cube_box,
             ),
           ),
+        ),
+      );
+    }
+
+    if (driverPos != null) {
+      markers.add(
+        Marker(
+          width: 48,
+          height: 48,
+          point: driverPos!,
+          child: _DriverMeMarker(initial: driverMapInitial),
         ),
       );
     }
@@ -693,6 +973,7 @@ class _MapsTab extends StatelessWidget {
           height: 62,
           point: point,
           child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onTap: () => onShowMine(o),
             child: _AvatarMarker(
               accent: CupertinoColors.systemPink,
@@ -703,6 +984,81 @@ class _MapsTab extends StatelessWidget {
         ),
       );
     }
+
+    final previewYellow = (offerPreviewYellowRoute != null && offerPreviewYellowRoute!.length >= 2)
+        ? <Polyline<Object>>[
+            Polyline<Object>(
+              points: offerPreviewYellowRoute!,
+              strokeWidth: 5,
+              color: const Color(0xFFFFC107),
+            ),
+          ]
+        : const <Polyline<Object>>[];
+
+    final previewGreen = (offerPreviewGreenRoute != null && offerPreviewGreenRoute!.length >= 2)
+        ? <Polyline<Object>>[
+            Polyline<Object>(
+              points: offerPreviewGreenRoute!,
+              strokeWidth: 5,
+              color: const Color(0xFF43A047),
+            ),
+          ]
+        : const <Polyline<Object>>[];
+
+    final previewDrop = offerPreviewOrder != null ? _dropoffPoint(offerPreviewOrder!) : null;
+    if (previewDrop != null && !hasAccepted) {
+      final buyerInitial = _buyerInitial(offerPreviewOrder!);
+      markers.add(
+        Marker(
+          width: 56,
+          height: 56,
+          point: previewDrop,
+          child: _AvatarMarker(
+            accent: CupertinoColors.activeGreen,
+            fallbackIcon: CupertinoIcons.person_fill,
+            fallbackText: buyerInitial,
+          ),
+        ),
+      );
+    }
+    if (hasAccepted && mine.isNotEmpty) {
+      final active = mine.first;
+      final drop = _dropoffPoint(active);
+      if (drop != null) {
+        markers.add(
+          Marker(
+            width: 56,
+            height: 56,
+            point: drop,
+            child: _AvatarMarker(
+              accent: CupertinoColors.activeGreen,
+              fallbackIcon: CupertinoIcons.person_fill,
+              fallbackText: _buyerInitial(active),
+            ),
+          ),
+        );
+      }
+    }
+
+    final activeYellow = (activeYellowRoute != null && activeYellowRoute!.length >= 2)
+        ? <Polyline<Object>>[
+            Polyline<Object>(
+              points: activeYellowRoute!,
+              strokeWidth: 5,
+              color: const Color(0xFFFFC107),
+            ),
+          ]
+        : const <Polyline<Object>>[];
+
+    final activeGreen = (activeGreenRoute != null && activeGreenRoute!.length >= 2)
+        ? <Polyline<Object>>[
+            Polyline<Object>(
+              points: activeGreenRoute!,
+              strokeWidth: 5,
+              color: const Color(0xFF43A047),
+            ),
+          ]
+        : const <Polyline<Object>>[];
 
     final mapUrl = _MapboxConfig.tileUrlTemplateOrNull(context);
     final mapAttribution = mapUrl == null ? const Text('© OpenStreetMap') : const Text('© Mapbox');
@@ -740,15 +1096,12 @@ class _MapsTab extends StatelessWidget {
                             userAgentPackageName: 'com.eveta.delivery',
                           ),
                           PolylineLayer(
-                            polylines: (routePolyline != null && routePolyline!.length >= 2)
-                                ? <Polyline<Object>>[
-                                    Polyline<Object>(
-                                      points: routePolyline!,
-                                      strokeWidth: 5,
-                                      color: CupertinoColors.systemPink.withAlpha(200),
-                                    ),
-                                  ]
-                                : const <Polyline<Object>>[],
+                            polylines: <Polyline<Object>>[
+                              ...previewYellow,
+                              ...previewGreen,
+                              ...activeYellow,
+                              ...activeGreen,
+                            ],
                           ),
                           MarkerLayer(markers: markers),
                         ],
@@ -766,7 +1119,7 @@ class _MapsTab extends StatelessWidget {
                               Expanded(
                                 child: Text(
                                   hasAccepted
-                                      ? 'Pedido aceptado · ruta tienda → cliente'
+                                      ? 'Amarillo: tu ruta · Verde: tienda → cliente'
                                       : '${nearOffers.length} pedidos cerca para recojo',
                                   style: const TextStyle(fontWeight: FontWeight.w700),
                                 ),
@@ -783,7 +1136,9 @@ class _MapsTab extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (!hasAccepted && (farOffers.isNotEmpty || driverPos == null))
+                    if (!hasAccepted &&
+                        (farOffers.isNotEmpty || driverPos == null) &&
+                        (locationBanner == null || locationBanner!.isEmpty))
                       Positioned(
                         left: 12,
                         right: 12,
@@ -803,6 +1158,29 @@ class _MapsTab extends StatelessWidget {
                           ),
                         ),
                       ),
+                    Positioned(
+                      right: 14,
+                      bottom: hasAccepted ? 150 : 118,
+                      child: CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        onPressed: () => onRecenter(),
+                        child: Container(
+                          padding: const EdgeInsets.all(11),
+                          decoration: BoxDecoration(
+                            color: CupertinoColors.systemBackground.resolveFrom(context).withAlpha(230),
+                            shape: BoxShape.circle,
+                            boxShadow: const [
+                              BoxShadow(color: Color(0x33000000), blurRadius: 10, offset: Offset(0, 3)),
+                            ],
+                          ),
+                          child: Icon(
+                            CupertinoIcons.location_fill,
+                            size: 22,
+                            color: CupertinoColors.systemPink.resolveFrom(context),
+                          ),
+                        ),
+                      ),
+                    ),
                     if (loading && pool.isEmpty && mine.isEmpty)
                       const Positioned.fill(
                         child: Center(child: CupertinoActivityIndicator()),
@@ -812,11 +1190,77 @@ class _MapsTab extends StatelessWidget {
               ),
             ],
           ),
-          if (actionError != null)
+          if (locationBanner != null && locationBanner!.trim().isNotEmpty)
             Positioned(
               left: 12,
               right: 12,
               top: MediaQuery.of(context).padding.top + 8,
+              child: _GlassCard(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            CupertinoIcons.location_slash,
+                            size: 20,
+                            color: CupertinoColors.systemPink.resolveFrom(context),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              locationBanner!,
+                              style: TextStyle(
+                                color: CupertinoColors.label.resolveFrom(context),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                height: 1.25,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: CupertinoButton.filled(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              onPressed: () => onRetryLocation(),
+                              child: const Text('Reintentar'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: CupertinoButton(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              onPressed: () => onOpenLocationSettings(),
+                              child: Text(
+                                'Ajustes',
+                                style: TextStyle(
+                                  color: CupertinoColors.systemPink.resolveFrom(context),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          if (actionError != null)
+            Positioned(
+              left: 12,
+              right: 12,
+              top: MediaQuery.of(context).padding.top +
+                  8 +
+                  ((locationBanner != null && locationBanner!.trim().isNotEmpty) ? 118 : 0),
               child: _GlassCard(
                 child: Padding(
                   padding: const EdgeInsets.all(12),
@@ -865,6 +1309,12 @@ class _MapsTab extends StatelessWidget {
       }
     }
     return null;
+  }
+
+  String _buyerInitial(Map<String, dynamic> o) {
+    final name = o['buyer_display_name']?.toString().trim() ?? '';
+    if (name.isNotEmpty) return name.substring(0, 1).toUpperCase();
+    return '?';
   }
 
   LatLng? _pickupPoint(Map<String, dynamic> o) {
@@ -1153,16 +1603,53 @@ class _GlassCard extends StatelessWidget {
   }
 }
 
+/// Marcador del repartidor (ubicación en vivo); inicial si no hay foto de perfil.
+class _DriverMeMarker extends StatelessWidget {
+  const _DriverMeMarker({required this.initial});
+
+  final String initial;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: CupertinoColors.activeBlue,
+        border: Border.all(color: CupertinoColors.white, width: 2.5),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x55000000),
+            blurRadius: 8,
+            spreadRadius: 0,
+          ),
+        ],
+      ),
+      child: Center(
+        child: Text(
+          initial.isEmpty ? '?' : initial.substring(0, 1),
+          style: const TextStyle(
+            color: CupertinoColors.white,
+            fontWeight: FontWeight.w800,
+            fontSize: 18,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _AvatarMarker extends StatelessWidget {
   const _AvatarMarker({
     required this.accent,
     this.imageUrl,
     required this.fallbackIcon,
+    this.fallbackText,
   });
 
   final Color accent;
   final String? imageUrl;
   final IconData fallbackIcon;
+  final String? fallbackText;
 
   @override
   Widget build(BuildContext context) {
@@ -1192,7 +1679,16 @@ class _AvatarMarker extends StatelessWidget {
                     height: double.infinity,
                   )
                 : Center(
-                    child: Icon(fallbackIcon, color: accent, size: 24),
+                    child: (fallbackText != null && fallbackText!.trim().isNotEmpty)
+                        ? Text(
+                            fallbackText!.trim().substring(0, 1).toUpperCase(),
+                            style: TextStyle(
+                              color: accent,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 22,
+                            ),
+                          )
+                        : Icon(fallbackIcon, color: accent, size: 24),
                   ),
           ),
         ),

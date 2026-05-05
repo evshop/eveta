@@ -1,19 +1,28 @@
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:eveta_delivery/screens/delivery_login_screen.dart';
 import 'package:eveta_delivery/screens/delivery_shell_screen.dart';
 import 'package:eveta_delivery/services/delivery_auth_gate.dart';
+import 'package:eveta_delivery/supabase_env.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: 'assets/env/app.env');
+  final supabaseUrl = supabaseUrlFromEnv();
+  final supabaseAnon = supabaseAnonKeyFromEnv();
+  if (supabaseUrl.isEmpty || supabaseAnon.isEmpty) {
+    throw StateError(
+      'Faltan NEXT_PUBLIC_SUPABASE_URL o NEXT_PUBLIC_SUPABASE_ANON_KEY en assets/env/app.env',
+    );
+  }
   await Supabase.initialize(
-    url: dotenv.env['NEXT_PUBLIC_SUPABASE_URL']!,
-    anonKey: dotenv.env['NEXT_PUBLIC_SUPABASE_ANON_KEY']!,
+    url: supabaseUrl,
+    anonKey: supabaseAnon,
   );
   runApp(const EvetaDeliveryApp());
 }
@@ -23,14 +32,21 @@ class EvetaDeliveryApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const CupertinoApp(
+    return CupertinoApp(
       title: 'eDelivery',
       debugShowCheckedModeBanner: false,
-      theme: CupertinoThemeData(
+      theme: const CupertinoThemeData(
         brightness: Brightness.light,
         primaryColor: CupertinoColors.systemPink,
       ),
-      home: _AuthGate(),
+      // showModalBottomSheet (detalle del pedido) requiere un ancestro Material.
+      builder: (context, child) {
+        return Material(
+          type: MaterialType.transparency,
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
+      home: const _AuthGate(),
     );
   }
 }
