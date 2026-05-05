@@ -46,6 +46,16 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
     return true;
   }
 
+  String _toDeliveryAuthEmail(String value) {
+    final e = value.trim().toLowerCase();
+    final at = e.indexOf('@');
+    if (at <= 0 || at == e.length - 1) return e;
+    final local = e.substring(0, at);
+    final domain = e.substring(at + 1);
+    final baseLocal = local.contains('+') ? local.split('+').first : local;
+    return '$baseLocal+delivery@$domain';
+  }
+
   Future<void> _handleLogin() async {
     if (!_validate()) return;
 
@@ -55,8 +65,9 @@ class _DeliveryLoginScreenState extends State<DeliveryLoginScreen> {
     });
 
     try {
+      final authEmail = _toDeliveryAuthEmail(_emailController.text);
       await Supabase.instance.client.auth.signInWithPassword(
-        email: _emailController.text.trim(),
+        email: authEmail,
         password: _passwordController.text,
       );
 

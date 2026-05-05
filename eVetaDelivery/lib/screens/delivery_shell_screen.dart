@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
@@ -46,6 +47,7 @@ class _DeliveryShellScreenState extends State<DeliveryShellScreen> with WidgetsB
   /// Con pedido aceptado: tienda → cliente (verde).
   List<LatLng>? _activeGreenRoute;
 
+  int _selectedTab = 1;
   int _homePeriod = 0; // 0 = hoy, 1 = mes
 
   static const LocationSettings _kGpsStreamSettings = LocationSettings(
@@ -367,81 +369,63 @@ class _DeliveryShellScreenState extends State<DeliveryShellScreen> with WidgetsB
 
   @override
   Widget build(BuildContext context) {
-    return CupertinoTabScaffold(
-      tabBar: CupertinoTabBar(
-        activeColor: CupertinoColors.systemPink,
-        inactiveColor: CupertinoColors.systemGrey,
-        backgroundColor:
-            CupertinoColors.systemBackground.resolveFrom(context).withAlpha(210),
-        border: const Border(
-          top: BorderSide(color: CupertinoColors.separator, width: 0.0),
-        ),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.house),
-            label: 'Inicio',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.map),
-            label: 'Maps',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.chat_bubble),
-            label: 'Chats',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(CupertinoIcons.settings),
-            label: 'Settings',
-          ),
-        ],
+    final tabs = <Widget>[
+      _HomeTab(
+        period: _homePeriod,
+        onPeriodChanged: (v) => setState(() => _homePeriod = v),
+        onRefresh: _refresh,
       ),
-      tabBuilder: (context, index) {
-        return CupertinoTabView(
-          builder: (context) {
-            switch (index) {
-              case 0:
-                return _HomeTab(
-                  period: _homePeriod,
-                  onPeriodChanged: (v) => setState(() => _homePeriod = v),
-                  onRefresh: _refresh,
-                );
-              case 1:
-                return _MapsTab(
-                  mapController: _mapController,
-                  offerPreviewYellowRoute: _offerPreviewYellowRoute,
-                  offerPreviewGreenRoute: _offerPreviewGreenRoute,
-                  offerPreviewOrder: _offerPreviewOrder,
-                  activeYellowRoute: _mine.isNotEmpty ? _activeYellowRoute : null,
-                  activeGreenRoute: _mine.isNotEmpty ? _activeGreenRoute : null,
-                  driverMapInitial: _driverMapInitial(),
-                  loading: _loading,
-                  pool: _pool,
-                  mine: _mine,
-                  driverPos: _driverPos,
-                  locationBanner: _locationBanner,
-                  onRetryLocation: _bootstrapLocationPermissionAndGps,
-                  onOpenLocationSettings: _openLocationOsSettings,
-                  actionError: _actionError,
-                  onDismissError: () => setState(() => _actionError = null),
-                  onAccept: _accept,
-                  onShowMine: _showMineSheet,
-                  onShowOffer: _showOfferSheet,
-                  onOpenChatMine: () => _showChatComingSoon(context),
-                  onRecenter: _recenterMapOnMe,
-                );
-              case 2:
-                return const _ChatsTab();
-              case 3:
-                return _SettingsTab(
-                  onSignOut: _signOut,
-                  onOnlineChanged: () => _refresh(silent: true),
-                );
-              default:
-                return const SizedBox.shrink();
-            }
-          },
-        );
-      },
+      _MapsTab(
+        mapController: _mapController,
+        offerPreviewYellowRoute: _offerPreviewYellowRoute,
+        offerPreviewGreenRoute: _offerPreviewGreenRoute,
+        offerPreviewOrder: _offerPreviewOrder,
+        activeYellowRoute: _mine.isNotEmpty ? _activeYellowRoute : null,
+        activeGreenRoute: _mine.isNotEmpty ? _activeGreenRoute : null,
+        driverMapInitial: _driverMapInitial(),
+        loading: _loading,
+        pool: _pool,
+        mine: _mine,
+        driverPos: _driverPos,
+        locationBanner: _locationBanner,
+        onRetryLocation: _bootstrapLocationPermissionAndGps,
+        onOpenLocationSettings: _openLocationOsSettings,
+        actionError: _actionError,
+        onDismissError: () => setState(() => _actionError = null),
+        onAccept: _accept,
+        onShowMine: _showMineSheet,
+        onShowOffer: _showOfferSheet,
+        onOpenChatMine: () => _showChatComingSoon(context),
+        onRecenter: _recenterMapOnMe,
+      ),
+      const _ChatsTab(),
+      _SettingsTab(
+        onSignOut: _signOut,
+        onOnlineChanged: () => _refresh(silent: true),
+      ),
+    ];
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: IndexedStack(
+            index: _selectedTab,
+            children: tabs,
+          ),
+        ),
+        Positioned(
+          left: 20,
+          right: 20,
+          bottom: 20,
+          child: _FloatingGlassNav(
+            selectedIndex: _selectedTab,
+            onChanged: (idx) {
+              HapticFeedback.lightImpact();
+              setState(() => _selectedTab = idx);
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -1723,5 +1707,113 @@ class _MapboxConfig {
     if (token.isEmpty) return null;
     final style = mapboxStyleIdFromEnv();
     return 'https://api.mapbox.com/styles/v1/$style/tiles/256/{z}/{x}/{y}@2x?access_token=$token';
+  }
+}
+
+class _FloatingGlassNav extends StatelessWidget {
+  const _FloatingGlassNav({
+    required this.selectedIndex,
+    required this.onChanged,
+  });
+
+  final int selectedIndex;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = <({IconData icon, String label})>[
+      (icon: CupertinoIcons.house_fill, label: 'Inicio'),
+      (icon: CupertinoIcons.map_fill, label: 'Maps'),
+      (icon: CupertinoIcons.chat_bubble_fill, label: 'Chats'),
+      (icon: CupertinoIcons.settings_solid, label: 'Ajustes'),
+    ];
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(35),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          height: 70,
+          decoration: BoxDecoration(
+            color: const Color(0x1AFFFFFF),
+            borderRadius: BorderRadius.circular(35),
+            border: Border.all(color: const Color(0x33FFFFFF), width: 1),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x26000000),
+                blurRadius: 20,
+                offset: Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: List.generate(items.length, (index) {
+              final it = items[index];
+              final isActive = selectedIndex == index;
+              return _GlassNavItem(
+                icon: it.icon,
+                label: it.label,
+                isActive: isActive,
+                onTap: () => onChanged(index),
+              );
+            }),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GlassNavItem extends StatelessWidget {
+  const _GlassNavItem({
+    required this.icon,
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOutCubic,
+        padding: isActive
+            ? const EdgeInsets.symmetric(horizontal: 18, vertical: 10)
+            : const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: isActive ? const Color(0x33FFFFFF) : const Color(0x00000000),
+          borderRadius: BorderRadius.circular(30),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 24,
+              color: isActive ? CupertinoColors.activeBlue : const Color(0xB3FFFFFF),
+            ),
+            if (isActive) ...[
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: CupertinoColors.activeBlue,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }
