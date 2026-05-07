@@ -105,8 +105,8 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
             });
           }
           return AlertDialog(
-          title: Text(existing == null ? 'Nueva categoría' : 'Editar categoría'),
-          content: SizedBox(
+            title: Text(existing == null ? 'Nueva categoría' : 'Editar categoría'),
+            content: SizedBox(
             width: 520,
             child: ConstrainedBox(
               constraints: BoxConstraints(
@@ -508,7 +508,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
               ),
             ),
           ),
-          actions: [
+            actions: [
             TextButton(
               onPressed: (uploading || saving) ? null : () => Navigator.pop(ctx, false),
               child: const Text('Cancelar'),
@@ -586,8 +586,8 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                   : const Text('Guardar'),
             ),
           ],
-        ),
-      );
+            ],
+          );
         },
       ),
     );
