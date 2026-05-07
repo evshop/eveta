@@ -35,7 +35,6 @@ class SupabaseClients {
       portalAuthAnonKey,
       authOptions: const AuthClientOptions(
         autoRefreshToken: true,
-        persistSession: true,
         // Avoid collisions with the Core client's auth storage on web.
         storageKey: 'eveta_admin_portal_auth',
       ),
