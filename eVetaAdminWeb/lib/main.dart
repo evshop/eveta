@@ -12,7 +12,11 @@ import 'theme/admin_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: '.env');
+  // Local dev: .env (asset). Production: prefer --dart-define values.
+  // If the asset doesn't exist in a build, ignore.
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (_) {}
   await SupabaseClients.initialize();
   runApp(
     ChangeNotifierProvider(

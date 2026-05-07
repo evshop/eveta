@@ -1,5 +1,6 @@
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'env_config.dart';
 
 class SupabaseClients {
   SupabaseClients._();
@@ -12,8 +13,8 @@ class SupabaseClients {
   static Future<void> initialize() async {
     if (_initialized) return;
 
-    final coreUrl = dotenv.env['NEXT_PUBLIC_SUPABASE_URL']!;
-    final coreAnonKey = dotenv.env['NEXT_PUBLIC_SUPABASE_ANON_KEY']!;
+    final coreUrl = EnvConfig.required('NEXT_PUBLIC_SUPABASE_URL');
+    final coreAnonKey = EnvConfig.required('NEXT_PUBLIC_SUPABASE_ANON_KEY');
     await Supabase.initialize(
       url: coreUrl,
       anonKey: coreAnonKey,
@@ -21,10 +22,14 @@ class SupabaseClients {
 
     _coreClient = Supabase.instance.client;
 
-    final portalAuthUrl =
-        dotenv.env['PORTAL_AUTH_SUPABASE_URL'] ?? coreUrl;
-    final portalAuthAnonKey =
-        dotenv.env['PORTAL_AUTH_SUPABASE_ANON_KEY'] ?? coreAnonKey;
+    final portalAuthUrl = EnvConfig.optional(
+      'PORTAL_AUTH_SUPABASE_URL',
+      fallback: coreUrl,
+    );
+    final portalAuthAnonKey = EnvConfig.optional(
+      'PORTAL_AUTH_SUPABASE_ANON_KEY',
+      fallback: coreAnonKey,
+    );
 
     _authClient = SupabaseClient(
       portalAuthUrl,
