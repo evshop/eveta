@@ -214,7 +214,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                                   pickerAreaHeightPercent: 0.72,
                                 ),
                               ),
-          actions: [
+                              actions: [
                                 TextButton(
                                   onPressed: () => Navigator.pop(dCtx),
                                   child: const Text('Cancelar'),
