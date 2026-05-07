@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/portal_session.dart';
+import '../services/supabase_clients.dart';
 import '../widgets/portal/portal_empty_state.dart';
 import '../widgets/portal/portal_haptics.dart';
 import '../widgets/portal/portal_tokens.dart';
@@ -36,7 +37,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
       final sellerId = await PortalSession.currentSellerId();
       if (sellerId == null) return;
 
-      final response = await Supabase.instance.client
+      final response = await SupabaseClients.core
           .from('products')
           .select(
             'id, name, price, stock, images, category_id, description, unit, '
@@ -72,7 +73,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
   /// Fila completa desde Supabase (evita datos incompletos al editar desde la lista).
   Future<Map<String, dynamic>?> _fetchProductRowForEdit(String id) async {
     try {
-      final row = await Supabase.instance.client
+      final row = await SupabaseClients.core
           .from('products')
           .select(
             'id, name, price, stock, images, category_id, description, unit, '
@@ -281,7 +282,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
     try {
       setState(() => _isLoading = true);
-      await Supabase.instance.client.from('products').delete().eq('id', productId);
+      await SupabaseClients.core.from('products').delete().eq('id', productId);
       _fetchProducts();
     } catch (e) {
       debugPrint('Error deleting product: $e');

@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'supabase_clients.dart';
 
 /// Resultado de la verificación de acceso a la app Portal/Admin.
 class PortalGateResult {
@@ -30,10 +31,11 @@ class PortalGateResult {
 class PortalAuthGate {
   PortalAuthGate._();
 
-  static SupabaseClient get _client => Supabase.instance.client;
+  static SupabaseClient get _auth => SupabaseClients.auth;
+  static SupabaseClient get _core => SupabaseClients.core;
 
   static Future<PortalGateResult> verifyCurrentSession() async {
-    final user = _client.auth.currentUser;
+    final user = _auth.auth.currentUser;
     if (user == null) {
       return PortalGateResult.deny('No hay sesión activa.');
     }
@@ -75,7 +77,7 @@ class PortalAuthGate {
 
   static Future<Map<String, dynamic>?> _ensurePortalMembership() async {
     try {
-      final ensured = await _client.rpc(
+      final ensured = await _core.rpc(
         'ensure_portal_membership_for_current_user',
       );
       if (ensured is Map) {
@@ -92,14 +94,14 @@ class PortalAuthGate {
     String? email,
   }) async {
     try {
-      final byUid = await _client
+      final byUid = await _core
           .from('profiles_portal')
           .select('id, is_admin, is_seller, is_active')
           .eq('auth_user_id', uid)
           .maybeSingle();
       if (byUid != null) return Map<String, dynamic>.from(byUid as Map);
       if (email != null && email.isNotEmpty) {
-        final byEmail = await _client
+        final byEmail = await _core
             .from('profiles_portal')
             .select('id, is_admin, is_seller, is_active')
             .ilike('email', email)
@@ -117,14 +119,14 @@ class PortalAuthGate {
     String? email,
   }) async {
     try {
-      final byUid = await _client
+      final byUid = await _core
           .from('profiles_delivery')
           .select('id, is_active')
           .eq('auth_user_id', uid)
           .maybeSingle();
       if (byUid != null) return Map<String, dynamic>.from(byUid as Map);
       if (email != null && email.isNotEmpty) {
-        final byEmail = await _client
+        final byEmail = await _core
             .from('profiles_delivery')
             .select('id, is_active')
             .ilike('email', email)
@@ -139,7 +141,7 @@ class PortalAuthGate {
 
   static Future<void> _signOut() async {
     try {
-      await _client.auth.signOut();
+      await _auth.auth.signOut();
     } catch (_) {}
   }
 }

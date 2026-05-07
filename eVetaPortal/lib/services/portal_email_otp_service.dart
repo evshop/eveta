@@ -1,7 +1,8 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'supabase_clients.dart';
 
 class PortalEmailOtpService {
-  static SupabaseClient get _client => Supabase.instance.client;
+  static SupabaseClient get _client => SupabaseClients.auth;
 
   static String _normalizeEmail(String email) => email.trim().toLowerCase();
 

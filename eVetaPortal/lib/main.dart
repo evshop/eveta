@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'screens/login_screen.dart';
 import 'screens/main_navigation.dart';
 import 'services/portal_auth_gate.dart';
+import 'services/supabase_clients.dart';
 import 'theme/eveta_shop_theme.dart';
 import 'theme/eveta_theme_controller.dart';
 
@@ -26,10 +27,7 @@ void main() async {
 
   await dotenv.load(fileName: ".env");
 
-  await Supabase.initialize(
-    url: dotenv.env['NEXT_PUBLIC_SUPABASE_URL']!,
-    anonKey: dotenv.env['NEXT_PUBLIC_SUPABASE_ANON_KEY']!,
-  );
+  await SupabaseClients.initialize();
 
   final prefs = await SharedPreferences.getInstance();
   final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
@@ -104,7 +102,7 @@ class _PortalAuthGateState extends State<_PortalAuthGate> {
   }
 
   Future<void> _verifyInitial() async {
-    final session = Supabase.instance.client.auth.currentSession;
+    final session = SupabaseClients.auth.auth.currentSession;
     if (session == null) {
       // Si no hay sesión, limpia bandera local y manda a login.
       if (widget.initiallyLoggedIn) {

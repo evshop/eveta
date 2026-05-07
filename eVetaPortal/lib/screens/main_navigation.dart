@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/portal_auth_gate.dart';
+import '../services/supabase_clients.dart';
 import '../widgets/portal/portal_haptics.dart';
 import '../widgets/portal/portal_tokens.dart';
 import 'admin_panel_screen.dart';
@@ -42,7 +43,7 @@ class _MainNavigationState extends State<MainNavigation> {
     final cachedIsAdmin = prefs.getBool('isAdmin');
     var resolvedIsAdmin = cachedIsAdmin ?? false;
 
-    final user = Supabase.instance.client.auth.currentUser;
+    final user = SupabaseClients.auth.auth.currentUser;
     if (user != null) {
       // Gate estricto: si la cuenta es Delivery o no tiene perfil portal activo,
       // cierra sesión y vuelve al login.

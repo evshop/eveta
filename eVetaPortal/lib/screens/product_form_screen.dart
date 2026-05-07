@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/cloudinary_service.dart';
 import '../services/portal_session.dart';
+import '../services/supabase_clients.dart';
 import '../widgets/portal/eveta_portal_image_picker_sheet.dart';
 import '../widgets/portal/portal_haptics.dart';
 import '../widgets/portal/portal_notice.dart';
@@ -155,7 +156,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
 
   Future<void> _loadCategories() async {
     try {
-      final data = await Supabase.instance.client
+      final data = await SupabaseClients.core
           .from('categories')
           .select('id, name, parent_id, spec_template_enabled, spec_field_labels, spec_group_title')
           .order('name');
@@ -471,13 +472,13 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
 
       if (widget.product == null) {
         // Create new
-        await Supabase.instance.client.from('products').insert(productData);
+        await SupabaseClients.core.from('products').insert(productData);
         if (mounted) {
           showPortalNotice(context, 'Producto creado con exito.', type: PortalNoticeType.success);
         }
       } else {
         // Update existing
-        await Supabase.instance.client
+        await SupabaseClients.core
             .from('products')
             .update(productData)
             .eq('id', widget.product!['id'].toString());

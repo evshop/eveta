@@ -1,11 +1,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'supabase_clients.dart';
 
 /// Acciones de pedido vía RPC (script `071_portal_delivery_ready_flow.sql`).
 class PortalOrdersService {
   PortalOrdersService._();
 
-  static final _client = Supabase.instance.client;
+  static final _client = SupabaseClients.core;
 
   static Future<void> markReadyForPickup(String orderId) async {
     await _client.rpc<void>(

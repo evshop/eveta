@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'forgot_password_otp_screen.dart';
 import '../services/portal_auth_gate.dart';
+import '../services/supabase_clients.dart';
 import '../widgets/portal_auth_logo.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -37,7 +38,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      final response = await Supabase.instance.client.auth.signInWithPassword(
+      final response = await SupabaseClients.auth.auth.signInWithPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );

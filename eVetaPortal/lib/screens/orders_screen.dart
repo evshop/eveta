@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/portal_orders_service.dart';
 import '../services/portal_session.dart';
+import '../services/supabase_clients.dart';
 import '../widgets/portal/portal_empty_state.dart';
 import '../widgets/portal/portal_haptics.dart';
 import '../widgets/portal/portal_ios_segmented_control.dart';
@@ -37,7 +38,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
         return;
       }
 
-      final response = await Supabase.instance.client
+      final response = await SupabaseClients.core
           .from('orders')
           .select(
             'id, status, delivery_status, created_at, buyer_display_name, dropoff_address, '

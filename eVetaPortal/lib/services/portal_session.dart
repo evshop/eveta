@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'supabase_clients.dart';
 
 /// Centraliza el acceso a la cuenta Portal del usuario actual.
 ///
@@ -9,7 +10,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class PortalSession {
   PortalSession._();
 
-  static SupabaseClient get _client => Supabase.instance.client;
+  static SupabaseClient get _auth => SupabaseClients.auth;
+  static SupabaseClient get _core => SupabaseClients.core;
 
   /// Cache simple por sesión para evitar consultas repetidas.
   static String? _cachedAuthUid;
@@ -25,7 +27,7 @@ class PortalSession {
   static Future<Map<String, dynamic>?> currentPortalProfile({
     bool forceRefresh = false,
   }) async {
-    final user = _client.auth.currentUser;
+    final user = _auth.auth.currentUser;
     if (user == null) return null;
 
     if (!forceRefresh &&
@@ -36,7 +38,7 @@ class PortalSession {
 
     Map<String, dynamic>? row;
     try {
-      final raw = await _client
+      final raw = await _core
           .from('profiles_portal')
           .select(
             'id, auth_user_id, email, full_name, '
@@ -55,8 +57,7 @@ class PortalSession {
     // Autovincula si aún no existe (admin del Dashboard sin auth_user_id seteado).
     if (row == null) {
       try {
-        final ensured =
-            await _client.rpc('ensure_portal_membership_for_current_user');
+        final ensured = await _core.rpc('ensure_portal_membership_for_current_user');
         if (ensured is Map) {
           row = Map<String, dynamic>.from(ensured);
         }

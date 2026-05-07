@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../theme/eveta_theme_controller.dart' show evetaThemeMode, kEvetaPortalThemeModePref;
+import '../services/supabase_clients.dart';
 import '../widgets/portal/portal_haptics.dart';
 import '../widgets/portal/portal_soft_card.dart';
 import '../widgets/portal/portal_tokens.dart';
@@ -31,13 +32,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _loadUserData() async {
     try {
-      final user = Supabase.instance.client.auth.currentUser;
+      final user = SupabaseClients.auth.auth.currentUser;
       if (user != null) {
         setState(() {
           _userEmail = user.email ?? 'vendedor@tiendasj.com';
         });
 
-        final response = await Supabase.instance.client
+        final response = await SupabaseClients.core
             .from('profiles_portal')
             .select('full_name, shop_name, shop_logo_url')
             .eq('auth_user_id', user.id)
@@ -176,7 +177,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _logout(BuildContext context) async {
     try {
-      await Supabase.instance.client.auth.signOut();
+      await SupabaseClients.auth.auth.signOut();
     } catch (e) {
       debugPrint('Error al cerrar sesión en Supabase: $e');
     } finally {

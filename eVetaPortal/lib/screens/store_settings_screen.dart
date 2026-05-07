@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'store_location_picker_screen.dart';
 import '../services/cloudinary_service.dart';
 import '../services/portal_session.dart';
+import '../services/supabase_clients.dart';
 import '../widgets/portal/eveta_portal_image_crop_screen.dart';
 import '../widgets/portal/eveta_portal_image_picker_sheet.dart';
 import '../widgets/portal/portal_tokens.dart';
@@ -82,7 +83,7 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final user = Supabase.instance.client.auth.currentUser;
+      final user = SupabaseClients.auth.auth.currentUser;
       if (user == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -270,7 +271,7 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
   }
 
   Future<void> _save() async {
-    final user = Supabase.instance.client.auth.currentUser;
+    final user = SupabaseClients.auth.auth.currentUser;
     if (user == null) return;
 
     final name = _nameCtrl.text.trim();
@@ -348,7 +349,7 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
 
       List<dynamic> updated;
       try {
-        updated = await Supabase.instance.client
+        updated = await SupabaseClients.core
             .from('profiles_portal')
             .update(portalPayload)
             .eq('id', _portalProfileId!)
@@ -366,7 +367,7 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
             ..remove('shop_location_photos')
             ..remove('shop_border_color')
             ..remove('shop_address');
-          updated = await Supabase.instance.client
+          updated = await SupabaseClients.core
               .from('profiles_portal')
               .update(fallback)
               .eq('id', _portalProfileId!)
