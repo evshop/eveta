@@ -110,12 +110,22 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> with TickerProvider
           await AuthService.verifySignupEmailOtp(
             email: widget.emailOrPhone,
             token: _code,
+            signupPassword: widget.signupPassword,
           );
           if (widget.signupPassword != null && widget.signupPassword!.isNotEmpty) {
-            await AuthService.signInWithEmail(
-              email: widget.emailOrPhone,
-              password: widget.signupPassword!,
-            );
+            try {
+              await AuthService.signInWithEmail(
+                email: widget.emailOrPhone,
+                password: widget.signupPassword!,
+              );
+            } catch (_) {
+              // El código fue válido pero la cuenta aún no pudo iniciar sesión
+              // (p. ej. límite temporal de email en signup de Supabase).
+              throw AuthException(
+                'Código válido, pero no se pudo iniciar sesión todavía. '
+                'Vuelve a "Crear cuenta" o espera 1 minuto y reintenta.',
+              );
+            }
           }
           if (!mounted) return;
           await AuthService.persistSessionUser(widget.emailOrPhone);
@@ -155,7 +165,11 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> with TickerProvider
       _pinController.clear();
       _pinFocusNode.requestFocus();
       await _shakeController.forward(from: 0);
-      setState(() => _error = 'Código no válido. Inténtalo de nuevo.');
+      if (e is AuthException) {
+        setState(() => _error = e.message);
+      } else {
+        setState(() => _error = 'Código no válido. Inténtalo de nuevo.');
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }

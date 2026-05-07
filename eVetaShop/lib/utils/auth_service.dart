@@ -3,8 +3,19 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AuthService {
   static final SupabaseClient _client = Supabase.instance.client;
+  static const bool _strictPerAppAliasMode = false;
 
   static bool _isEmail(String value) => value.contains('@');
+
+  static String _toShopAuthEmail(String value) {
+    final e = value.trim().toLowerCase();
+    final at = e.indexOf('@');
+    if (at <= 0 || at == e.length - 1) return e;
+    final local = e.substring(0, at);
+    final domain = e.substring(at + 1);
+    final baseLocal = local.contains('+') ? local.split('+').first : local;
+    return '$baseLocal+shop@$domain';
+  }
 
   static String? get currentUserEmail => _client.auth.currentUser?.email;
 
@@ -78,16 +89,31 @@ class AuthService {
     required String email,
     required String password,
   }) async {
-    final response = await _client.auth.signInWithPassword(
-      email: email.trim(),
-      password: password,
-    );
-    if (response.user == null) {
-      throw AuthException('No se pudo iniciar sesión.');
+    final raw = email.trim().toLowerCase();
+    final attempts = <String>[
+      raw,
+      // Compatibilidad: permite iniciar sesión con cuentas antiguas creadas como +shop.
+      if (!_strictPerAppAliasMode) _toShopAuthEmail(raw),
+    ].toSet().toList();
+
+    AuthException? lastError;
+    for (final authEmail in attempts) {
+      try {
+        final response = await _client.auth.signInWithPassword(
+          email: authEmail,
+          password: password,
+        );
+        if (response.user == null) {
+          throw AuthException('No se pudo iniciar sesión.');
+        }
+        await _upsertCurrentProfile();
+        await persistSessionUser(raw);
+        return;
+      } on AuthException catch (e) {
+        lastError = e;
+      }
     }
-    await _enforceShopOnlyAccess();
-    await _upsertCurrentProfile();
-    await persistSessionUser(email.trim());
+    throw lastError ?? AuthException('No se pudo iniciar sesión.');
   }
 
   static bool _isGoogleSession(User user) {
@@ -181,8 +207,9 @@ class AuthService {
     required String username,
     required String phone,
   }) async {
+    final authEmail = _strictPerAppAliasMode ? _toShopAuthEmail(email) : email.trim().toLowerCase();
     final response = await _client.auth.signUp(
-      email: email.trim().toLowerCase(),
+      email: authEmail,
       password: password,
       data: {
         'full_name': username.trim(),
@@ -240,6 +267,11 @@ class AuthService {
   /// Inicia flujo OAuth de Google en navegador/sistema.
   /// En mobile, la sesión se completa al volver por deep link.
   static Future<void> signInWithGoogle() async {
+    if (_strictPerAppAliasMode) {
+      throw AuthException(
+        'Ingreso con Google desactivado en modo estricto por app. Usa correo y contraseña de eVetaShop.',
+      );
+    }
     try {
       await _client.auth.signInWithOAuth(
         OAuthProvider.google,
@@ -247,59 +279,6 @@ class AuthService {
       );
     } catch (e) {
       throw AuthException('No se pudo iniciar el flujo de Google: $e');
-    }
-  }
-
-  /// Evita que cuentas de Portal/Delivery entren a eVetaShop.
-  static Future<void> _enforceShopOnlyAccess() async {
-    final uid = _client.auth.currentUser?.id;
-    final email = _client.auth.currentUser?.email?.trim().toLowerCase();
-    if (uid == null && (email == null || email.isEmpty)) return;
-
-    bool isPortal = false;
-    bool isDelivery = false;
-
-    try {
-      final q = _client.from('profiles_portal').select('id');
-      final byUid = uid == null ? null : await q.eq('auth_user_id', uid).maybeSingle();
-      if (byUid != null) {
-        isPortal = true;
-      } else if (email != null && email.isNotEmpty) {
-        final byEmail = await _client
-            .from('profiles_portal')
-            .select('id')
-            .ilike('email', email)
-            .maybeSingle();
-        if (byEmail != null) isPortal = true;
-      }
-    } on PostgrestException catch (_) {
-      // Tabla/políticas no disponibles en entornos antiguos.
-    }
-
-    try {
-      final q = _client.from('profiles_delivery').select('id');
-      final byUid = uid == null ? null : await q.eq('auth_user_id', uid).maybeSingle();
-      if (byUid != null) {
-        isDelivery = true;
-      } else if (email != null && email.isNotEmpty) {
-        final byEmail = await _client
-            .from('profiles_delivery')
-            .select('id')
-            .ilike('email', email)
-            .maybeSingle();
-        if (byEmail != null) isDelivery = true;
-      }
-    } on PostgrestException catch (_) {
-      // Tabla/políticas no disponibles en entornos antiguos.
-    }
-
-    if (isPortal) {
-      await _client.auth.signOut();
-      throw AuthException('Esta cuenta es de Portal. Usa tu cuenta de eVetaShop.');
-    }
-    if (isDelivery) {
-      await _client.auth.signOut();
-      throw AuthException('Esta cuenta es de Delivery. Usa tu cuenta de eVetaShop.');
     }
   }
 
@@ -311,7 +290,8 @@ class AuthService {
   }
 
   static Future<void> sendPasswordResetEmail(String email) async {
-    await _client.auth.resetPasswordForEmail(email.trim().toLowerCase());
+    final target = _strictPerAppAliasMode ? _toShopAuthEmail(email) : email.trim().toLowerCase();
+    await _client.auth.resetPasswordForEmail(target);
   }
 
   static Future<void> requestPhoneOtp(String phoneE164) async {
@@ -349,11 +329,13 @@ class AuthService {
   static Future<Map<String, dynamic>> verifySignupEmailOtp({
     required String email,
     required String token,
+    String? signupPassword,
   }) async {
     return verifyEmailOtp(
       email: email,
       token: token,
       purpose: EmailOtpPurpose.signup,
+      signupPassword: signupPassword,
     );
   }
 
@@ -365,7 +347,7 @@ class AuthService {
     required String email,
     required EmailOtpPurpose purpose,
   }) async {
-    final e = email.trim().toLowerCase();
+    final e = _strictPerAppAliasMode ? _toShopAuthEmail(email) : email.trim().toLowerCase();
     final response = await _client.functions.invoke(
       'send-email-otp',
       body: {
@@ -385,15 +367,22 @@ class AuthService {
     required String email,
     required String token,
     required EmailOtpPurpose purpose,
+    String? signupPassword,
   }) async {
-    final e = email.trim().toLowerCase();
+    final e = _strictPerAppAliasMode ? _toShopAuthEmail(email) : email.trim().toLowerCase();
+    final body = <String, dynamic>{
+      'email': e,
+      'code': token.trim(),
+      'purpose': purpose.value,
+    };
+    if (purpose == EmailOtpPurpose.signup &&
+        signupPassword != null &&
+        signupPassword.isNotEmpty) {
+      body['signup_password'] = signupPassword;
+    }
     final response = await _client.functions.invoke(
       'verify-email-otp',
-      body: {
-        'email': e,
-        'code': token.trim(),
-        'purpose': purpose.value,
-      },
+      body: body,
     );
     if (response.status != 200) {
       final msg = response.data is Map<String, dynamic>
@@ -425,11 +414,12 @@ class AuthService {
     required String resetToken,
     required String newPassword,
   }) async {
+    final target = _strictPerAppAliasMode ? _toShopAuthEmail(email) : email.trim().toLowerCase();
     try {
       final response = await _client.functions.invoke(
         'complete-email-otp-password-reset',
         body: {
-          'email': email.trim().toLowerCase(),
+          'email': target,
           'reset_token': resetToken.trim(),
           'new_password': newPassword,
         },
@@ -461,7 +451,7 @@ class AuthService {
     required String email,
     required String password,
   }) async {
-    final e = email.trim().toLowerCase();
+    final e = _strictPerAppAliasMode ? _toShopAuthEmail(email) : email.trim().toLowerCase();
     final local = e.split('@').first.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_');
     final username = local.length >= 3 ? local : 'user_$local';
 

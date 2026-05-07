@@ -1,8 +1,24 @@
 {
   "mcpServers": {
-    "supabase": {
+    "supabase viejo": {
       "type": "http",
       "url": "https://mcp.supabase.com/mcp?project_ref=iqpuhjrzqonkdtarbpbd"
+    },
+    "supabase-eveta-core": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=lstbbpqiyxdyagroedxe"
+    },
+    "supabase-eveta-auth": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=behbvnzfuxenzcgoizrk"
+    },
+    "supabase-eveta-auth-user-portal": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=ksjtqyijidwfsbygiqcd"
+    },
+    "supabase-eveta-auth-user-delivery": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=tohmwdpixvfsigfaanyb"
     }
   }
 }

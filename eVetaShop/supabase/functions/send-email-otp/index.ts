@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
     }
     if (purpose === 'password_reset' && requirePortalAccess === true) {
       const { data: portalProfile, error: portalErr } = await supabaseAdmin
-        .from('profiles')
+        .from('profiles_portal')
         .select('is_admin, is_seller')
         .ilike('email', normalizedEmail)
         .maybeSingle();

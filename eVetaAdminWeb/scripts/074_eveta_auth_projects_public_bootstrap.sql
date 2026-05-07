@@ -1,0 +1,6 @@
+-- Applied to auth projects (via Supabase migrations / MCP):
+--   Shop:     eveta_auth_shop_min_public_schema
+--   Portal:   eveta_auth_portal_min_public_schema + eveta_auth_portal_fix_pp_update_rls_with_check
+--   Delivery: eveta_auth_delivery_min_public_schema
+--
+-- Do not run this file as-is on combined DBs; fragments are project-specific.

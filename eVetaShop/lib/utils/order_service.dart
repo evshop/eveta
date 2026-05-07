@@ -185,7 +185,8 @@ class OrderService {
             'distance_km': _safeMoney(sellerDistanceKm),
             // Portal / tienda usan `pending` para pedidos nuevos.
             'status': 'pending',
-            'delivery_status': 'awaiting_driver',
+            // Pool de reparto solo tras `portal_mark_ready_for_pickup` (script 071).
+            'delivery_status': 'awaiting_store_ready',
             'dropoff_address': dropoffAddress,
             'dropoff_lat': dropoffLat,
             'dropoff_lng': dropoffLng,

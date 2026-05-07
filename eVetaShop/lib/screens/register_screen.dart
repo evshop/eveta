@@ -41,6 +41,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String? _error;
   StreamSubscription<AuthState>? _authSubscription;
 
+  bool _shouldFallbackToCustomEmailOtp(Object error) {
+    final msg = error.toString().toLowerCase();
+    return msg.contains('email rate limit exceeded') ||
+        msg.contains('over_email_send_rate_limit') ||
+        msg.contains('user already registered') ||
+        msg.contains('email not confirmed');
+  }
+
   @override
   void initState() {
     super.initState();
@@ -138,12 +146,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
     try {
       if (!_usePhone) {
         final raw = _email.text.trim();
-        final res = await AuthService.registerEmailOnly(
-          email: raw,
-          password: _password.text,
-        );
+        AuthResponse? res;
+        try {
+          res = await AuthService.registerEmailOnly(
+            email: raw,
+            password: _password.text,
+          );
+        } catch (e) {
+          if (!_shouldFallbackToCustomEmailOtp(e)) rethrow;
+          res = null;
+        }
         if (!mounted) return;
-        if (res.session != null) {
+        if (res?.session != null) {
           await AuthService.persistSessionUser(raw.toLowerCase());
           final needs = await AuthService.profileNeedsCompletion();
           if (!mounted) return;

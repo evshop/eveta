@@ -11,7 +11,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { email, code, purpose } = await req.json();
+    const { email, code, purpose, signup_password: signupPassword } = await req.json();
     const normalizedEmail = normalizeEmail(email ?? '');
     const rawCode = String(code ?? '').trim();
     if (!normalizedEmail || !normalizedEmail.includes('@')) {
@@ -22,6 +22,14 @@ Deno.serve(async (req) => {
     }
     if (purpose !== 'signup' && purpose !== 'password_reset') {
       return json({ error: 'Propósito inválido.' }, 400);
+    }
+    if (
+      purpose === 'signup' &&
+      signupPassword != null &&
+      String(signupPassword).trim().length > 0 &&
+      String(signupPassword).trim().length < 6
+    ) {
+      return json({ error: 'La contraseña debe tener al menos 6 caracteres.' }, 400);
     }
 
     const { data: otp, error: otpError } = await supabaseAdmin
@@ -61,14 +69,60 @@ Deno.serve(async (req) => {
       .eq('id', otp.id);
 
     if (purpose === 'signup') {
+      let userId: string | null = null;
+      const signupPasswordSafe = String(signupPassword ?? '').trim();
+
       const { data: profile } = await supabaseAdmin
         .from('profiles')
         .select('id')
-        .eq('email', normalizedEmail)
+        .ilike('email', normalizedEmail)
         .maybeSingle();
-      if (profile?.id) {
-        await supabaseAdmin.auth.admin.updateUserById(profile.id, { email_confirm: true });
+      if (profile?.id) userId = profile.id as string;
+
+      if (userId == null) {
+        const maxPages = 25;
+        const perPage = 1000;
+        for (let page = 1; page <= maxPages; page++) {
+          const { data: listPage, error: listErr } = await supabaseAdmin.auth.admin.listUsers({
+            page,
+            perPage,
+          });
+          if (listErr || !listPage?.users?.length) break;
+
+          const u = listPage.users.find(
+            (x) => normalizeEmail(x.email ?? '') === normalizedEmail,
+          );
+          if (u?.id) {
+            userId = u.id;
+            break;
+          }
+
+          if (listPage.users.length < perPage) break;
+        }
       }
+
+      if (userId == null && signupPasswordSafe.length >= 6) {
+        const { data: created, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+          email: normalizedEmail,
+          password: signupPasswordSafe,
+          email_confirm: true,
+          user_metadata: {},
+        });
+        if (createErr) {
+          return json({ error: `No se pudo crear la cuenta: ${createErr.message}` }, 500);
+        }
+        userId = created.user?.id ?? null;
+      }
+
+      if (userId) {
+        await supabaseAdmin.auth.admin.updateUserById(userId, { email_confirm: true });
+        await supabaseAdmin.from('profiles').upsert({
+          id: userId,
+          email: normalizedEmail,
+          updated_at: new Date().toISOString(),
+        });
+      }
+
       return json({ ok: true });
     }
 

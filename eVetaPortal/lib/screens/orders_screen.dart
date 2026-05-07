@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../services/portal_orders_service.dart';
 import '../services/portal_session.dart';
 import '../widgets/portal/portal_empty_state.dart';
 import '../widgets/portal/portal_haptics.dart';
@@ -18,8 +19,8 @@ class OrdersScreen extends StatefulWidget {
 
 class _OrdersScreenState extends State<OrdersScreen> {
   bool _isLoading = true;
-  List<dynamic> _allOrders = [];
-  List<dynamic> _filteredOrders = [];
+  List<Map<String, dynamic>> _allOrders = [];
+  List<Map<String, dynamic>> _filteredOrders = [];
   String _segment = 'todos';
 
   @override
@@ -31,17 +32,25 @@ class _OrdersScreenState extends State<OrdersScreen> {
   Future<void> _fetchOrders() async {
     try {
       final sellerId = await PortalSession.currentSellerId();
-      if (sellerId == null) return;
+      if (sellerId == null) {
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
 
       final response = await Supabase.instance.client
-          .from('order_items')
-          .select('*, orders(status, created_at, buyer_id), products(name, images)')
+          .from('orders')
+          .select(
+            'id, status, delivery_status, created_at, buyer_display_name, dropoff_address, '
+            'subtotal, delivery_fee, total, '
+            'order_items(id, quantity, total, name_snapshot, image_url)',
+          )
           .eq('seller_id', sellerId)
           .order('created_at', ascending: false);
 
+      final list = List<Map<String, dynamic>>.from(response as List);
       if (!mounted) return;
       setState(() {
-        _allOrders = response as List<dynamic>;
+        _allOrders = list;
         _applyFilter(_segment);
         _isLoading = false;
       });
@@ -55,11 +64,13 @@ class _OrdersScreenState extends State<OrdersScreen> {
     setState(() {
       _segment = seg;
       if (seg == 'todos') {
-        _filteredOrders = List<dynamic>.from(_allOrders);
+        _filteredOrders = List<Map<String, dynamic>>.from(_allOrders);
       } else if (seg == 'pendientes') {
-        _filteredOrders = _allOrders.where((item) => item['orders']?['status'] == 'pending').toList();
+        _filteredOrders = _allOrders
+            .where((o) => o['status'] != 'delivered' && o['status'] != 'cancelled')
+            .toList();
       } else {
-        _filteredOrders = _allOrders.where((item) => item['orders']?['status'] == 'delivered').toList();
+        _filteredOrders = _allOrders.where((o) => o['status'] == 'delivered').toList();
       }
     });
   }
@@ -130,10 +141,16 @@ class _OrdersScreenState extends State<OrdersScreen> {
                             ),
                             itemCount: _filteredOrders.length,
                             itemBuilder: (context, index) {
-                              final item = _filteredOrders[index];
+                              final order = _filteredOrders[index];
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: PortalTokens.space2),
-                                child: _OrderCard(item: item),
+                                child: _OrderCard(
+                                  order: order,
+                                  onChanged: () {
+                                    setState(() => _isLoading = true);
+                                    _fetchOrders();
+                                  },
+                                ),
                               );
                             },
                           ),
@@ -155,33 +172,86 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   String _emptySubtitle(String seg) {
     return switch (seg) {
-      'pendientes' => 'Cuando tengas pedidos por confirmar, aparecerán aquí.',
+      'pendientes' => 'Cuando tengas pedidos activos, aparecerán aquí.',
       'completados' => 'Los pedidos entregados se listan en esta pestaña.',
       _ => 'Cuando recibas tu primera venta, la verás en esta lista.',
     };
   }
 }
 
-class _OrderCard extends StatelessWidget {
-  const _OrderCard({required this.item});
+class _OrderCard extends StatefulWidget {
+  const _OrderCard({
+    required this.order,
+    required this.onChanged,
+  });
 
-  final dynamic item;
+  final Map<String, dynamic> order;
+  final VoidCallback onChanged;
+
+  @override
+  State<_OrderCard> createState() => _OrderCardState();
+}
+
+class _OrderCardState extends State<_OrderCard> {
+  bool _busy = false;
+
+  Future<void> _run(Future<void> Function() fn) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await fn();
+      widget.onChanged();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(PortalOrdersService.humanizeError(e))),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-    final status = item['orders']?['status'] ?? 'pending';
-    final isPending = status == 'pending';
-    final productName = item['products']?['name'] ?? 'Producto';
-    final quantity = item['quantity'] ?? 1;
-    final total = (item['total'] ?? 0) as num;
-    final orderId = item['order_id']?.toString() ?? '';
+    final o = widget.order;
+    final status = o['status']?.toString() ?? 'pending';
+    final deliveryStatus = o['delivery_status']?.toString() ?? '';
+    final orderId = o['id']?.toString() ?? '';
     final shortId = orderId.length >= 8 ? orderId.substring(0, 8) : orderId;
-    final images = item['products']?['images'] as List<dynamic>?;
-    final imageUrl = (images != null && images.isNotEmpty) ? images[0] as String : null;
+    final items = (o['order_items'] as List?) ?? const [];
+    final buyer = (o['buyer_display_name']?.toString().trim().isNotEmpty == true)
+        ? o['buyer_display_name'].toString().trim()
+        : 'Cliente';
+    final addr = o['dropoff_address']?.toString().trim() ?? '';
+    final total = o['total'];
+    final totalNum = total is num ? total.toDouble() : double.tryParse(total?.toString() ?? '0') ?? 0;
 
-    final meta = _statusMeta(status);
+    String? firstImage;
+    final names = <String>[];
+    for (final it in items) {
+      if (it is! Map) continue;
+      final im = it['image_url']?.toString().trim();
+      if (firstImage == null && im != null && im.isNotEmpty) firstImage = im;
+      final n = it['name_snapshot']?.toString().trim();
+      final q = it['quantity'];
+      if (n != null && n.isNotEmpty) {
+        names.add(q != null ? '$n ×$q' : n);
+      }
+    }
+    final lines = names.isEmpty ? 'Productos' : names.take(3).join(' · ');
+
+    final meta = _statusPresentation(status, deliveryStatus);
+
+    final canReject = (status == 'pending' || status == 'confirmed') &&
+        deliveryStatus != 'driver_assigned' &&
+        deliveryStatus != 'picked_up' &&
+        deliveryStatus != 'delivered' &&
+        deliveryStatus != 'cancelled';
+
+    final canMarkReady =
+        status == 'confirmed' && deliveryStatus == 'awaiting_store_ready';
 
     return PortalSoftCard(
       padding: const EdgeInsets.all(PortalTokens.space2),
@@ -220,11 +290,11 @@ class _OrderCard extends StatelessWidget {
                 child: SizedBox(
                   width: 64,
                   height: 64,
-                  child: imageUrl != null
-                      ? PortalCachedImage(imageUrl: imageUrl, fit: BoxFit.cover, memCacheWidth: 256)
+                  child: firstImage != null
+                      ? PortalCachedImage(imageUrl: firstImage, fit: BoxFit.cover, memCacheWidth: 256)
                       : ColoredBox(
                           color: scheme.surfaceContainerHigh,
-                          child: Icon(Icons.image_outlined, color: scheme.onSurfaceVariant),
+                          child: Icon(Icons.shopping_bag_outlined, color: scheme.onSurfaceVariant),
                         ),
                 ),
               ),
@@ -234,44 +304,100 @@ class _OrderCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '$productName ×$quantity',
+                      lines,
                       style: tt.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Total',
-                      style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                      buyer,
+                      style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w600),
                     ),
+                    if (addr.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        addr,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                      ),
+                    ],
                   ],
                 ),
               ),
               Text(
-                'Bs ${total.toStringAsFixed(2)}',
+                'Bs ${totalNum.toStringAsFixed(2)}',
                 style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
             ],
           ),
-          if (isPending) ...[
+          if (status == 'pending') ...[
+            const SizedBox(height: PortalTokens.space2),
+            Text(
+              'Esperando confirmación de pago del cliente.',
+              style: tt.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+          ],
+          if (canMarkReady || canReject) ...[
             const SizedBox(height: PortalTokens.space2),
             Row(
               children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => portalHapticLight(),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: scheme.error,
-                      side: BorderSide(color: scheme.error.withValues(alpha: 0.65)),
+                if (canReject)
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _busy
+                          ? null
+                          : () {
+                              portalHapticLight();
+                              _run(() async {
+                                final ok = await showDialog<bool>(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    title: const Text('¿Cancelar pedido?'),
+                                    content: const Text(
+                                      'El cliente verá el pedido como cancelado. No aplica si ya hay repartidor asignado.',
+                                    ),
+                                    actions: [
+                                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('No')),
+                                      FilledButton(
+                                        onPressed: () => Navigator.pop(ctx, true),
+                                        child: const Text('Sí, cancelar'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (ok == true) {
+                                  await PortalOrdersService.rejectOrder(orderId);
+                                }
+                              });
+                            },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: scheme.error,
+                        side: BorderSide(color: scheme.error.withValues(alpha: 0.65)),
+                      ),
+                      child: const Text('Rechazar'),
                     ),
-                    child: const Text('Rechazar'),
                   ),
-                ),
-                const SizedBox(width: PortalTokens.space2),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: () => portalHapticLight(),
-                    child: const Text('Aceptar'),
+                if (canMarkReady) ...[
+                  if (canReject) const SizedBox(width: PortalTokens.space2),
+                  Expanded(
+                    flex: canReject ? 1 : 2,
+                    child: FilledButton(
+                      onPressed: _busy
+                          ? null
+                          : () {
+                              portalHapticLight();
+                              _run(() => PortalOrdersService.markReadyForPickup(orderId));
+                            },
+                      child: _busy
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Listo para recoger'),
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ],
@@ -280,14 +406,22 @@ class _OrderCard extends StatelessWidget {
     );
   }
 
-  ({Color color, String label}) _statusMeta(String status) {
-    return switch (status) {
-      'pending' => (color: const Color(0xFFF59E0B), label: 'Pendiente'),
-      'confirmed' => (color: const Color(0xFF3B82F6), label: 'Confirmado'),
-      'shipped' => (color: const Color(0xFFA855F7), label: 'Enviado'),
-      'delivered' => (color: const Color(0xFF22C55E), label: 'Entregado'),
-      'cancelled' => (color: const Color(0xFFEF4444), label: 'Cancelado'),
-      _ => (color: const Color(0xFF8E8E93), label: status.toString()),
+  ({Color color, String label}) _statusPresentation(String status, String deliveryStatus) {
+    if (status == 'cancelled' || deliveryStatus == 'cancelled') {
+      return (color: const Color(0xFFEF4444), label: 'Cancelado');
+    }
+    if (status == 'delivered' || deliveryStatus == 'delivered') {
+      return (color: const Color(0xFF22C55E), label: 'Entregado');
+    }
+    if (status == 'pending') {
+      return (color: const Color(0xFFF59E0B), label: 'Pago pendiente');
+    }
+    return switch (deliveryStatus) {
+      'awaiting_store_ready' => (color: const Color(0xFF3B82F6), label: 'Preparando'),
+      'awaiting_driver' => (color: const Color(0xFF8B5CF6), label: 'Buscando repartidor'),
+      'driver_assigned' => (color: const Color(0xFF06B6D4), label: 'Repartidor asignado'),
+      'picked_up' => (color: const Color(0xFFA855F7), label: 'En camino'),
+      _ => (color: const Color(0xFF8E8E93), label: status),
     };
   }
 }

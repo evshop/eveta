@@ -21,6 +21,16 @@ function normalizeEmail(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function toDeliveryAuthEmail(value: string): string {
+  const e = normalizeEmail(value);
+  const at = e.indexOf('@');
+  if (at <= 0 || at === e.length - 1) return e;
+  const local = e.slice(0, at);
+  const domain = e.slice(at + 1);
+  const baseLocal = local.includes('+') ? local.split('+')[0] : local;
+  return `${baseLocal}+delivery@${domain}`;
+}
+
 function isDuplicateAuthEmailError(msg: string): boolean {
   const m = msg.toLowerCase();
   return (
@@ -70,11 +80,12 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const email = normalizeEmail(body?.email ?? '');
+    const baseEmail = normalizeEmail(body?.email ?? '');
+    const email = toDeliveryAuthEmail(baseEmail);
     const password = (body?.password ?? '').toString();
     const fullName = (body?.full_name ?? '').toString().trim();
 
-    if (!email || !email.includes('@')) return json({ error: 'Correo inválido.' }, 400);
+    if (!baseEmail || !baseEmail.includes('@')) return json({ error: 'Correo inválido.' }, 400);
     if (!password || password.length < 6) return json({ error: 'Contraseña inválida (mín. 6).' }, 400);
     if (!fullName) return json({ error: 'Nombre vacío.' }, 400);
 
@@ -134,7 +145,8 @@ Deno.serve(async (req) => {
           ok: true,
           user_id: userId,
           delivery_profile_id: existingDelivery.id,
-          email,
+          email: baseEmail,
+          auth_email: email,
           already_delivery: true,
         });
       }
@@ -151,14 +163,18 @@ Deno.serve(async (req) => {
       }
     } else {
       if (!userId) return json({ error: 'Respuesta inesperada al crear usuario.' }, 500);
-      await supabaseAdmin.from('profiles').delete().eq('id', userId).catch(() => {});
+      try {
+        await supabaseAdmin.from('profiles').delete().eq('id', userId);
+      } catch (_) {
+        // Fila opcional; ignora si no existe o RLS.
+      }
     }
 
     const { data: deliveryRow, error: profErr } = await supabaseAdmin
       .from('profiles_delivery')
       .insert({
         auth_user_id: userId,
-        email,
+        email: baseEmail,
         full_name: fullName,
         is_active: true,
       })
@@ -167,7 +183,11 @@ Deno.serve(async (req) => {
 
     if (profErr || !deliveryRow?.id) {
       if (!linkedExistingAuth && userId) {
-        await supabaseAdmin.auth.admin.deleteUser(userId).catch(() => {});
+        try {
+          await supabaseAdmin.auth.admin.deleteUser(userId);
+        } catch (_) {
+          // Limpieza best-effort.
+        }
       }
       return json(
         { error: `No se pudo crear profiles_delivery: ${profErr?.message ?? 'unknown'}` },
@@ -179,7 +199,8 @@ Deno.serve(async (req) => {
       ok: true,
       user_id: userId,
       delivery_profile_id: deliveryRow.id,
-      email,
+      email: baseEmail,
+      auth_email: email,
       ...(linkedExistingAuth ? { linked_existing_auth: true } : {}),
     });
   } catch (e) {

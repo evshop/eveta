@@ -30,6 +30,8 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
 
   String _labelDelivery(String? s) {
     switch (s) {
+      case 'awaiting_store_ready':
+        return 'Tienda preparando';
       case 'awaiting_driver':
         return 'Buscando repartidor';
       case 'driver_assigned':
