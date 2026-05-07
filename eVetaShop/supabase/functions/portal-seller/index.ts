@@ -22,7 +22,7 @@ const CORE_SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const PORTAL_AUTH_URL = Deno.env.get('PORTAL_AUTH_SUPABASE_URL') ?? '';
 const PORTAL_AUTH_ANON = Deno.env.get('PORTAL_AUTH_SUPABASE_ANON_KEY') ?? '';
 
-async function portalAuthGetEmail(jwt: string): Promise<string | null> {
+async function portalAuthGetUser(jwt: string): Promise<{ id: string; email: string } | null> {
   const res = await fetch(`${PORTAL_AUTH_URL}/auth/v1/user`, {
     method: 'GET',
     headers: {
@@ -32,9 +32,10 @@ async function portalAuthGetEmail(jwt: string): Promise<string | null> {
   });
   if (!res.ok) return null;
   const u = await res.json();
+  const id = String(u?.id ?? '').trim();
   const email = normalizeEmail(u?.email ?? '');
-  if (!email || !email.includes('@')) return null;
-  return email;
+  if (!id || !email || !email.includes('@')) return null;
+  return { id, email };
 }
 
 Deno.serve(async (req) => {
@@ -54,22 +55,59 @@ Deno.serve(async (req) => {
     return json({ error: 'invalid_session' }, 401);
   }
 
-  const email = await portalAuthGetEmail(jwt);
-  if (!email) return json({ error: 'invalid_session' }, 401);
+  const authUser = await portalAuthGetUser(jwt);
+  if (!authUser) return json({ error: 'invalid_session' }, 401);
+  const portalUserId = authUser.id;
+  const email = authUser.email;
 
   const core = createClient(CORE_URL, CORE_SERVICE_ROLE);
-  const { data: seller, error: sellerErr } = await core
-    .from('profiles_portal')
-    .select('id, email, is_seller, is_active')
-    .ilike('email', email)
-    .maybeSingle();
-  if (sellerErr) return json({ error: sellerErr.message }, 500);
-  if (!seller || seller.is_active !== true || seller.is_seller !== true) {
-    return json({ error: 'forbidden_not_seller' }, 403);
-  }
 
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const action = String(body.action ?? '').trim().toLowerCase();
+
+  /// Validación de acceso a la app (sin depender de JWT del Core ni de coincidencia solo por email en Delivery).
+  if (action === 'verify_gate') {
+    const { data: deliveryRow, error: dErr } = await core
+      .from('profiles_delivery')
+      .select('id')
+      .eq('auth_user_id', portalUserId)
+      .maybeSingle();
+    if (dErr) return json({ error: dErr.message }, 500);
+    if (deliveryRow) return json({ error: 'forbidden_delivery_account' }, 403);
+
+    let { data: portalProfile, error: pErr } = await core
+      .from('profiles_portal')
+      .select('id, auth_user_id, email, is_admin, is_seller, is_active')
+      .eq('auth_user_id', portalUserId)
+      .maybeSingle();
+    if (pErr) return json({ error: pErr.message }, 500);
+    if (!portalProfile) {
+      const byEmail = await core
+        .from('profiles_portal')
+        .select('id, auth_user_id, email, is_admin, is_seller, is_active')
+        .ilike('email', email)
+        .maybeSingle();
+      if (byEmail.error) return json({ error: byEmail.error.message }, 500);
+      portalProfile = byEmail.data;
+    }
+    if (!portalProfile || portalProfile.is_active !== true) {
+      return json({ error: 'forbidden_not_portal' }, 403);
+    }
+    if (portalProfile.is_admin !== true && portalProfile.is_seller !== true) {
+      return json({ error: 'forbidden_not_portal' }, 403);
+    }
+    return json({ ok: true, data: portalProfile });
+  }
+
+  const { data: seller, error: sellerErr } = await core
+    .from('profiles_portal')
+    .select('id, email, is_seller, is_admin, is_active')
+    .ilike('email', email)
+    .maybeSingle();
+  if (sellerErr) return json({ error: sellerErr.message }, 500);
+  if (!seller || seller.is_active !== true || (seller.is_seller !== true && seller.is_admin !== true)) {
+    return json({ error: 'forbidden_not_seller' }, 403);
+  }
 
   if (action === 'get_store_profile') {
     const { data, error } = await core
