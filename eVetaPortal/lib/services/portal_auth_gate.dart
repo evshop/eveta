@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'supabase_clients.dart';
 
 /// Resultado de la verificación de acceso a la app Portal/Admin.
@@ -22,12 +23,12 @@ class PortalGateResult {
 
 /// Centraliza el gate de acceso por app para eVetaPortal/Admin.
 ///
-/// Reglas:
-/// - Bloquea cuentas Delivery (existen en `profiles_delivery`).
-/// - Permite únicamente cuentas activas en `profiles_portal` con
-///   `is_admin` o `is_seller` en true (admin como rol de la misma cuenta).
-/// - Usa el RPC `ensure_portal_membership_for_current_user` para autovincular
-///   cuentas legacy (script 051) y cae a consulta directa si no está disponible.
+/// Usa la Edge Function `portal-seller` (`verify_gate`) para validar contra
+/// Core con service role, sin depender de JWT del proyecto Core en PostgREST.
+///
+/// - Bloquea solo si existe `profiles_delivery` con el mismo **auth_user_id**
+///   del usuario en Portal Auth (no basta el mismo correo).
+/// - Permite cuentas activas en `profiles_portal` con `is_admin` o `is_seller`.
 class PortalAuthGate {
   PortalAuthGate._();
 
@@ -39,104 +40,60 @@ class PortalAuthGate {
     if (user == null) {
       return PortalGateResult.deny('No hay sesión activa.');
     }
-    final uid = user.id;
-    final email = user.email?.trim().toLowerCase();
-
-    // 1) Cuentas Delivery no pueden entrar a Portal/Admin.
-    final deliveryRow = await _findDelivery(uid: uid, email: email);
-    if (deliveryRow != null) {
-      await _signOut();
-      return PortalGateResult.deny(
-        'Esta cuenta es de Delivery. Usa una cuenta Portal separada.',
-      );
+    final jwt = await SupabaseClients.getPortalAccessToken();
+    if (jwt == null || jwt.isEmpty) {
+      return PortalGateResult.deny('No hay sesión activa.');
     }
 
-    // 2) Asegura/vincula membresía en profiles_portal.
-    Map<String, dynamic>? portalProfile = await _ensurePortalMembership();
-    portalProfile ??= await _findPortal(uid: uid, email: email);
-
-    if (portalProfile == null) {
-      await _signOut();
-      return PortalGateResult.deny(
-        'Tu cuenta no está vinculada a Portal. Usa una cuenta Portal separada.',
-      );
-    }
-
-    final isActive = portalProfile['is_active'] == true;
-    final isAdmin = portalProfile['is_admin'] == true;
-    final isSeller = portalProfile['is_seller'] == true;
-    if (!isActive || (!isAdmin && !isSeller)) {
-      await _signOut();
-      return PortalGateResult.deny(
-        'Tu cuenta no está vinculada a Portal. Usa una cuenta Portal separada.',
-      );
-    }
-
-    return PortalGateResult.allow(portalProfile);
-  }
-
-  static Future<Map<String, dynamic>?> _ensurePortalMembership() async {
     try {
-      final ensured = await _core.rpc(
-        'ensure_portal_membership_for_current_user',
+      final res = await _core.functions.invoke(
+        'portal-seller',
+        body: {'action': 'verify_gate'},
+        headers: {'Authorization': 'Bearer $jwt'},
       );
-      if (ensured is Map) {
-        return Map<String, dynamic>.from(ensured);
+
+      if (res.status == 401) {
+        await _signOut();
+        return PortalGateResult.deny('No hay sesión activa.');
       }
+
+      if (res.status == 403) {
+        final err = (res.data is Map && res.data['error'] != null)
+            ? res.data['error'].toString()
+            : '';
+        if (err == 'forbidden_delivery_account') {
+          await _signOut();
+          return PortalGateResult.deny(
+            'Esta cuenta es de Delivery. Usa una cuenta Portal separada.',
+          );
+        }
+        await _signOut();
+        return PortalGateResult.deny(
+          'Tu cuenta no está vinculada a Portal. Usa una cuenta Portal separada.',
+        );
+      }
+
+      if (res.status != 200 || res.data is! Map) {
+        await _signOut();
+        return PortalGateResult.deny(
+          'Tu cuenta no está vinculada a Portal. Usa una cuenta Portal separada.',
+        );
+      }
+      final raw = res.data['data'];
+      if (raw is! Map) {
+        await _signOut();
+        return PortalGateResult.deny(
+          'Tu cuenta no está vinculada a Portal. Usa una cuenta Portal separada.',
+        );
+      }
+      final profile = Map<String, dynamic>.from(raw);
+      return PortalGateResult.allow(profile);
     } catch (_) {
-      // RPC no disponible o error: usar consulta directa.
+      await _signOut();
+      return PortalGateResult.deny(
+        'Tu cuenta no está vinculada a Portal. Usa una cuenta Portal separada.',
+      );
     }
-    return null;
-  }
-
-  static Future<Map<String, dynamic>?> _findPortal({
-    required String uid,
-    String? email,
-  }) async {
-    try {
-      final byUid = await _core
-          .from('profiles_portal')
-          .select('id, is_admin, is_seller, is_active')
-          .eq('auth_user_id', uid)
-          .maybeSingle();
-      if (byUid != null) return Map<String, dynamic>.from(byUid as Map);
-      if (email != null && email.isNotEmpty) {
-        final byEmail = await _core
-            .from('profiles_portal')
-            .select('id, is_admin, is_seller, is_active')
-            .ilike('email', email)
-            .maybeSingle();
-        if (byEmail != null) return Map<String, dynamic>.from(byEmail as Map);
-      }
-    } on PostgrestException catch (_) {
-      // Tabla/políticas no disponibles: tratar como no encontrado.
-    }
-    return null;
-  }
-
-  static Future<Map<String, dynamic>?> _findDelivery({
-    required String uid,
-    String? email,
-  }) async {
-    try {
-      final byUid = await _core
-          .from('profiles_delivery')
-          .select('id, is_active')
-          .eq('auth_user_id', uid)
-          .maybeSingle();
-      if (byUid != null) return Map<String, dynamic>.from(byUid as Map);
-      if (email != null && email.isNotEmpty) {
-        final byEmail = await _core
-            .from('profiles_delivery')
-            .select('id, is_active')
-            .ilike('email', email)
-            .maybeSingle();
-        if (byEmail != null) return Map<String, dynamic>.from(byEmail as Map);
-      }
-    } on PostgrestException catch (_) {
-      // Tabla/políticas no disponibles: ignora.
-    }
-    return null;
   }
 
   static Future<void> _signOut() async {

@@ -37,7 +37,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _userEmail = user.email ?? 'vendedor@tiendasj.com';
         });
 
-        final jwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+        final jwt = await SupabaseClients.getPortalAccessToken();
         if (jwt == null || jwt.isEmpty) {
           throw Exception('No hay sesión activa.');
         }

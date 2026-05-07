@@ -7,7 +7,7 @@ class PortalOrdersService {
   PortalOrdersService._();
 
   static Future<void> markReadyForPickup(String orderId) async {
-    final jwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+    final jwt = await SupabaseClients.getPortalAccessToken();
     if (jwt == null || jwt.isEmpty) {
       throw AuthException('No hay sesión activa.');
     }
@@ -23,7 +23,7 @@ class PortalOrdersService {
   }
 
   static Future<void> rejectOrder(String orderId) async {
-    final jwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+    final jwt = await SupabaseClients.getPortalAccessToken();
     if (jwt == null || jwt.isEmpty) {
       throw AuthException('No hay sesión activa.');
     }

@@ -30,7 +30,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   Future<void> _fetchOrders() async {
     try {
-      final jwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+      final jwt = await SupabaseClients.getPortalAccessToken();
       if (jwt == null || jwt.isEmpty) {
         if (mounted) setState(() => _isLoading = false);
         return;

@@ -94,7 +94,7 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
       _email = user.email;
       _shopId = user.id;
 
-      final jwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+      final jwt = await SupabaseClients.getPortalAccessToken();
       if (jwt == null || jwt.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -329,7 +329,7 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
       final shopAddress =
           _addressCtrl.text.trim().isEmpty ? null : _addressCtrl.text.trim();
 
-      final jwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+      final jwt = await SupabaseClients.getPortalAccessToken();
       if (jwt == null || jwt.isEmpty) {
         throw AuthException('No hay sesión activa.');
       }

@@ -37,7 +37,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _fetchDashboardData() async {
     try {
-      final jwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+      final jwt = await SupabaseClients.getPortalAccessToken();
       if (jwt == null || jwt.isEmpty) return;
 
       final productsRes = await SupabaseClients.core.functions.invoke(

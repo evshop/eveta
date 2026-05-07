@@ -32,7 +32,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
   Future<void> _fetchProducts() async {
     try {
-      final jwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+      final jwt = await SupabaseClients.getPortalAccessToken();
       if (jwt == null || jwt.isEmpty) {
         setState(() => _isLoading = false);
         return;
@@ -74,7 +74,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
   /// Fila completa desde Supabase (evita datos incompletos al editar desde la lista).
   Future<Map<String, dynamic>?> _fetchProductRowForEdit(String id) async {
     try {
-      final jwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+      final jwt = await SupabaseClients.getPortalAccessToken();
       if (jwt == null || jwt.isEmpty) return null;
       final res = await SupabaseClients.core.functions.invoke(
         'portal-products',
@@ -282,7 +282,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
     try {
       setState(() => _isLoading = true);
-      final jwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+      final jwt = await SupabaseClients.getPortalAccessToken();
       if (jwt == null || jwt.isEmpty) throw Exception('Sesión expirada.');
       final res = await SupabaseClients.core.functions.invoke(
         'portal-products',

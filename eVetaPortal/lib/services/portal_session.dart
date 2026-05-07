@@ -39,7 +39,7 @@ class PortalSession {
 
     Map<String, dynamic>? row;
     try {
-      final jwt = _auth.auth.currentSession?.accessToken;
+      final jwt = await SupabaseClients.getPortalAccessToken();
       if (jwt == null || jwt.isEmpty) return null;
       final res = await _core.functions.invoke(
         'portal-seller',

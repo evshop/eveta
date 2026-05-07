@@ -156,7 +156,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
 
   Future<void> _loadCategories() async {
     try {
-      final jwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+      final jwt = await SupabaseClients.getPortalAccessToken();
       if (jwt == null || jwt.isEmpty) throw AuthException('No hay sesión activa.');
       final res = await SupabaseClients.core.functions.invoke(
         'portal-products',
@@ -484,7 +484,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
 
       if (widget.product == null) {
         // Create new
-        final jwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+        final jwt = await SupabaseClients.getPortalAccessToken();
         if (jwt == null || jwt.isEmpty) throw AuthException('No hay sesión activa.');
         final res = await SupabaseClients.core.functions.invoke(
           'portal-products',
@@ -503,7 +503,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
         }
       } else {
         // Update existing
-        final jwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+        final jwt = await SupabaseClients.getPortalAccessToken();
         if (jwt == null || jwt.isEmpty) throw AuthException('No hay sesión activa.');
         final res = await SupabaseClients.core.functions.invoke(
           'portal-products',
