@@ -56,21 +56,24 @@ async function findAuthUserIdByEmail(admin: SupabaseClient, email: string): Prom
   return null;
 }
 
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+const CORE_SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
+const CORE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
-const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+const PORTAL_AUTH_SUPABASE_URL = Deno.env.get('PORTAL_AUTH_SUPABASE_URL') ?? '';
+const PORTAL_AUTH_SUPABASE_ANON_KEY = Deno.env.get('PORTAL_AUTH_SUPABASE_ANON_KEY') ?? '';
+const PORTAL_AUTH_SERVICE_ROLE_KEY = Deno.env.get('PORTAL_AUTH_SERVICE_ROLE_KEY') ?? '';
+
+const coreAdmin = createClient(CORE_SUPABASE_URL, CORE_SERVICE_ROLE_KEY);
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-      return json({ error: 'Faltan secrets SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY.' }, 500);
+    if (!CORE_SUPABASE_URL || !CORE_SERVICE_ROLE_KEY) {
+      return json({ error: 'Faltan secrets CORE SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY.' }, 500);
     }
-    if (!SUPABASE_ANON_KEY) {
-      return json({ error: 'Falta SUPABASE_ANON_KEY en secrets.' }, 500);
+    if (!PORTAL_AUTH_SUPABASE_URL || !PORTAL_AUTH_SUPABASE_ANON_KEY) {
+      return json({ error: 'Falta PORTAL_AUTH_SUPABASE_URL/ANON_KEY en secrets.' }, 500);
     }
 
     const authHeader = req.headers.get('authorization') ?? '';
@@ -89,88 +92,74 @@ Deno.serve(async (req) => {
     if (!password || password.length < 6) return json({ error: 'Contraseña inválida (mín. 6).' }, 400);
     if (!fullName) return json({ error: 'Nombre vacío.' }, 400);
 
-    const supabaseUser = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      global: { headers: { Authorization: `Bearer ${token}` } },
-    });
-    const { data: isAdmin, error: adminErr } = await supabaseUser.rpc('profile_is_admin');
-    if (adminErr) return json({ error: `No se pudo validar admin: ${adminErr.message}` }, 403);
-    if (isAdmin !== true) return json({ error: 'Sin permisos de administrador.' }, 403);
-
-    const { data: created, error: createErr } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: {
-        full_name: fullName,
-        app: 'delivery',
+    const meRes = await fetch(`${PORTAL_AUTH_SUPABASE_URL}/auth/v1/user`, {
+      method: 'GET',
+      headers: {
+        apikey: PORTAL_AUTH_SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${token}`,
       },
     });
-
-    let userId: string | null = created.user?.id ?? null;
-    let linkedExistingAuth = false;
-
-    if (createErr) {
-      const errMsg = createErr.message ?? '';
-      if (!isDuplicateAuthEmailError(errMsg)) {
-        return json({ error: `No se pudo crear auth user: ${errMsg}` }, 400);
-      }
-      userId = await findAuthUserIdByEmail(supabaseAdmin, email);
-      if (!userId) {
-        return json({ error: `No se pudo crear auth user: ${errMsg}` }, 400);
-      }
-      linkedExistingAuth = true;
-
-      const { data: portalRow } = await supabaseAdmin
-        .from('profiles_portal')
-        .select('id')
-        .eq('auth_user_id', userId)
-        .maybeSingle();
-      if (portalRow?.id) {
-        return json(
-          {
-            error:
-              'Este correo ya pertenece a una cuenta Portal/Tienda. Delivery debe usar un correo distinto o un usuario que no sea vendedor Portal.',
-          },
-          400,
-        );
-      }
-
-      const { data: existingDelivery } = await supabaseAdmin
-        .from('profiles_delivery')
-        .select('id')
-        .eq('auth_user_id', userId)
-        .maybeSingle();
-      if (existingDelivery?.id) {
-        return json({
-          ok: true,
-          user_id: userId,
-          delivery_profile_id: existingDelivery.id,
-          email: baseEmail,
-          auth_email: email,
-          already_delivery: true,
-        });
-      }
-
-      const { error: upErr } = await supabaseAdmin.auth.admin.updateUserById(userId, {
-        password,
-        user_metadata: {
-          full_name: fullName,
-          app: 'delivery',
-        },
-      });
-      if (upErr) {
-        return json({ error: `No se pudo actualizar el usuario existente: ${upErr.message}` }, 400);
-      }
-    } else {
-      if (!userId) return json({ error: 'Respuesta inesperada al crear usuario.' }, 500);
-      try {
-        await supabaseAdmin.from('profiles').delete().eq('id', userId);
-      } catch (_) {
-        // Fila opcional; ignora si no existe o RLS.
-      }
+    if (!meRes.ok) return json({ error: 'invalid_admin_session' }, 401);
+    const me = await meRes.json();
+    const adminEmail = normalizeEmail(me?.email ?? '');
+    if (!adminEmail || !adminEmail.includes('@')) return json({ error: 'invalid_admin_session' }, 401);
+    const { data: adminRow, error: adminErr } = await coreAdmin
+      .from('profiles_portal')
+      .select('id, is_admin, is_active')
+      .ilike('email', adminEmail)
+      .maybeSingle();
+    if (adminErr) return json({ error: `No se pudo validar admin: ${adminErr.message}` }, 403);
+    if (!adminRow || adminRow.is_admin !== true || adminRow.is_active !== true) {
+      return json({ error: 'Sin permisos de administrador.' }, 403);
     }
 
-    const { data: deliveryRow, error: profErr } = await supabaseAdmin
+    let userId = '';
+    if (PORTAL_AUTH_SERVICE_ROLE_KEY) {
+      const adminRes = await fetch(`${PORTAL_AUTH_SUPABASE_URL}/auth/v1/admin/users`, {
+        method: 'POST',
+        headers: {
+          apikey: PORTAL_AUTH_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${PORTAL_AUTH_SERVICE_ROLE_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          email_confirm: true,
+          user_metadata: { full_name: fullName, app: 'delivery' },
+        }),
+      });
+      const payload = await adminRes.json().catch(() => ({}));
+      if (adminRes.ok) {
+        userId = payload?.id?.toString() ?? payload?.user?.id?.toString() ?? '';
+      }
+    }
+    if (!userId) {
+      // Fallback: signup (may hit email rate limit).
+      const signupRes = await fetch(`${PORTAL_AUTH_SUPABASE_URL}/auth/v1/signup`, {
+        method: 'POST',
+        headers: {
+          apikey: PORTAL_AUTH_SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${PORTAL_AUTH_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          data: { full_name: fullName, app: 'delivery' },
+        }),
+      });
+      const signupPayload = await signupRes.json().catch(() => ({}));
+      if (!signupRes.ok) {
+        const msg = signupPayload?.msg ?? signupPayload?.message ?? JSON.stringify(signupPayload);
+        return json({ error: `portal_auth_signup_failed: ${msg}` }, 400);
+      }
+      userId = signupPayload?.id?.toString() ?? signupPayload?.user?.id?.toString() ?? '';
+      if (!userId) return json({ error: 'portal_auth_signup_failed: missing user id' }, 500);
+    }
+    const linkedExistingAuth = false;
+
+    const { data: deliveryRow, error: profErr } = await coreAdmin
       .from('profiles_delivery')
       .insert({
         auth_user_id: userId,
@@ -182,13 +171,6 @@ Deno.serve(async (req) => {
       .single();
 
     if (profErr || !deliveryRow?.id) {
-      if (!linkedExistingAuth && userId) {
-        try {
-          await supabaseAdmin.auth.admin.deleteUser(userId);
-        } catch (_) {
-          // Limpieza best-effort.
-        }
-      }
       return json(
         { error: `No se pudo crear profiles_delivery: ${profErr?.message ?? 'unknown'}` },
         400,
