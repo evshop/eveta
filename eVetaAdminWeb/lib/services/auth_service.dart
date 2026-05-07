@@ -585,51 +585,27 @@ class AuthService {
     if (!await isCurrentUserAdmin()) {
       throw AuthException('Sin permisos de administrador.');
     }
-
-    final portalRow = await _coreClient
-        .from('profiles_portal')
-        .select(_portalPartnerColsCore)
-        .eq('id', partnerPortalProfileId)
-        .maybeSingle();
-    if (portalRow == null) throw AuthException('No se encontró la tienda (profiles_portal).');
-
-    final m = decoratePortalPartnerRow(Map<String, dynamic>.from(portalRow as Map));
-    final sellerId = m['seller_id_for_products']?.toString() ?? '';
-    if (sellerId.isEmpty) {
-      throw AuthException('No se pudo resolver seller_id para borrar catálogo.');
+    var accessToken = _authClient.auth.currentSession?.accessToken;
+    if (accessToken == null || accessToken.isEmpty) {
+      final refreshed = await _authClient.auth.refreshSession();
+      accessToken = refreshed.session?.accessToken;
     }
-
-    final meUid = _authClient.auth.currentUser?.id;
-    if (meUid != null &&
-        ((m['auth_user_id']?.toString() == meUid) || (sellerId == meUid))) {
-      throw AuthException('No puedes eliminar tu propia cuenta/tienda desde aquí.');
+    if (accessToken == null || accessToken.isEmpty) {
+      throw AuthException('Tu sesión expiró. Vuelve a iniciar sesión e intenta de nuevo.');
     }
+    accessToken = accessToken.replaceFirst(RegExp(r'^Bearer\\s+', caseSensitive: false), '');
 
-    await _coreClient.from('products').delete().eq('seller_id', sellerId);
-
-    final cleared = await _coreClient
-        .from('profiles_portal')
-        .update({
-          'shop_name': null,
-          'shop_description': null,
-          'shop_logo_url': null,
-          'shop_banner_url': null,
-          'shop_border_color': null,
-          'shop_address': null,
-          'shop_lat': null,
-          'shop_lng': null,
-          'shop_location_photos': [],
-          'is_partner_verified': false,
-          'partner_display_order': 0,
-          'admin_portal_note': null,
-          'is_seller': false,
-          'updated_at': DateTime.now().toUtc().toIso8601String(),
-        })
-        .eq('id', partnerPortalProfileId)
-        .select('id');
-
-    if ((cleared as List).isEmpty) {
-      throw AuthException('No se pudo actualizar profiles_portal (0 filas). Revisa RLS (061).');
+    final res = await _coreClient.functions.invoke(
+      'admin-delete-store',
+      body: {'profile_id': partnerPortalProfileId},
+      headers: {
+        'Authorization': 'Bearer $accessToken',
+        'x-admin-access-token': accessToken,
+      },
+    );
+    if (res.status != 200) {
+      final msg = _extractFunctionError(res.data) ?? 'No se pudo eliminar la tienda.';
+      throw AuthException(msg);
     }
   }
 }
