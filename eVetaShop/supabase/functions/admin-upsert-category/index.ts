@@ -18,6 +18,14 @@ function normalizeEmail(v: string): string {
   return v.trim().toLowerCase();
 }
 
+function slugify(v: string): string {
+  return v
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 const CORE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const CORE_SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
@@ -75,7 +83,8 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({}));
   const id = (body?.id ?? '').toString().trim();
   const name = (body?.name ?? '').toString().trim();
-  const slug = (body?.slug ?? '').toString().trim();
+  const slugRaw = (body?.slug ?? '').toString().trim();
+  const slug = slugRaw || slugify(name);
   if (!name) return json({ error: 'Nombre inválido.' }, 400);
   if (!slug) return json({ error: 'Slug inválido.' }, 400);
 
