@@ -502,24 +502,25 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                 if (uploading) ...[
                   const SizedBox(height: 10),
                   const LinearProgressIndicator(),
-          ],
-                ),
-              ),
+                ],
+              ],
             ),
           ),
-            actions: [
-            TextButton(
-              onPressed: (uploading || saving) ? null : () => Navigator.pop(ctx, false),
-              child: const Text('Cancelar'),
+        ),
             ),
-            ElevatedButton(
-              onPressed: (uploading || saving || controller.text.trim().isEmpty)
-                  ? null
-                  : () async {
-                      setDialogState(() => saving = true);
-                      try {
-                        final name = controller.text.trim();
-                        if (name.isEmpty) return;
+            actions: [
+              TextButton(
+                onPressed: (uploading || saving) ? null : () => Navigator.pop(ctx, false),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: (uploading || saving || controller.text.trim().isEmpty)
+                    ? null
+                    : () async {
+                        setDialogState(() => saving = true);
+                        try {
+                          final name = controller.text.trim();
+                          if (name.isEmpty) return;
 
                         final isSub = parentId != null;
                         final effectiveSpec = isSub && specTemplateEnabled;
@@ -565,26 +566,25 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                           );
                         }
 
-                        if (!ctx.mounted) return;
-                        Navigator.pop(ctx, true);
-                      } catch (e) {
-                        if (!ctx.mounted) return;
-                        ScaffoldMessenger.of(parentContext).showSnackBar(
-                          SnackBar(content: Text('No se pudo guardar: $e')),
-                        );
-                      } finally {
-                        if (ctx.mounted) setDialogState(() => saving = false);
-                      }
-                    },
-              child: saving
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Guardar'),
-            ),
-          ],
+                          if (!ctx.mounted) return;
+                          Navigator.pop(ctx, true);
+                        } catch (e) {
+                          if (!ctx.mounted) return;
+                          ScaffoldMessenger.of(parentContext).showSnackBar(
+                            SnackBar(content: Text('No se pudo guardar: $e')),
+                          );
+                        } finally {
+                          if (ctx.mounted) setDialogState(() => saving = false);
+                        }
+                      },
+                child: saving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Guardar'),
+              ),
             ],
           );
         },
