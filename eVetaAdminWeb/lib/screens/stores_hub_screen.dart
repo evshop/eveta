@@ -62,7 +62,7 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
     }
     final name = _myProfile?['shop_name']?.toString().trim();
     final email = _myProfile?['email']?.toString() ??
-        Supabase.instance.client.auth.currentUser?.email ??
+        AuthService.currentAuthEmail ??
         '';
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
@@ -438,7 +438,7 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
 
     final myName = _myProfile?['shop_name']?.toString().trim();
     final myEmail = _myProfile?['email']?.toString() ??
-        Supabase.instance.client.auth.currentUser?.email ??
+        AuthService.currentAuthEmail ??
         '';
 
     return RefreshIndicator(

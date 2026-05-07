@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/auth_service.dart';
 import '../services/products_service.dart';
+import '../services/supabase_clients.dart';
 import '../widgets/admin_shop_product_card.dart';
 import 'official_store_screen.dart';
 import 'partner_store_edit_screen.dart';
@@ -43,12 +44,12 @@ class _StoreProductsScreenState extends State<StoreProductsScreen> {
   }
 
   Future<void> _loadCanManage() async {
-    final uid = Supabase.instance.client.auth.currentUser?.id;
+    final uid = AuthService.currentAuthUserId;
     final admin = await AuthService.isCurrentUserAdmin();
     bool ownsStore = false;
     if (!admin && uid != null) {
       try {
-        final row = await Supabase.instance.client
+        final row = await SupabaseClients.core
             .from('profiles_portal')
             .select('id')
             .eq('id', widget.sellerId)

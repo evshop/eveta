@@ -1,8 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'supabase_clients.dart';
 
 class AuthService {
-  static SupabaseClient get _client => Supabase.instance.client;
+  static SupabaseClient get _authClient => SupabaseClients.auth;
+  static SupabaseClient get _coreClient => SupabaseClients.core;
 
   /// Columnas de tienda/partner viven en `profiles_portal`, no en `profiles`.
   /// Tras 064, `products.seller_id` referencia `profiles_portal.id`, así que
@@ -20,6 +22,9 @@ class AuthService {
     return id ?? '';
   }
 
+  static String? get currentAuthUserId => _authClient.auth.currentUser?.id;
+  static String? get currentAuthEmail => _authClient.auth.currentUser?.email;
+
   static Map<String, dynamic> decoratePortalPartnerRow(Map<String, dynamic> raw) {
     final m = Map<String, dynamic>.from(raw);
     m['seller_id_for_products'] = sellerProductsIdFromPortal(m);
@@ -30,7 +35,7 @@ class AuthService {
     required String email,
     required String password,
   }) async {
-    final response = await _client.auth.signInWithPassword(
+    final response = await _authClient.auth.signInWithPassword(
       email: email.trim().toLowerCase(),
       password: password,
     );
@@ -40,33 +45,43 @@ class AuthService {
   }
 
   static Future<void> signOut() async {
-    await _client.auth.signOut();
+    await _authClient.auth.signOut();
   }
 
   /// Envía el correo de recuperación de contraseña de Supabase Auth (no revela la contraseña actual).
   static Future<void> sendPasswordResetEmail(String email) async {
     final e = email.trim().toLowerCase();
     if (e.isEmpty) throw AuthException('Correo vacío.');
-    await _client.auth.resetPasswordForEmail(e);
+    await _authClient.auth.resetPasswordForEmail(e);
   }
 
   static Future<bool> isCurrentUserAdmin() async {
-    final user = _client.auth.currentUser;
+    final user = _authClient.auth.currentUser;
     if (user == null) return false;
+    final userEmail = user.email?.trim().toLowerCase();
     for (var attempt = 0; attempt < 2; attempt++) {
       try {
-        final rpcResult = await _client.rpc('profile_is_admin');
+        final rpcResult = await _coreClient.rpc('profile_is_admin');
         if (rpcResult is bool) return rpcResult;
       } catch (_) {
         // Fallback below.
       }
       try {
-        final portal = await _client
+        Map<String, dynamic>? portal;
+        portal = await _coreClient
             .from('profiles_portal')
             .select('is_admin')
             .eq('auth_user_id', user.id)
             .eq('is_active', true)
             .maybeSingle();
+        if (portal == null && userEmail != null && userEmail.isNotEmpty) {
+          portal = await _coreClient
+              .from('profiles_portal')
+              .select('is_admin')
+              .ilike('email', userEmail)
+              .eq('is_active', true)
+              .maybeSingle();
+        }
         if (portal?['is_admin'] == true) return true;
       } catch (_) {
         // Tabla o política ausente en proyectos antiguos.
@@ -80,31 +95,41 @@ class AuthService {
 
   /// Existe cualquier perfil Portal activo (admin o seller) para debugging/mensajes.
   static Future<bool> currentPortalProfileExists() async {
-    final user = _client.auth.currentUser;
+    final user = _authClient.auth.currentUser;
     if (user == null) return false;
-    final portal = await _client
+    final userEmail = user.email?.trim().toLowerCase();
+    dynamic portal = await _coreClient
         .from('profiles_portal')
         .select('id')
         .eq('auth_user_id', user.id)
         .eq('is_active', true)
         .maybeSingle();
+    if (portal == null && userEmail != null && userEmail.isNotEmpty) {
+      portal = await _coreClient
+          .from('profiles_portal')
+          .select('id')
+          .ilike('email', userEmail)
+          .eq('is_active', true)
+          .maybeSingle();
+    }
     return portal != null;
   }
 
   static Future<bool> currentUserProfileExists() async {
-    final user = _client.auth.currentUser;
+    final user = _authClient.auth.currentUser;
     if (user == null) return false;
-    final profile = await _client.from('profiles').select('id').eq('id', user.id).maybeSingle();
+    final profile = await _coreClient.from('profiles').select('id').eq('id', user.id).maybeSingle();
     return profile != null;
   }
 
   static Future<Map<String, dynamic>?> fetchMyProfile() async {
-    final user = _client.auth.currentUser;
+    final user = _authClient.auth.currentUser;
     if (user == null) return null;
+    final userEmail = user.email?.trim().toLowerCase();
 
     Map<String, dynamic>? shop;
     try {
-      final raw = await _client
+      final raw = await _coreClient
           .from('profiles')
           .select('id, full_name, email')
           .eq('id', user.id)
@@ -116,7 +141,7 @@ class AuthService {
     try {
       Map<String, dynamic>? portalRaw;
       try {
-        final raw = await _client
+        final raw = await _coreClient
             .from('profiles_portal')
             .select(_portalPartnerColsWithNote)
             .eq('auth_user_id', user.id)
@@ -124,13 +149,32 @@ class AuthService {
             .maybeSingle();
         if (raw != null) portalRaw = Map<String, dynamic>.from(raw as Map);
       } catch (_) {
-        final raw = await _client
+        final raw = await _coreClient
             .from('profiles_portal')
             .select(_portalPartnerColsCore)
             .eq('auth_user_id', user.id)
             .eq('is_active', true)
             .maybeSingle();
         if (raw != null) portalRaw = Map<String, dynamic>.from(raw as Map);
+      }
+      if (portalRaw == null && userEmail != null && userEmail.isNotEmpty) {
+        try {
+          final raw = await _coreClient
+              .from('profiles_portal')
+              .select(_portalPartnerColsWithNote)
+              .ilike('email', userEmail)
+              .eq('is_active', true)
+              .maybeSingle();
+          if (raw != null) portalRaw = Map<String, dynamic>.from(raw as Map);
+        } catch (_) {
+          final raw = await _coreClient
+              .from('profiles_portal')
+              .select(_portalPartnerColsCore)
+              .ilike('email', userEmail)
+              .eq('is_active', true)
+              .maybeSingle();
+          if (raw != null) portalRaw = Map<String, dynamic>.from(raw as Map);
+        }
       }
       portal = portalRaw;
     } catch (_) {}
@@ -154,8 +198,9 @@ class AuthService {
     String? shopLogoUrl,
     String? shopBannerUrl,
   }) async {
-    final user = _client.auth.currentUser;
+    final user = _authClient.auth.currentUser;
     if (user == null) throw AuthException('No hay sesión activa');
+    final userEmail = user.email?.trim().toLowerCase();
 
     final row = <String, dynamic>{
       'shop_name': shopName.trim(),
@@ -168,21 +213,37 @@ class AuthService {
 
     Map<String, dynamic>? updatedPortal;
     try {
-      updatedPortal = await _client
+      updatedPortal = await _coreClient
           .from('profiles_portal')
           .update(row)
           .eq('auth_user_id', user.id)
           .select('id')
           .maybeSingle();
+      if (updatedPortal == null && userEmail != null && userEmail.isNotEmpty) {
+        updatedPortal = await _coreClient
+            .from('profiles_portal')
+            .update(row)
+            .ilike('email', userEmail)
+            .select('id')
+            .maybeSingle();
+      }
     } catch (e) {
       if (e.toString().toLowerCase().contains('shop_banner_url')) {
         row.remove('shop_banner_url');
-        updatedPortal = await _client
+        updatedPortal = await _coreClient
             .from('profiles_portal')
             .update(row)
             .eq('auth_user_id', user.id)
             .select('id')
             .maybeSingle();
+        if (updatedPortal == null && userEmail != null && userEmail.isNotEmpty) {
+          updatedPortal = await _coreClient
+              .from('profiles_portal')
+              .update(row)
+              .ilike('email', userEmail)
+              .select('id')
+              .maybeSingle();
+        }
       } else {
         rethrow;
       }
@@ -199,7 +260,7 @@ class AuthService {
   /// Vive en `profiles_portal` (la tienda pública viene de ahí para Shop/Delivery).
   static Future<List<Map<String, dynamic>>> fetchVerifiedPartnerStores() async {
     Future<List<Map<String, dynamic>>> load(String cols) async {
-      final rows = await _client
+      final rows = await _coreClient
           .from('profiles_portal')
           .select(cols)
           .eq('is_active', true)
@@ -236,7 +297,7 @@ class AuthService {
     final trimmed = note?.trim();
     final value = (trimmed == null || trimmed.isEmpty) ? null : trimmed;
     try {
-      final updated = await _client
+      final updated = await _coreClient
           .from('profiles_portal')
           .update({'admin_portal_note': value})
           .eq('id', profileId)
@@ -263,7 +324,7 @@ class AuthService {
   }) async {
     if (!await isCurrentUserAdmin()) return;
     try {
-      await _client.from('profiles_portal').update({
+      await _coreClient.from('profiles_portal').update({
         'admin_portal_note':
             'Contraseña definida al crear la cuenta ($email): $password',
       }).eq('auth_user_id', userId);
@@ -276,14 +337,14 @@ class AuthService {
   static Future<Map<String, dynamic>?> fetchProfileByIdForAdmin(String partnerPortalProfileId) async {
     if (!await isCurrentUserAdmin()) return null;
     try {
-      final row = await _client
+      final row = await _coreClient
           .from('profiles_portal')
           .select(_portalPartnerColsWithNote)
           .eq('id', partnerPortalProfileId)
           .maybeSingle();
       return row == null ? null : decoratePortalPartnerRow(Map<String, dynamic>.from(row as Map));
     } catch (_) {
-      final row = await _client
+      final row = await _coreClient
           .from('profiles_portal')
           .select(_portalPartnerColsCore)
           .eq('id', partnerPortalProfileId)
@@ -312,7 +373,7 @@ class AuthService {
     };
 
     try {
-      final updated = await _client
+      final updated = await _coreClient
           .from('profiles_portal')
           .update(row)
           .eq('id', profileId)
@@ -326,7 +387,7 @@ class AuthService {
       if (e is AuthException) rethrow;
       if (e.toString().toLowerCase().contains('shop_banner_url')) {
         row.remove('shop_banner_url');
-        final updated = await _client.from('profiles_portal').update({
+        final updated = await _coreClient.from('profiles_portal').update({
           ...row,
         }).eq('id', profileId).select('id');
         if ((updated as List).isEmpty) {
@@ -350,9 +411,9 @@ class AuthService {
   }) async {
     try {
       // La Edge Function requiere Authorization (JWT) para validar que el que crea es admin.
-      var accessToken = _client.auth.currentSession?.accessToken;
+      var accessToken = _authClient.auth.currentSession?.accessToken;
       if (accessToken == null || accessToken.isEmpty) {
-        final refreshed = await _client.auth.refreshSession();
+        final refreshed = await _authClient.auth.refreshSession();
         accessToken = refreshed.session?.accessToken;
       }
       if (accessToken == null || accessToken.isEmpty) {
@@ -370,7 +431,7 @@ class AuthService {
         );
       }
 
-      final res = await _client.functions.invoke(
+      final res = await _coreClient.functions.invoke(
         'create-partner-seller',
         body: {
           'email': email.trim().toLowerCase(),
@@ -416,7 +477,7 @@ class AuthService {
 
   static Future<List<Map<String, dynamic>>> fetchDeliveryDriversForAdmin() async {
     if (!await isCurrentUserAdmin()) return [];
-    final rows = await _client
+    final rows = await _coreClient
         .from('profiles_delivery')
         .select('id, auth_user_id, email, full_name, is_active, created_at, updated_at')
         .order('created_at', ascending: false);
@@ -430,9 +491,9 @@ class AuthService {
     required String fullName,
   }) async {
     try {
-      var accessToken = _client.auth.currentSession?.accessToken;
+      var accessToken = _authClient.auth.currentSession?.accessToken;
       if (accessToken == null || accessToken.isEmpty) {
-        final refreshed = await _client.auth.refreshSession();
+        final refreshed = await _authClient.auth.refreshSession();
         accessToken = refreshed.session?.accessToken;
       }
       if (accessToken == null || accessToken.isEmpty) {
@@ -447,7 +508,7 @@ class AuthService {
         throw AuthException('Token de sesión inválido (no parece JWT).');
       }
 
-      final res = await _client.functions.invoke(
+      final res = await _coreClient.functions.invoke(
         'create-delivery-driver',
         body: {
           'email': email.trim().toLowerCase(),
@@ -525,7 +586,7 @@ class AuthService {
       throw AuthException('Sin permisos de administrador.');
     }
 
-    final portalRow = await _client
+    final portalRow = await _coreClient
         .from('profiles_portal')
         .select(_portalPartnerColsCore)
         .eq('id', partnerPortalProfileId)
@@ -538,15 +599,15 @@ class AuthService {
       throw AuthException('No se pudo resolver seller_id para borrar catálogo.');
     }
 
-    final meUid = _client.auth.currentUser?.id;
+    final meUid = _authClient.auth.currentUser?.id;
     if (meUid != null &&
         ((m['auth_user_id']?.toString() == meUid) || (sellerId == meUid))) {
       throw AuthException('No puedes eliminar tu propia cuenta/tienda desde aquí.');
     }
 
-    await _client.from('products').delete().eq('seller_id', sellerId);
+    await _coreClient.from('products').delete().eq('seller_id', sellerId);
 
-    final cleared = await _client
+    final cleared = await _coreClient
         .from('profiles_portal')
         .update({
           'shop_name': null,

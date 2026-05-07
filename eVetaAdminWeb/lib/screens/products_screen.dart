@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/product_form_data.dart';
 import '../services/auth_service.dart';
 import '../services/cloudinary_service.dart';
+import '../services/supabase_clients.dart';
 import '../utils/cloudinary_image_url.dart';
 import '../services/products_service.dart';
 import '../theme/admin_theme.dart';
@@ -257,11 +258,11 @@ class _ProductsScreenState extends State<ProductsScreen> {
     try {
       final scope = widget.managedSellerId?.trim();
       if (scope != null && scope.isNotEmpty) {
-        final uid = Supabase.instance.client.auth.currentUser?.id;
+        final uid = AuthService.currentAuthUserId;
         bool ownsStore = false;
         if (uid != null) {
           try {
-            final row = await Supabase.instance.client
+            final row = await SupabaseClients.core
                 .from('profiles_portal')
                 .select('id')
                 .eq('id', scope)
