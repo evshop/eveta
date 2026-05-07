@@ -13,8 +13,11 @@ class SupabaseClients {
   static Future<void> initialize() async {
     if (_initialized) return;
 
-    final coreUrl = EnvConfig.required('NEXT_PUBLIC_SUPABASE_URL');
-    final coreAnonKey = EnvConfig.required('NEXT_PUBLIC_SUPABASE_ANON_KEY');
+    final coreUrl = EnvConfig.coreUrl;
+    final coreAnonKey = EnvConfig.coreAnonKey;
+    if (coreUrl.isEmpty || coreAnonKey.isEmpty) {
+      throw StateError('Missing Core Supabase config (URL/ANON KEY).');
+    }
     await Supabase.initialize(
       url: coreUrl,
       anonKey: coreAnonKey,
@@ -22,14 +25,10 @@ class SupabaseClients {
 
     _coreClient = Supabase.instance.client;
 
-    final portalAuthUrl = EnvConfig.optional(
-      'PORTAL_AUTH_SUPABASE_URL',
-      fallback: coreUrl,
-    );
-    final portalAuthAnonKey = EnvConfig.optional(
-      'PORTAL_AUTH_SUPABASE_ANON_KEY',
-      fallback: coreAnonKey,
-    );
+    final portalAuthUrl =
+        EnvConfig.portalAuthUrl.isNotEmpty ? EnvConfig.portalAuthUrl : coreUrl;
+    final portalAuthAnonKey =
+        EnvConfig.portalAuthAnonKey.isNotEmpty ? EnvConfig.portalAuthAnonKey : coreAnonKey;
 
     _authClient = SupabaseClient(
       portalAuthUrl,

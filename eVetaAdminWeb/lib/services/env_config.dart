@@ -3,25 +3,35 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 class EnvConfig {
   EnvConfig._();
 
-  static String _fromDartDefine(String name) =>
-      const String.fromEnvironment(name, defaultValue: '');
+  // NOTE: `String.fromEnvironment()` requires a *literal* key (const),
+  // so we expose explicit getters per variable.
 
-  static String _fromDotenv(String name) => dotenv.env[name] ?? '';
-
-  static String required(String name) {
-    final fromDefine = _fromDartDefine(name).trim();
-    if (fromDefine.isNotEmpty) return fromDefine;
-    final fromEnv = _fromDotenv(name).trim();
-    if (fromEnv.isNotEmpty) return fromEnv;
-    throw StateError('Missing required env: $name');
-  }
-
-  static String optional(String name, {String fallback = ''}) {
-    final fromDefine = _fromDartDefine(name).trim();
-    if (fromDefine.isNotEmpty) return fromDefine;
-    final fromEnv = _fromDotenv(name).trim();
-    if (fromEnv.isNotEmpty) return fromEnv;
+  static String _pick(String defineValue, String envValue, {String fallback = ''}) {
+    final d = defineValue.trim();
+    if (d.isNotEmpty) return d;
+    final e = envValue.trim();
+    if (e.isNotEmpty) return e;
     return fallback;
   }
+
+  static String get coreUrl => _pick(
+        const String.fromEnvironment('NEXT_PUBLIC_SUPABASE_URL', defaultValue: ''),
+        dotenv.env['NEXT_PUBLIC_SUPABASE_URL'] ?? '',
+      );
+
+  static String get coreAnonKey => _pick(
+        const String.fromEnvironment('NEXT_PUBLIC_SUPABASE_ANON_KEY', defaultValue: ''),
+        dotenv.env['NEXT_PUBLIC_SUPABASE_ANON_KEY'] ?? '',
+      );
+
+  static String get portalAuthUrl => _pick(
+        const String.fromEnvironment('PORTAL_AUTH_SUPABASE_URL', defaultValue: ''),
+        dotenv.env['PORTAL_AUTH_SUPABASE_URL'] ?? '',
+      );
+
+  static String get portalAuthAnonKey => _pick(
+        const String.fromEnvironment('PORTAL_AUTH_SUPABASE_ANON_KEY', defaultValue: ''),
+        dotenv.env['PORTAL_AUTH_SUPABASE_ANON_KEY'] ?? '',
+      );
 }
 
