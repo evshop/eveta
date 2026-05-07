@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
+  Avatar,
   Box,
   Button,
   Dialog,
@@ -45,6 +46,41 @@ export function CategoriesPage() {
   const [specEnabled, setSpecEnabled] = useState(false);
   const [specGroupTitle, setSpecGroupTitle] = useState('');
   const [specFieldLabels, setSpecFieldLabels] = useState('');
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
+
+  async function uploadImage(file: File): Promise<string> {
+    const session = (await portalAuthClient.auth.getSession()).data.session;
+    const jwt = session?.access_token;
+    if (!jwt) throw new Error('Sesión expirada. Vuelve a iniciar sesión.');
+
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('No se pudo leer el archivo.'));
+      reader.onload = () => {
+        const s = String(reader.result ?? '');
+        const idx = s.indexOf('base64,');
+        if (idx === -1) return reject(new Error('Formato inválido.'));
+        resolve(s.slice(idx + 'base64,'.length));
+      };
+      reader.readAsDataURL(file);
+    });
+
+    const res = await coreClient.functions.invoke('admin-upload-image', {
+      body: {
+        bucket: 'admin-assets',
+        folder: 'categories',
+        filename: file.name,
+        content_type: file.type || 'application/octet-stream',
+        base64,
+      },
+      headers: { Authorization: `Bearer ${jwt}`, 'x-admin-access-token': jwt },
+    });
+    if (res.error) throw new Error(res.error.message);
+    const url = (res.data as any)?.public_url;
+    if (!url) throw new Error(String((res.data as any)?.error ?? 'Upload falló.'));
+    return String(url);
+  }
 
   async function refresh() {
     const { data, error } = await coreClient
@@ -186,6 +222,36 @@ export function CategoriesPage() {
             onChange={(e) => setLogoUrl(e.target.value)}
             sx={{ mt: 2 }}
           />
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
+            <Button
+              component="label"
+              variant="outlined"
+              disabled={uploadingLogo}
+              sx={{ textTransform: 'none' }}
+            >
+              {uploadingLogo ? 'Subiendo…' : 'Subir logo (galería)'}
+              <input
+                hidden
+                type="file"
+                accept="image/*"
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!f) return;
+                  try {
+                    setUploadingLogo(true);
+                    const url = await uploadImage(f);
+                    setLogoUrl(url);
+                  } catch (err: any) {
+                    setError(err?.message ?? String(err));
+                  } finally {
+                    setUploadingLogo(false);
+                  }
+                }}
+              />
+            </Button>
+            {logoUrl ? <Avatar src={logoUrl} variant="rounded" sx={{ width: 36, height: 36 }} /> : null}
+          </Stack>
           <TextField
             fullWidth
             label="Banner URL"
@@ -193,6 +259,48 @@ export function CategoriesPage() {
             onChange={(e) => setBannerUrl(e.target.value)}
             sx={{ mt: 2 }}
           />
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
+            <Button
+              component="label"
+              variant="outlined"
+              disabled={uploadingBanner}
+              sx={{ textTransform: 'none' }}
+            >
+              {uploadingBanner ? 'Subiendo…' : 'Subir banner (galería)'}
+              <input
+                hidden
+                type="file"
+                accept="image/*"
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!f) return;
+                  try {
+                    setUploadingBanner(true);
+                    const url = await uploadImage(f);
+                    setBannerUrl(url);
+                  } catch (err: any) {
+                    setError(err?.message ?? String(err));
+                  } finally {
+                    setUploadingBanner(false);
+                  }
+                }}
+              />
+            </Button>
+            {bannerUrl ? (
+              <Box
+                sx={{
+                  width: 72,
+                  height: 36,
+                  borderRadius: 1,
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  backgroundImage: `url(${bannerUrl})`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                }}
+              />
+            ) : null}
+          </Stack>
           <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mt: 2 }}>
             <Typography sx={{ opacity: parentId ? 1 : 0.5 }}>
               Campos extra en productos (solo subcategorías)
