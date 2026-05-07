@@ -93,10 +93,18 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       specLabelControllers.add(TextEditingController());
     }
 
+    bool listenerAttached = false;
     final saved = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
+        builder: (ctx, setDialogState) {
+          if (!listenerAttached) {
+            listenerAttached = true;
+            controller.addListener(() {
+              if (ctx.mounted) setDialogState(() {});
+            });
+          }
+          return AlertDialog(
           title: Text(existing == null ? 'Nueva categoría' : 'Editar categoría'),
           content: SizedBox(
             width: 520,
@@ -510,55 +518,64 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                   ? null
                   : () async {
                       setDialogState(() => saving = true);
-                      final name = controller.text.trim();
-                      if (name.isEmpty) {
+                      try {
+                        final name = controller.text.trim();
+                        if (name.isEmpty) return;
+
+                        final isSub = parentId != null;
+                        final effectiveSpec = isSub && specTemplateEnabled;
+                        final specLabels = specLabelControllers
+                            .map((c) => c.text.trim())
+                            .where((s) => s.isNotEmpty)
+                            .toList();
+                        final labelsToSave = effectiveSpec ? specLabels : <String>[];
+                        final groupRaw = specGroupController.text.trim();
+                        final rawColor = colorCtrl.text.trim();
+                        final colorHex = rawColor.isEmpty ? null : rawColor;
+
+                        if (existing == null) {
+                          await ProductsService.createCategory(
+                            name,
+                            parentId: parentId,
+                            logoUrl: logoUrl,
+                            bannerUrl: bannerUrl,
+                            colorHex: colorHex,
+                            specTemplateEnabled: effectiveSpec,
+                            specFieldLabels: labelsToSave,
+                            specGroupTitle: effectiveSpec &&
+                                    labelsToSave.isNotEmpty &&
+                                    groupRaw.isNotEmpty
+                                ? groupRaw
+                                : null,
+                          );
+                        } else {
+                          await ProductsService.updateCategory(
+                            existing['id'].toString(),
+                            name: name,
+                            parentId: parentId,
+                            logoUrl: logoUrl,
+                            bannerUrl: bannerUrl,
+                            colorHex: colorHex,
+                            specTemplateEnabled: effectiveSpec,
+                            specFieldLabels: labelsToSave,
+                            specGroupTitle: effectiveSpec &&
+                                    labelsToSave.isNotEmpty &&
+                                    groupRaw.isNotEmpty
+                                ? groupRaw
+                                : null,
+                          );
+                        }
+
+                        if (!ctx.mounted) return;
+                        Navigator.pop(ctx, true);
+                      } catch (e) {
+                        if (!ctx.mounted) return;
+                        ScaffoldMessenger.of(parentContext).showSnackBar(
+                          SnackBar(content: Text('No se pudo guardar: $e')),
+                        );
+                      } finally {
                         if (ctx.mounted) setDialogState(() => saving = false);
-                        return;
                       }
-                      final isSub = parentId != null;
-                      final effectiveSpec = isSub && specTemplateEnabled;
-                      final specLabels = specLabelControllers
-                          .map((c) => c.text.trim())
-                          .where((s) => s.isNotEmpty)
-                          .toList();
-                      final labelsToSave = effectiveSpec ? specLabels : <String>[];
-                      final groupRaw = specGroupController.text.trim();
-                      final rawColor = colorCtrl.text.trim();
-                      final colorHex = rawColor.isEmpty ? null : rawColor;
-                      if (existing == null) {
-                        await ProductsService.createCategory(
-                          name,
-                          parentId: parentId,
-                          logoUrl: logoUrl,
-                          bannerUrl: bannerUrl,
-                          colorHex: colorHex,
-                          specTemplateEnabled: effectiveSpec,
-                          specFieldLabels: labelsToSave,
-                          specGroupTitle: effectiveSpec &&
-                                  labelsToSave.isNotEmpty &&
-                                  groupRaw.isNotEmpty
-                              ? groupRaw
-                              : null,
-                        );
-                      } else {
-                        await ProductsService.updateCategory(
-                          existing['id'].toString(),
-                          name: name,
-                          parentId: parentId,
-                          logoUrl: logoUrl,
-                          bannerUrl: bannerUrl,
-                          colorHex: colorHex,
-                          specTemplateEnabled: effectiveSpec,
-                          specFieldLabels: labelsToSave,
-                          specGroupTitle: effectiveSpec &&
-                                  labelsToSave.isNotEmpty &&
-                                  groupRaw.isNotEmpty
-                              ? groupRaw
-                              : null,
-                        );
-                      }
-                      if (!ctx.mounted) return;
-                      Navigator.pop(ctx, true);
                     },
               child: saving
                   ? const SizedBox(
@@ -570,6 +587,8 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
             ),
           ],
         ),
+      );
+        },
       ),
     );
     specGroupController.dispose();
