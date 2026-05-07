@@ -39,7 +39,6 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
 
   String? _email;
   String? _shopId;
-  String? _portalProfileId;
   List<String> _locationPhotoUrls = [];
 
   Color? _parseHexColor(String? raw) {
@@ -119,8 +118,6 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
       }
 
       final row = Map<String, dynamic>.from(res.data['data'] as Map);
-      _portalProfileId = row['id']?.toString().trim();
-
       if (!mounted) return;
 
       _nameCtrl.text = row['shop_name']?.toString().trim() ?? '';

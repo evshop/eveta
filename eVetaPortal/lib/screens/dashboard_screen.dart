@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../services/portal_session.dart';
 import '../services/supabase_clients.dart';
 import '../widgets/portal/portal_dashboard_skeleton.dart';
 import '../widgets/portal/portal_haptics.dart';
@@ -39,26 +37,46 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _fetchDashboardData() async {
     try {
-      final sellerId = await PortalSession.currentSellerId();
-      if (sellerId == null) return;
+      final jwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+      if (jwt == null || jwt.isEmpty) return;
 
-      final productsResponse = await SupabaseClients.core
-          .from('products')
-          .select('id')
-          .eq('seller_id', sellerId)
-          .isFilter('event_ticket_type_id', null);
+      final productsRes = await SupabaseClients.core.functions.invoke(
+        'portal-products',
+        body: {'action': 'list'},
+        headers: {'Authorization': 'Bearer $jwt'},
+      );
+      if (productsRes.status != 200) {
+        throw Exception(
+          (productsRes.data is Map && productsRes.data['error'] != null)
+              ? productsRes.data['error'].toString()
+              : 'No se pudieron cargar productos.',
+        );
+      }
+      final products = (productsRes.data is Map && productsRes.data['data'] is List)
+          ? List<Map<String, dynamic>>.from(productsRes.data['data'] as List)
+          : <Map<String, dynamic>>[];
+      final productsCount = products
+          .where((p) => p['event_ticket_type_id'] == null || p['event_ticket_type_id'].toString().trim().isEmpty)
+          .length;
 
-      final productsCount = (productsResponse as List).length;
-
-      final orderItemsResponse = await SupabaseClients.core
-          .from('order_items')
-          .select('*, orders(status, created_at, buyer_id), products(name)')
-          .eq('seller_id', sellerId)
-          .order('created_at', ascending: false);
+      final ordersRes = await SupabaseClients.core.functions.invoke(
+        'portal-seller',
+        body: {'action': 'list_orders'},
+        headers: {'Authorization': 'Bearer $jwt'},
+      );
+      if (ordersRes.status != 200) {
+        throw Exception(
+          (ordersRes.data is Map && ordersRes.data['error'] != null)
+              ? ordersRes.data['error'].toString()
+              : 'No se pudieron cargar pedidos.',
+        );
+      }
+      final orders = (ordersRes.data is Map && ordersRes.data['data'] is List)
+          ? List<Map<String, dynamic>>.from(ordersRes.data['data'] as List)
+          : <Map<String, dynamic>>[];
 
       double revenue = 0;
       int pending = 0;
-      final items = orderItemsResponse as List<dynamic>;
       final uniqueOrderIds = <String>{};
       final now = DateTime.now();
       final salesByDay = List<double>.filled(7, 0);
@@ -67,27 +85,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return _wd[ref.weekday - 1];
       });
 
-      for (final item in items) {
-        final orderStatus = item['orders']?['status'];
+      for (final o in orders) {
+        final orderStatus = o['status'];
+        final totalValue = (o['total'] ?? 0) as num;
         if (orderStatus != 'cancelled') {
-          revenue += ((item['total'] ?? 0) as num).toDouble();
+          revenue += totalValue.toDouble();
         }
         if (orderStatus == 'pending') {
           pending++;
         }
-        if (item['order_id'] != null) {
-          uniqueOrderIds.add(item['order_id'].toString());
+        if (o['id'] != null) {
+          uniqueOrderIds.add(o['id'].toString());
         }
 
         if (orderStatus == 'cancelled') continue;
-        final rawCreated = item['created_at'];
+        final rawCreated = o['created_at'];
         if (rawCreated == null) continue;
         try {
           final d = _dateOnly(DateTime.parse(rawCreated.toString()).toLocal());
           for (var b = 0; b < 7; b++) {
             final ref = _dateOnly(now.subtract(Duration(days: 6 - b)));
             if (d == ref) {
-              salesByDay[b] += ((item['total'] ?? 0) as num).toDouble();
+              salesByDay[b] += totalValue.toDouble();
               break;
             }
           }
@@ -100,7 +119,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _totalRevenue = revenue;
         _totalOrders = uniqueOrderIds.length;
         _pendingOrders = pending;
-        _recentOrders = items.take(5).toList();
+        _recentOrders = orders.take(5).toList();
         _salesByDay = salesByDay;
         _chartLabels = labels;
         _isLoading = false;
@@ -349,11 +368,18 @@ class _RecentTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-    final productName = item['products']?['name'] ?? 'Producto';
-    final status = item['orders']?['status'] ?? 'pending';
+    final status = item['status']?.toString() ?? 'pending';
     final total = (item['total'] ?? 0) as num;
-    final orderId = item['order_id']?.toString() ?? '';
+    final orderId = item['id']?.toString() ?? '';
     final shortId = orderId.length >= 8 ? orderId.substring(0, 8) : orderId;
+    final rawItems = item['order_items'];
+    String productName = 'Producto';
+    if (rawItems is List && rawItems.isNotEmpty) {
+      final first = rawItems.first;
+      if (first is Map && first['name_snapshot'] != null) {
+        productName = first['name_snapshot'].toString();
+      }
+    }
 
     final meta = _statusMeta(status);
 

@@ -156,14 +156,26 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
 
   Future<void> _loadCategories() async {
     try {
-      final data = await SupabaseClients.core
-          .from('categories')
-          .select('id, name, parent_id, spec_template_enabled, spec_field_labels, spec_group_title')
-          .order('name');
+      final jwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+      if (jwt == null || jwt.isEmpty) throw AuthException('No hay sesión activa.');
+      final res = await SupabaseClients.core.functions.invoke(
+        'portal-products',
+        body: {'action': 'list_categories'},
+        headers: {'Authorization': 'Bearer $jwt'},
+      );
+      if (res.status != 200) {
+        final msg = (res.data is Map && res.data['error'] != null)
+            ? res.data['error'].toString()
+            : 'No se pudieron cargar categorías.';
+        throw AuthException(msg);
+      }
+      final data = (res.data is Map && res.data['data'] is List)
+          ? List<Map<String, dynamic>>.from(res.data['data'] as List)
+          : <Map<String, dynamic>>[];
 
       // Un solo setState: evita un frame intermedio sin padre/subcategoría resueltos.
       setState(() {
-        _categories = data;
+        _categories = data.cast<dynamic>();
 
         if (_categoryId != null && _categoryId!.isNotEmpty) {
           final cid = _categoryId!;

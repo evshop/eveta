@@ -23,7 +23,8 @@ class PortalSession {
   }
 
   /// Devuelve la fila de `profiles_portal` para el usuario actual.
-  /// Si no existe, intenta autovincular con `ensure_portal_membership_for_current_user`.
+  /// Usa la Edge Function puente `portal-seller` para evitar depender
+  /// de sesión de usuario en el proyecto Core.
   static Future<Map<String, dynamic>?> currentPortalProfile({
     bool forceRefresh = false,
   }) async {
@@ -38,32 +39,18 @@ class PortalSession {
 
     Map<String, dynamic>? row;
     try {
-      final raw = await _core
-          .from('profiles_portal')
-          .select(
-            'id, auth_user_id, email, full_name, '
-            'avatar_url, phone, address, username, '
-            'shop_name, shop_description, shop_logo_url, shop_banner_url, '
-            'shop_border_color, shop_address, shop_lat, shop_lng, '
-            'shop_location_photos, is_admin, is_seller, is_active',
-          )
-          .eq('auth_user_id', user.id)
-          .maybeSingle();
-      if (raw != null) row = Map<String, dynamic>.from(raw as Map);
-    } on PostgrestException {
-      row = null;
-    }
-
-    // Autovincula si aún no existe (admin del Dashboard sin auth_user_id seteado).
-    if (row == null) {
-      try {
-        final ensured = await _core.rpc('ensure_portal_membership_for_current_user');
-        if (ensured is Map) {
-          row = Map<String, dynamic>.from(ensured);
-        }
-      } catch (_) {
-        // RPC no disponible: nada que hacer.
+      final jwt = _auth.auth.currentSession?.accessToken;
+      if (jwt == null || jwt.isEmpty) return null;
+      final res = await _core.functions.invoke(
+        'portal-seller',
+        body: {'action': 'get_store_profile'},
+        headers: {'Authorization': 'Bearer $jwt'},
+      );
+      if (res.status == 200 && res.data is Map && res.data['data'] is Map) {
+        row = Map<String, dynamic>.from(res.data['data'] as Map);
       }
+    } catch (_) {
+      row = null;
     }
 
     _cachedAuthUid = user.id;

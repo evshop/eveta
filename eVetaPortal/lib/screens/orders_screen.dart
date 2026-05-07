@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/portal_orders_service.dart';
 import '../services/supabase_clients.dart';
@@ -46,7 +45,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
       }
       final response = (res.data is Map && res.data['data'] is List) ? (res.data['data'] as List) : const [];
 
-      final list = List<Map<String, dynamic>>.from(response as List);
+      final list = List<Map<String, dynamic>>.from(response);
       if (!mounted) return;
       setState(() {
         _allOrders = list;

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../theme/eveta_theme_controller.dart' show evetaThemeMode, kEvetaPortalThemeModePref;
 import '../services/supabase_clients.dart';
@@ -38,30 +37,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _userEmail = user.email ?? 'vendedor@tiendasj.com';
         });
 
-        final response = await SupabaseClients.core
-            .from('profiles_portal')
-            .select('full_name, shop_name, shop_logo_url')
-            .eq('auth_user_id', user.id)
-            .maybeSingle();
-
-        if (response != null) {
-          setState(() {
-            _shopName = response['shop_name']?.toString().trim() ?? '';
-            if (_shopName.isEmpty) _shopName = 'Sin tienda registrada';
-
-            _sellerName = response['full_name']?.toString().trim() ?? '';
-            if (_sellerName.isEmpty) _sellerName = 'Sin nombre registrado';
-
-            final rawLogo = response['shop_logo_url']?.toString().trim();
-            _shopLogoUrl = (rawLogo == null || rawLogo.isEmpty) ? null : rawLogo;
-          });
-        } else {
-          setState(() {
-            _shopName = 'Sin tienda registrada';
-            _sellerName = 'Sin nombre registrado';
-            _shopLogoUrl = null;
-          });
+        final jwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+        if (jwt == null || jwt.isEmpty) {
+          throw Exception('No hay sesión activa.');
         }
+        final res = await SupabaseClients.core.functions.invoke(
+          'portal-seller',
+          body: {'action': 'get_store_profile'},
+          headers: {'Authorization': 'Bearer $jwt'},
+        );
+        if (res.status != 200 || res.data is! Map || res.data['data'] == null) {
+          throw Exception(
+            (res.data is Map && res.data['error'] != null)
+                ? res.data['error'].toString()
+                : 'No se pudo cargar perfil.',
+          );
+        }
+        final response = Map<String, dynamic>.from(res.data['data'] as Map);
+
+        setState(() {
+          _shopName = response['shop_name']?.toString().trim() ?? '';
+          if (_shopName.isEmpty) _shopName = 'Sin tienda registrada';
+
+          _sellerName = response['full_name']?.toString().trim() ?? '';
+          if (_sellerName.isEmpty) _sellerName = 'Sin nombre registrado';
+
+          final rawLogo = response['shop_logo_url']?.toString().trim();
+          _shopLogoUrl = (rawLogo == null || rawLogo.isEmpty) ? null : rawLogo;
+        });
       }
     } catch (e) {
       setState(() {
