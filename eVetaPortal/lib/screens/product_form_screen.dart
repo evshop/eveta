@@ -472,16 +472,40 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
 
       if (widget.product == null) {
         // Create new
-        await SupabaseClients.core.from('products').insert(productData);
+        final jwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+        if (jwt == null || jwt.isEmpty) throw AuthException('No hay sesión activa.');
+        final res = await SupabaseClients.core.functions.invoke(
+          'portal-products',
+          body: {
+            'action': 'upsert',
+            ...productData,
+          },
+          headers: {'Authorization': 'Bearer $jwt'},
+        );
+        if (res.status != 200) {
+          final msg = (res.data is Map && res.data['error'] != null) ? res.data['error'].toString() : 'No se pudo guardar.';
+          throw AuthException(msg);
+        }
         if (mounted) {
           showPortalNotice(context, 'Producto creado con exito.', type: PortalNoticeType.success);
         }
       } else {
         // Update existing
-        await SupabaseClients.core
-            .from('products')
-            .update(productData)
-            .eq('id', widget.product!['id'].toString());
+        final jwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+        if (jwt == null || jwt.isEmpty) throw AuthException('No hay sesión activa.');
+        final res = await SupabaseClients.core.functions.invoke(
+          'portal-products',
+          body: {
+            'action': 'upsert',
+            'id': widget.product!['id'].toString(),
+            ...productData,
+          },
+          headers: {'Authorization': 'Bearer $jwt'},
+        );
+        if (res.status != 200) {
+          final msg = (res.data is Map && res.data['error'] != null) ? res.data['error'].toString() : 'No se pudo guardar.';
+          throw AuthException(msg);
+        }
         if (mounted) {
           showPortalNotice(context, 'Producto actualizado.', type: PortalNoticeType.success);
         }

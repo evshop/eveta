@@ -34,17 +34,20 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
   Future<void> _fetchProducts() async {
     try {
-      final sellerId = await PortalSession.currentSellerId();
-      if (sellerId == null) return;
-
-      final response = await SupabaseClients.core
-          .from('products')
-          .select(
-            'id, name, price, stock, images, category_id, description, unit, '
-            'tags, specs_json, is_active, is_featured, event_ticket_type_id',
-          )
-          .eq('seller_id', sellerId)
-          .order('created_at', ascending: false);
+      final jwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+      if (jwt == null || jwt.isEmpty) {
+        setState(() => _isLoading = false);
+        return;
+      }
+      final res = await SupabaseClients.core.functions.invoke(
+        'portal-products',
+        body: {'action': 'list'},
+        headers: {'Authorization': 'Bearer $jwt'},
+      );
+      if (res.status != 200) {
+        throw Exception((res.data is Map && res.data['error'] != null) ? res.data['error'].toString() : 'No se pudo listar productos.');
+      }
+      final response = (res.data is Map && res.data['data'] is List) ? (res.data['data'] as List) : const [];
 
       setState(() {
         _products = List<Map<String, dynamic>>.from(response)
@@ -73,16 +76,15 @@ class _ProductsScreenState extends State<ProductsScreen> {
   /// Fila completa desde Supabase (evita datos incompletos al editar desde la lista).
   Future<Map<String, dynamic>?> _fetchProductRowForEdit(String id) async {
     try {
-      final row = await SupabaseClients.core
-          .from('products')
-          .select(
-            'id, name, price, stock, images, category_id, description, unit, '
-            'tags, specs_json, is_active, is_featured, event_ticket_type_id',
-          )
-          .eq('id', id)
-          .maybeSingle();
-      if (row == null) return null;
-      final m = Map<dynamic, dynamic>.from(row as Map);
+      final jwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+      if (jwt == null || jwt.isEmpty) return null;
+      final res = await SupabaseClients.core.functions.invoke(
+        'portal-products',
+        body: {'action': 'get', 'id': id},
+        headers: {'Authorization': 'Bearer $jwt'},
+      );
+      if (res.status != 200 || res.data is! Map || res.data['data'] == null) return null;
+      final m = Map<dynamic, dynamic>.from(res.data['data'] as Map);
       final eventTicketTypeId = m['event_ticket_type_id']?.toString().trim();
       if (eventTicketTypeId != null && eventTicketTypeId.isNotEmpty) {
         return null;
@@ -282,7 +284,16 @@ class _ProductsScreenState extends State<ProductsScreen> {
 
     try {
       setState(() => _isLoading = true);
-      await SupabaseClients.core.from('products').delete().eq('id', productId);
+      final jwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+      if (jwt == null || jwt.isEmpty) throw Exception('Sesión expirada.');
+      final res = await SupabaseClients.core.functions.invoke(
+        'portal-products',
+        body: {'action': 'delete', 'id': productId},
+        headers: {'Authorization': 'Bearer $jwt'},
+      );
+      if (res.status != 200) {
+        throw Exception((res.data is Map && res.data['error'] != null) ? res.data['error'].toString() : 'No se pudo eliminar.');
+      }
       _fetchProducts();
     } catch (e) {
       debugPrint('Error deleting product: $e');

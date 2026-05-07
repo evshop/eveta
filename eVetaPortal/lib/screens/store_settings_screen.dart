@@ -6,7 +6,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'store_location_picker_screen.dart';
 import '../services/cloudinary_service.dart';
-import '../services/portal_session.dart';
 import '../services/supabase_clients.dart';
 import '../widgets/portal/eveta_portal_image_crop_screen.dart';
 import '../widgets/portal/eveta_portal_image_picker_sheet.dart';
@@ -96,17 +95,33 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
       _email = user.email;
       _shopId = user.id;
 
-      // Carga el perfil Portal (con autolink si aplica) y guarda IDs útiles.
-      final portal = await PortalSession.currentPortalProfile(forceRefresh: true);
-      _portalProfileId = portal?['id']?.toString().trim();
-
-      Map<String, dynamic>? row = portal;
-
-      if (!mounted) return;
-      if (row == null) {
-        setState(() => _loading = false);
+      final jwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+      if (jwt == null || jwt.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No hay sesión activa.')),
+          );
+        }
         return;
       }
+
+      final res = await SupabaseClients.core.functions.invoke(
+        'portal-seller',
+        body: {'action': 'get_store_profile'},
+        headers: {'Authorization': 'Bearer $jwt'},
+      );
+      if (res.status != 200 || res.data is! Map || res.data['data'] == null) {
+        throw Exception(
+          (res.data is Map && res.data['error'] != null)
+              ? res.data['error'].toString()
+              : 'No se pudo cargar perfil de tienda.',
+        );
+      }
+
+      final row = Map<String, dynamic>.from(res.data['data'] as Map);
+      _portalProfileId = row['id']?.toString().trim();
+
+      if (!mounted) return;
 
       _nameCtrl.text = row['shop_name']?.toString().trim() ?? '';
       _descCtrl.text = row['shop_description']?.toString().trim() ?? '';
@@ -317,21 +332,9 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
       final shopAddress =
           _addressCtrl.text.trim().isEmpty ? null : _addressCtrl.text.trim();
 
-      // Asegura una fila portal vinculada antes de guardar (por si fue creación reciente).
-      if (_portalProfileId == null || _portalProfileId!.isEmpty) {
-        final portal = await PortalSession.currentPortalProfile(forceRefresh: true);
-        _portalProfileId = portal?['id']?.toString().trim();
-      }
-      if (_portalProfileId == null || _portalProfileId!.isEmpty) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'No se encontró tu perfil Portal. Cierra sesión e inicia de nuevo para crearlo.',
-            ),
-          ),
-        );
-        return;
+      final jwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+      if (jwt == null || jwt.isEmpty) {
+        throw AuthException('No hay sesión activa.');
       }
 
       final portalPayload = <String, dynamic>{
@@ -347,50 +350,22 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
         'is_seller': true,
       };
 
-      List<dynamic> updated;
-      try {
-        updated = await SupabaseClients.core
-            .from('profiles_portal')
-            .update(portalPayload)
-            .eq('id', _portalProfileId!)
-            .select('id');
-      } catch (e) {
-        final lower = e.toString().toLowerCase();
-        if (lower.contains('shop_lat') ||
-            lower.contains('shop_lng') ||
-            lower.contains('shop_location_photos') ||
-            lower.contains('shop_border_color') ||
-            lower.contains('shop_address')) {
-          final fallback = Map<String, dynamic>.from(portalPayload)
-            ..remove('shop_lat')
-            ..remove('shop_lng')
-            ..remove('shop_location_photos')
-            ..remove('shop_border_color')
-            ..remove('shop_address');
-          updated = await SupabaseClients.core
-              .from('profiles_portal')
-              .update(fallback)
-              .eq('id', _portalProfileId!)
-              .select('id');
-        } else {
-          rethrow;
-        }
+      final res = await SupabaseClients.core.functions.invoke(
+        'portal-seller',
+        body: {
+          'action': 'update_store_profile',
+          ...portalPayload,
+        },
+        headers: {'Authorization': 'Bearer $jwt'},
+      );
+      if (res.status != 200) {
+        final msg = (res.data is Map && res.data['error'] != null)
+            ? res.data['error'].toString()
+            : 'No se pudo guardar.';
+        throw AuthException(msg);
       }
 
       if (!mounted) return;
-      if (updated.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'No se aplicaron los cambios (permisos). Verifica RLS en profiles_portal (self update por auth_user_id) o ejecuta los scripts 034/051.',
-            ),
-          ),
-        );
-        return;
-      }
-
-      // Actualiza cache para que `currentPortalProfile()` refleje los nuevos valores.
-      PortalSession.invalidateCache();
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

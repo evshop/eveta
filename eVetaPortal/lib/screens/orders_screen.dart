@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/portal_orders_service.dart';
-import '../services/portal_session.dart';
 import '../services/supabase_clients.dart';
 import '../widgets/portal/portal_empty_state.dart';
 import '../widgets/portal/portal_haptics.dart';
@@ -32,21 +31,20 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   Future<void> _fetchOrders() async {
     try {
-      final sellerId = await PortalSession.currentSellerId();
-      if (sellerId == null) {
+      final jwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+      if (jwt == null || jwt.isEmpty) {
         if (mounted) setState(() => _isLoading = false);
         return;
       }
-
-      final response = await SupabaseClients.core
-          .from('orders')
-          .select(
-            'id, status, delivery_status, created_at, buyer_display_name, dropoff_address, '
-            'subtotal, delivery_fee, total, '
-            'order_items(id, quantity, total, name_snapshot, image_url)',
-          )
-          .eq('seller_id', sellerId)
-          .order('created_at', ascending: false);
+      final res = await SupabaseClients.core.functions.invoke(
+        'portal-seller',
+        body: {'action': 'list_orders'},
+        headers: {'Authorization': 'Bearer $jwt'},
+      );
+      if (res.status != 200) {
+        throw Exception((res.data is Map && res.data['error'] != null) ? res.data['error'].toString() : 'No se pudo cargar pedidos.');
+      }
+      final response = (res.data is Map && res.data['data'] is List) ? (res.data['data'] as List) : const [];
 
       final list = List<Map<String, dynamic>>.from(response as List);
       if (!mounted) return;
