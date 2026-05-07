@@ -14,6 +14,11 @@ const PORTAL_AUTH_SUPABASE_URL = Deno.env.get('PORTAL_AUTH_SUPABASE_URL') ?? '';
 const PORTAL_AUTH_SUPABASE_ANON_KEY = Deno.env.get('PORTAL_AUTH_SUPABASE_ANON_KEY') ?? '';
 const PORTAL_AUTH_SERVICE_ROLE_KEY = Deno.env.get('PORTAL_AUTH_SERVICE_ROLE_KEY') ?? '';
 
+function portalDbClient() {
+  if (!PORTAL_AUTH_SUPABASE_URL || !PORTAL_AUTH_SERVICE_ROLE_KEY) return null;
+  return createClient(PORTAL_AUTH_SUPABASE_URL, PORTAL_AUTH_SERVICE_ROLE_KEY);
+}
+
 const json = (body: Record<string, unknown>, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -152,6 +157,25 @@ Deno.serve(async (req: Request) => {
       newUserId = await portalAuthAdminCreateUser(email, password, fullName);
     } catch (_) {
       newUserId = await portalAuthSignup(email, password, fullName);
+    }
+
+    // Ensure Portal Auth DB has membership row for the Portal app gate.
+    const portalDb = portalDbClient();
+    if (portalDb) {
+      await portalDb.from('profiles_portal').upsert(
+        {
+          auth_user_id: newUserId,
+          email,
+          full_name: fullName,
+          shop_name: shopName,
+          shop_description: shopDescription,
+          is_admin: false,
+          is_seller: true,
+          is_active: true,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'email' },
+      );
     }
 
     const { error: upsertErr } = await coreAdmin

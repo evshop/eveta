@@ -63,6 +63,11 @@ const PORTAL_AUTH_SUPABASE_URL = Deno.env.get('PORTAL_AUTH_SUPABASE_URL') ?? '';
 const PORTAL_AUTH_SUPABASE_ANON_KEY = Deno.env.get('PORTAL_AUTH_SUPABASE_ANON_KEY') ?? '';
 const PORTAL_AUTH_SERVICE_ROLE_KEY = Deno.env.get('PORTAL_AUTH_SERVICE_ROLE_KEY') ?? '';
 
+function portalDbClient() {
+  if (!PORTAL_AUTH_SUPABASE_URL || !PORTAL_AUTH_SERVICE_ROLE_KEY) return null;
+  return createClient(PORTAL_AUTH_SUPABASE_URL, PORTAL_AUTH_SERVICE_ROLE_KEY);
+}
+
 const coreAdmin = createClient(CORE_SUPABASE_URL, CORE_SERVICE_ROLE_KEY);
 
 Deno.serve(async (req) => {
@@ -158,6 +163,21 @@ Deno.serve(async (req) => {
       if (!userId) return json({ error: 'portal_auth_signup_failed: missing user id' }, 500);
     }
     const linkedExistingAuth = false;
+
+    // Ensure Portal Auth DB has delivery membership row for portal/admin gate checks.
+    const portalDb = portalDbClient();
+    if (portalDb) {
+      await portalDb.from('profiles_delivery').upsert(
+        {
+          auth_user_id: userId,
+          email: baseEmail,
+          full_name: fullName,
+          is_active: true,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'email' },
+      );
+    }
 
     const { data: deliveryRow, error: profErr } = await coreAdmin
       .from('profiles_delivery')

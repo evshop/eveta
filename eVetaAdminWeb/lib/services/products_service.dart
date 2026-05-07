@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/product_form_data.dart';
 import 'auth_service.dart';
+import 'supabase_clients.dart';
 
 class ProductsService {
   static SupabaseClient get _client => Supabase.instance.client;
@@ -83,48 +84,22 @@ class ProductsService {
       'spec_field_labels': labels,
       'spec_group_title': (group != null && group.isNotEmpty) ? group : null,
     };
-    try {
-      await _client.from('categories').insert(row);
-    } catch (e) {
-      if (e.toString().toLowerCase().contains('color_hex')) {
-        row.remove('color_hex');
-        await _client.from('categories').insert(row);
-        return;
-      }
-      if (e.toString().toLowerCase().contains('spec_group_title')) {
-        try {
-          row.remove('spec_group_title');
-          await _client.from('categories').insert(row);
-        } catch (e2) {
-          if (e2.toString().toLowerCase().contains('spec_template') ||
-              e2.toString().toLowerCase().contains('spec_field')) {
-            await _client.from('categories').insert({
-              'name': clean,
-              'slug': slug,
-              'icon': logoUrl,
-              'image_url': bannerUrl,
-              'color_hex': colorHex,
-              'parent_id': parentId,
-            });
-          } else {
-            rethrow;
-          }
-        }
-        return;
-      }
-      if (e.toString().toLowerCase().contains('spec_template') ||
-          e.toString().toLowerCase().contains('spec_field')) {
-        await _client.from('categories').insert({
-          'name': clean,
-          'slug': slug,
-          'icon': logoUrl,
-          'image_url': bannerUrl,
-          'color_hex': colorHex,
-          'parent_id': parentId,
-        });
-        return;
-      }
-      rethrow;
+    final adminJwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+    if (adminJwt == null || adminJwt.isEmpty) {
+      throw AuthException('Tu sesión expiró. Vuelve a iniciar sesión.');
+    }
+    final res = await _client.functions.invoke(
+      'admin-upsert-category',
+      body: row,
+      headers: {
+        'x-admin-access-token': adminJwt,
+        'Authorization': 'Bearer $adminJwt',
+      },
+    );
+    if (res.status != 200) {
+      final data = res.data;
+      final msg = (data is Map && data['error'] != null) ? data['error'].toString() : 'No se pudo guardar.';
+      throw AuthException(msg);
     }
   }
 
@@ -155,48 +130,25 @@ class ProductsService {
       'spec_field_labels': labels,
       'spec_group_title': (group != null && group.isNotEmpty) ? group : null,
     };
-    try {
-      await _client.from('categories').update(row).eq('id', categoryId);
-    } catch (e) {
-      if (e.toString().toLowerCase().contains('color_hex')) {
-        row.remove('color_hex');
-        await _client.from('categories').update(row).eq('id', categoryId);
-        return;
-      }
-      if (e.toString().toLowerCase().contains('spec_group_title')) {
-        try {
-          row.remove('spec_group_title');
-          await _client.from('categories').update(row).eq('id', categoryId);
-        } catch (e2) {
-          if (e2.toString().toLowerCase().contains('spec_template') ||
-              e2.toString().toLowerCase().contains('spec_field')) {
-            await _client.from('categories').update({
-              'name': clean,
-              'slug': slug,
-              'icon': logoUrl,
-              'image_url': bannerUrl,
-              'color_hex': colorHex,
-              'parent_id': parentId,
-            }).eq('id', categoryId);
-          } else {
-            rethrow;
-          }
-        }
-        return;
-      }
-      if (e.toString().toLowerCase().contains('spec_template') ||
-          e.toString().toLowerCase().contains('spec_field')) {
-        await _client.from('categories').update({
-          'name': clean,
-          'slug': slug,
-          'icon': logoUrl,
-          'image_url': bannerUrl,
-          'color_hex': colorHex,
-          'parent_id': parentId,
-        }).eq('id', categoryId);
-        return;
-      }
-      rethrow;
+    final adminJwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+    if (adminJwt == null || adminJwt.isEmpty) {
+      throw AuthException('Tu sesión expiró. Vuelve a iniciar sesión.');
+    }
+    final res = await _client.functions.invoke(
+      'admin-upsert-category',
+      body: {
+        'id': categoryId,
+        ...row,
+      },
+      headers: {
+        'x-admin-access-token': adminJwt,
+        'Authorization': 'Bearer $adminJwt',
+      },
+    );
+    if (res.status != 200) {
+      final data = res.data;
+      final msg = (data is Map && data['error'] != null) ? data['error'].toString() : 'No se pudo guardar.';
+      throw AuthException(msg);
     }
   }
 
