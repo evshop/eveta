@@ -39,6 +39,21 @@ async function portalAuthGetEmail(jwt: string): Promise<string | null> {
   return email;
 }
 
+function b64ToBytes(b64: string): Uint8Array {
+  const binStr = atob(b64);
+  const bytes = new Uint8Array(binStr.length);
+  for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
+  return bytes;
+}
+
+function safeExt(contentType: string): string {
+  const ct = contentType.toLowerCase();
+  if (ct.includes('png')) return 'png';
+  if (ct.includes('webp')) return 'webp';
+  if (ct.includes('jpeg') || ct.includes('jpg')) return 'jpg';
+  return 'bin';
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
@@ -61,6 +76,7 @@ Deno.serve(async (req) => {
   if (!email) return json({ error: 'invalid_admin_session' }, 401);
 
   const core = createClient(CORE_URL, CORE_SERVICE_ROLE);
+
   const { data: adminRow, error: adminErr } = await core
     .from('profiles_portal')
     .select('is_admin, is_active')
@@ -72,41 +88,46 @@ Deno.serve(async (req) => {
   }
 
   const body = await req.json().catch(() => ({}));
-  const profileId = (body?.profile_id ?? '').toString().trim();
-  if (!profileId) return json({ error: 'profile_id requerido.' }, 400);
+  const bucket = (body?.bucket ?? 'admin-assets').toString().trim() || 'admin-assets';
+  const folder = (body?.folder ?? 'categories').toString().trim() || 'categories';
+  const contentType = (body?.content_type ?? '').toString().trim() || 'application/octet-stream';
+  const b64 = (body?.base64 ?? '').toString().trim();
+  const originalName = (body?.filename ?? '').toString().trim();
 
-  const { data: portalRow, error: portalErr } = await core
-    .from('profiles_portal')
-    .select('id, auth_user_id, email')
-    .eq('id', profileId)
-    .maybeSingle();
-  if (portalErr) return json({ error: portalErr.message }, 500);
-  if (!portalRow) return json({ error: 'No se encontró la tienda.' }, 404);
+  if (!b64) return json({ error: 'Archivo inválido.' }, 400);
 
-  // Products.seller_id references profiles_portal.id.
-  const { error: delProductsErr } = await core.from('products').delete().eq('seller_id', profileId);
-  if (delProductsErr) return json({ error: delProductsErr.message }, 400);
+  // Ensure bucket exists (public so apps can render images without auth).
+  {
+    const { data: buckets } = await core.storage.listBuckets();
+    const exists = (buckets ?? []).some((b) => b.name === bucket);
+    if (!exists) {
+      const { error: createErr } = await core.storage.createBucket(bucket, {
+        public: true,
+        fileSizeLimit: 10 * 1024 * 1024,
+      });
+      // If it races / already exists, ignore.
+      if (createErr && !/already exists/i.test(createErr.message)) {
+        return json({ error: createErr.message }, 500);
+      }
+    }
+  }
 
-  const { error: updErr } = await core.from('profiles_portal')
-    .update({
-    shop_name: null,
-    shop_description: null,
-    shop_logo_url: null,
-    shop_banner_url: null,
-    shop_border_color: null,
-    shop_address: null,
-    shop_lat: null,
-    shop_lng: null,
-    shop_location_photos: [],
-    is_partner_verified: false,
-    partner_display_order: 0,
-    admin_portal_note: null,
-    is_seller: false,
-    updated_at: new Date().toISOString(),
-  })
-    .eq('id', profileId);
-  if (updErr) return json({ error: updErr.message }, 400);
+  const ext = safeExt(contentType);
+  const baseName = originalName.replace(/[^a-zA-Z0-9._-]/g, '').slice(-80);
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const path = `${folder}/${stamp}-${crypto.randomUUID()}${baseName ? `-${baseName}` : ''}.${ext}`;
 
-  return json({ ok: true });
+  const bytes = b64ToBytes(b64);
+  const { error: upErr } = await core.storage.from(bucket).upload(path, bytes, {
+    contentType,
+    upsert: false,
+  });
+  if (upErr) return json({ error: upErr.message }, 400);
+
+  const { data: pub } = core.storage.from(bucket).getPublicUrl(path);
+  const publicUrl = pub?.publicUrl ?? null;
+  if (!publicUrl) return json({ error: 'No se pudo generar URL pública.' }, 500);
+
+  return json({ ok: true, bucket, path, public_url: publicUrl });
 });
 
