@@ -60,6 +60,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     String? logoUrl = _categoryImageUrl(existing?['icon']);
     String? bannerUrl = _categoryImageUrl(existing?['image_url']);
     bool uploading = false;
+    bool saving = false;
     var parentId = existing?['parent_id']?.toString();
     final colorCtrl = TextEditingController(text: existing?['color_hex']?.toString() ?? '');
     Color? selectedColor = _hexToColor(colorCtrl.text);
@@ -110,6 +111,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                   children: [
                 TextField(
                   controller: controller,
+                  onChanged: (_) => setDialogState(() {}),
                   decoration: const InputDecoration(
                     labelText: 'Nombre de categoría',
                     border: OutlineInputBorder(),
@@ -415,7 +417,11 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                             logoUrl = _cacheBustImageUrl(uploaded);
                             setDialogState(() {});
                           } finally {
-                            setDialogState(() => uploading = false);
+                            if (ctx.mounted) {
+                              setDialogState(() => uploading = false);
+                            } else {
+                              uploading = false;
+                            }
                           }
                         },
                   icon: const Icon(Icons.upload_outlined),
@@ -471,7 +477,11 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                             bannerUrl = _cacheBustImageUrl(uploaded);
                             setDialogState(() {});
                           } finally {
-                            setDialogState(() => uploading = false);
+                            if (ctx.mounted) {
+                              setDialogState(() => uploading = false);
+                            } else {
+                              uploading = false;
+                            }
                           }
                         },
                   icon: const Icon(Icons.photo_outlined),
@@ -492,15 +502,19 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: uploading ? null : () => Navigator.pop(ctx, false),
+              onPressed: (uploading || saving) ? null : () => Navigator.pop(ctx, false),
               child: const Text('Cancelar'),
             ),
             ElevatedButton(
-              onPressed: uploading
+              onPressed: (uploading || saving || controller.text.trim().isEmpty)
                   ? null
                   : () async {
+                      setDialogState(() => saving = true);
                       final name = controller.text.trim();
-                      if (name.isEmpty) return;
+                      if (name.isEmpty) {
+                        if (ctx.mounted) setDialogState(() => saving = false);
+                        return;
+                      }
                       final isSub = parentId != null;
                       final effectiveSpec = isSub && specTemplateEnabled;
                       final specLabels = specLabelControllers
@@ -543,9 +557,16 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                               : null,
                         );
                       }
-                      if (ctx.mounted) Navigator.pop(ctx, true);
+                      if (!ctx.mounted) return;
+                      Navigator.pop(ctx, true);
                     },
-              child: const Text('Guardar'),
+              child: saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Guardar'),
             ),
           ],
         ),
