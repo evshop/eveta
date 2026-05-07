@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, CardContent, Typography } from '@mui/material';
-import Grid from '@mui/material/Unstable_Grid2';
+import { Box, Card, CardContent, Typography } from '@mui/material';
 import { coreClient } from '../supabase';
 
 type Metric = { label: string; value: number; table: string };
@@ -36,9 +35,15 @@ export function DashboardPage() {
       <Typography variant="h5" sx={{ mb: 2, fontWeight: 800 }}>
         Dashboard
       </Typography>
-      <Grid container spacing={2}>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(4, 1fr)' },
+          gap: 2,
+        }}
+      >
         {metrics.map((m) => (
-          <Grid key={m.table} size={{ xs: 12, sm: 6, md: 3 }}>
+          <Box key={m.table}>
             <Card>
               <CardContent>
                 <Typography sx={{ opacity: 0.75, mb: 0.5 }}>{m.label}</Typography>
@@ -47,9 +52,9 @@ export function DashboardPage() {
                 </Typography>
               </CardContent>
             </Card>
-          </Grid>
+          </Box>
         ))}
-      </Grid>
+      </Box>
     </>
   );
 }
