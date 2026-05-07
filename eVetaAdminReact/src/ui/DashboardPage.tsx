@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Card, CardContent, Grid, Typography } from '@mui/material';
+import { Card, CardContent, Typography } from '@mui/material';
+import Grid from '@mui/material/Grid2';
 import { coreClient } from '../supabase';
 
 type Metric = { label: string; value: number; table: string };
@@ -37,7 +38,7 @@ export function DashboardPage() {
       </Typography>
       <Grid container spacing={2}>
         {metrics.map((m) => (
-          <Grid key={m.table} item xs={12} sm={6} md={3}>
+          <Grid key={m.table} size={{ xs: 12, sm: 6, md: 3 }}>
             <Card>
               <CardContent>
                 <Typography sx={{ opacity: 0.75, mb: 0.5 }}>{m.label}</Typography>
