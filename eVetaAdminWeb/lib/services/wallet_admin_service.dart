@@ -2,10 +2,42 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'supabase_clients.dart';
+
 class WalletAdminService {
   WalletAdminService._();
 
   static SupabaseClient get _client => Supabase.instance.client;
+
+  static String _requireAdminJwt() {
+    final jwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+    if (jwt == null || jwt.trim().isEmpty) {
+      throw AuthException('No hay sesión activa. Vuelve a iniciar sesión.');
+    }
+    return jwt.trim();
+  }
+
+  static Future<Map<String, dynamic>> _adminWalletInvoke(
+    String action, {
+    Map<String, dynamic> body = const {},
+  }) async {
+    final jwt = _requireAdminJwt();
+    final res = await _client.functions.invoke(
+      'admin-wallet',
+      body: {'action': action, ...body},
+      headers: {
+        'x-admin-access-token': jwt,
+        'Authorization': 'Bearer $jwt',
+      },
+    );
+    if (res.status != 200) {
+      final data = res.data;
+      final msg = data is Map ? data['error']?.toString() : null;
+      throw AuthException(msg ?? 'Error del servidor (admin-wallet).');
+    }
+    if (res.data is Map) return Map<String, dynamic>.from(res.data as Map);
+    return <String, dynamic>{'ok': true, 'data': res.data};
+  }
 
   static Future<List<Map<String, dynamic>>> fetchTopups({
     String status = 'pending_review',
@@ -39,42 +71,37 @@ class WalletAdminService {
   }
 
   static Future<void> approveTopup(String topupId, {String? bankEventId}) async {
-    await _client.rpc('confirm_wallet_topup_match_and_approve', params: {
-      'p_topup_id': topupId,
-      'p_event_id': bankEventId,
+    await _adminWalletInvoke('approve_topup', body: {
+      'topup_id': topupId,
+      'event_id': bankEventId,
     });
   }
 
   static Future<void> rejectTopup(String topupId, {String? reason}) async {
-    await _client.rpc('reject_wallet_topup', params: {
-      'p_topup_id': topupId,
-      'p_reason': reason,
+    await _adminWalletInvoke('reject_topup', body: {
+      'topup_id': topupId,
+      'reason': reason,
     });
   }
 
   static Future<List<Map<String, dynamic>>> fetchWebhookTokens() async {
-    final rows = await _client.rpc('list_wallet_webhook_tokens');
-    return List<Map<String, dynamic>>.from(rows as List);
+    final payload = await _adminWalletInvoke('list_webhook_tokens');
+    final data = payload['data'];
+    return List<Map<String, dynamic>>.from((data as List?) ?? const []);
   }
 
   static Future<List<Map<String, dynamic>>> fetchQrgenTokens() async {
-    final rows = await _client.rpc('list_wallet_qrgen_tokens');
-    return List<Map<String, dynamic>>.from(rows as List);
+    final payload = await _adminWalletInvoke('list_qrgen_tokens');
+    final data = payload['data'];
+    return List<Map<String, dynamic>>.from((data as List?) ?? const []);
   }
 
   static Future<List<Map<String, dynamic>>> fetchBankIncomingEvents({
     int limit = 80,
   }) async {
-    final rows = await _client
-        .from('bank_incoming_events')
-        .select(
-          'id, source, bank_app, title, body, detected_amount, detected_reference, '
-          'detected_sender, detected_at, received_at, match_status, matched_topup_id, '
-          'matched_reference_code, raw_payload, wallet_topups(reference_code)',
-        )
-        .order('received_at', ascending: false)
-        .limit(limit);
-    return List<Map<String, dynamic>>.from(rows as List);
+    final payload = await _adminWalletInvoke('list_bank_events', body: {'limit': limit});
+    final data = payload['data'];
+    return List<Map<String, dynamic>>.from((data as List?) ?? const []);
   }
 
   /// Peticiones pendientes elegibles para el mismo criterio que 046 (creadas <24h, no vencidas).
@@ -125,12 +152,9 @@ class WalletAdminService {
 
   /// Re-ejecuta match_wallet_topups_with_bank_event (046) para un evento; requiere script 047 en Supabase.
   static Future<List<Map<String, dynamic>>> adminRetryMatchBankEvent(String eventId) async {
-    final rows = await _client.rpc(
-      'admin_retry_match_bank_event',
-      params: {'p_event_id': eventId},
-    );
-    if (rows == null) return [];
-    return List<Map<String, dynamic>>.from(rows as List);
+    final payload = await _adminWalletInvoke('retry_match_bank_event', body: {'event_id': eventId});
+    final data = payload['data'];
+    return List<Map<String, dynamic>>.from((data as List?) ?? const []);
   }
 
   /// Código EV de la recarga: relación embebida o columna opcional tras script 039.
@@ -153,37 +177,25 @@ class WalletAdminService {
   }
 
   static Future<Map<String, dynamic>> createWebhookToken({String? label}) async {
-    final rows = await _client.rpc('create_wallet_webhook_token', params: {
-      'p_label': label,
-    });
-    final list = List<Map<String, dynamic>>.from(rows as List);
-    if (list.isEmpty) {
-      throw AuthException('No se pudo crear el token.');
-    }
-    return list.first;
+    final payload = await _adminWalletInvoke('create_webhook_token', body: {'label': label});
+    final data = payload['data'];
+    if (data is Map) return Map<String, dynamic>.from(data);
+    throw AuthException('No se pudo crear el token.');
   }
 
   static Future<Map<String, dynamic>> createQrgenToken({String? label}) async {
-    final rows = await _client.rpc('create_wallet_qrgen_token', params: {
-      'p_label': label,
-    });
-    final list = List<Map<String, dynamic>>.from(rows as List);
-    if (list.isEmpty) {
-      throw AuthException('No se pudo crear el token.');
-    }
-    return list.first;
+    final payload = await _adminWalletInvoke('create_qrgen_token', body: {'label': label});
+    final data = payload['data'];
+    if (data is Map) return Map<String, dynamic>.from(data);
+    throw AuthException('No se pudo crear el token.');
   }
 
   static Future<void> revokeWebhookToken(String tokenId) async {
-    await _client.rpc('revoke_wallet_webhook_token', params: {
-      'p_token_id': tokenId,
-    });
+    await _adminWalletInvoke('revoke_webhook_token', body: {'token_id': tokenId});
   }
 
   static Future<void> revokeQrgenToken(String tokenId) async {
-    await _client.rpc('revoke_wallet_qrgen_token', params: {
-      'p_token_id': tokenId,
-    });
+    await _adminWalletInvoke('revoke_qrgen_token', body: {'token_id': tokenId});
   }
 
   static Future<Map<String, dynamic>> decodeAndAttachTopupQr({

@@ -327,9 +327,6 @@ class ProductsService {
   /// [sellerIdOverride]: `profiles_portal.id` de la tienda destino.
   /// Solo administradores pueden crear para otra tienda.
   static Future<void> createProduct(ProductFormData form, {String? sellerIdOverride}) async {
-    final user = _client.auth.currentUser;
-    if (user == null) throw AuthException('No hay sesión activa');
-
     String? sid;
     final o = sellerIdOverride?.trim();
     if (o != null && o.isNotEmpty) {
@@ -338,6 +335,12 @@ class ProductsService {
       }
       sid = o;
     } else {
+      // En Admin Web el login vive en `SupabaseClients.auth` (Portal Auth),
+      // no en el cliente Core (`Supabase.instance.client`), así que no hay `currentUser` en Core.
+      // Si no se pasa override, exigimos seleccionar tienda destino.
+      if (await AuthService.isCurrentUserAdmin()) {
+        throw AuthException('Selecciona una tienda (seller_id) para crear el producto.');
+      }
       sid = await _currentSellerPortalId();
     }
     if (sid == null || sid.isEmpty) {
