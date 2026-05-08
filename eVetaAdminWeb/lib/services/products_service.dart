@@ -154,19 +154,43 @@ class ProductsService {
 
   /// Elimina subcategorías y luego la categoría (productos enlazados pueden bloquear el borrado).
   static Future<void> deleteCategory(String categoryId) async {
-    await _client.from('categories').delete().eq('parent_id', categoryId);
-    await _client.from('categories').delete().eq('id', categoryId);
+    final adminJwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+    if (adminJwt == null || adminJwt.isEmpty) {
+      throw AuthException('Tu sesión expiró. Vuelve a iniciar sesión.');
+    }
+    final res = await _client.functions.invoke(
+      'admin-delete-category',
+      body: {'id': categoryId},
+      headers: {
+        'x-admin-access-token': adminJwt,
+        'Authorization': 'Bearer $adminJwt',
+      },
+    );
+    if (res.status != 200) {
+      final data = res.data;
+      final msg = (data is Map && data['error'] != null) ? data['error'].toString() : 'No se pudo eliminar.';
+      throw AuthException(msg);
+    }
   }
 
   static Future<void> clearAllCategories() async {
-    final subs = await _client
-        .from('categories')
-        .select('id')
-        .not('parent_id', 'is', null);
-    for (final row in List<Map<String, dynamic>>.from(subs)) {
-      await _client.from('categories').delete().eq('id', row['id']);
+    final adminJwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+    if (adminJwt == null || adminJwt.isEmpty) {
+      throw AuthException('Tu sesión expiró. Vuelve a iniciar sesión.');
     }
-    await _client.from('categories').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    final res = await _client.functions.invoke(
+      'admin-delete-category',
+      body: {'delete_all': true},
+      headers: {
+        'x-admin-access-token': adminJwt,
+        'Authorization': 'Bearer $adminJwt',
+      },
+    );
+    if (res.status != 200) {
+      final data = res.data;
+      final msg = (data is Map && data['error'] != null) ? data['error'].toString() : 'No se pudo borrar.';
+      throw AuthException(msg);
+    }
   }
 
   static const _selectMyProductsWithLayout =
@@ -319,8 +343,13 @@ class ProductsService {
     if (sid == null || sid.isEmpty) {
       throw AuthException('No se pudo resolver tu tienda en Portal.');
     }
-    try {
-      await _client.from('products').insert({
+    final adminJwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+    if (adminJwt == null || adminJwt.isEmpty) {
+      throw AuthException('Tu sesión expiró. Vuelve a iniciar sesión.');
+    }
+    final res = await _client.functions.invoke(
+      'admin-upsert-product',
+      body: {
         'seller_id': sid,
         'category_id': form.categoryId,
         'name': form.name,
@@ -334,32 +363,28 @@ class ProductsService {
         'images_layout': form.imagesLayout,
         'specs_json': form.specRows.isEmpty ? [] : form.specRows,
         'tags': form.tags,
-      });
-    } catch (e) {
-      if (e.toString().toLowerCase().contains('specs_json')) {
-        await _client.from('products').insert({
-          'seller_id': sid,
-          'category_id': form.categoryId,
-          'name': form.name,
-          'description': form.description,
-          'price': form.price,
-          'stock': form.stock,
-          'unit': form.unit,
-          'is_active': form.isActive,
-          'is_featured': form.isFeatured,
-          'images': form.images,
-          'images_layout': form.imagesLayout,
-          'tags': form.tags,
-        });
-        return;
-      }
-      rethrow;
+      },
+      headers: {
+        'x-admin-access-token': adminJwt,
+        'Authorization': 'Bearer $adminJwt',
+      },
+    );
+    if (res.status != 200) {
+      final data = res.data;
+      final msg = (data is Map && data['error'] != null) ? data['error'].toString() : 'No se pudo guardar.';
+      throw AuthException(msg);
     }
   }
 
   static Future<void> updateProduct(String id, ProductFormData form) async {
-    try {
-      await _client.from('products').update({
+    final adminJwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+    if (adminJwt == null || adminJwt.isEmpty) {
+      throw AuthException('Tu sesión expiró. Vuelve a iniciar sesión.');
+    }
+    final res = await _client.functions.invoke(
+      'admin-upsert-product',
+      body: {
+        'id': id,
         'category_id': form.categoryId,
         'name': form.name,
         'description': form.description,
@@ -372,29 +397,36 @@ class ProductsService {
         'images_layout': form.imagesLayout,
         'specs_json': form.specRows.isEmpty ? [] : form.specRows,
         'tags': form.tags,
-      }).eq('id', id);
-    } catch (e) {
-      if (e.toString().toLowerCase().contains('specs_json')) {
-        await _client.from('products').update({
-          'category_id': form.categoryId,
-          'name': form.name,
-          'description': form.description,
-          'price': form.price,
-          'stock': form.stock,
-          'unit': form.unit,
-          'is_active': form.isActive,
-          'is_featured': form.isFeatured,
-          'images': form.images,
-          'images_layout': form.imagesLayout,
-          'tags': form.tags,
-        }).eq('id', id);
-        return;
-      }
-      rethrow;
+      },
+      headers: {
+        'x-admin-access-token': adminJwt,
+        'Authorization': 'Bearer $adminJwt',
+      },
+    );
+    if (res.status != 200) {
+      final data = res.data;
+      final msg = (data is Map && data['error'] != null) ? data['error'].toString() : 'No se pudo guardar.';
+      throw AuthException(msg);
     }
   }
 
   static Future<void> deleteProduct(String id) async {
-    await _client.from('products').delete().eq('id', id);
+    final adminJwt = SupabaseClients.auth.auth.currentSession?.accessToken;
+    if (adminJwt == null || adminJwt.isEmpty) {
+      throw AuthException('Tu sesión expiró. Vuelve a iniciar sesión.');
+    }
+    final res = await _client.functions.invoke(
+      'admin-delete-product',
+      body: {'id': id},
+      headers: {
+        'x-admin-access-token': adminJwt,
+        'Authorization': 'Bearer $adminJwt',
+      },
+    );
+    if (res.status != 200) {
+      final data = res.data;
+      final msg = (data is Map && data['error'] != null) ? data['error'].toString() : 'No se pudo eliminar.';
+      throw AuthException(msg);
+    }
   }
 }
