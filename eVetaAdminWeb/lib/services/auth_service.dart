@@ -200,59 +200,39 @@ class AuthService {
   }) async {
     final user = _authClient.auth.currentUser;
     if (user == null) throw AuthException('No hay sesión activa');
-    final userEmail = user.email?.trim().toLowerCase();
-
-    final row = <String, dynamic>{
-      'shop_name': shopName.trim(),
-      'shop_description': shopDescription.trim(),
-      'shop_logo_url': shopLogoUrl,
-      'shop_banner_url': shopBannerUrl,
-      'is_seller': true,
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    };
-
-    Map<String, dynamic>? updatedPortal;
-    try {
-      updatedPortal = await _coreClient
-          .from('profiles_portal')
-          .update(row)
-          .eq('auth_user_id', user.id)
-          .select('id')
-          .maybeSingle();
-      if (updatedPortal == null && userEmail != null && userEmail.isNotEmpty) {
-        updatedPortal = await _coreClient
-            .from('profiles_portal')
-            .update(row)
-            .ilike('email', userEmail)
-            .select('id')
-            .maybeSingle();
-      }
-    } catch (e) {
-      if (e.toString().toLowerCase().contains('shop_banner_url')) {
-        row.remove('shop_banner_url');
-        updatedPortal = await _coreClient
-            .from('profiles_portal')
-            .update(row)
-            .eq('auth_user_id', user.id)
-            .select('id')
-            .maybeSingle();
-        if (updatedPortal == null && userEmail != null && userEmail.isNotEmpty) {
-          updatedPortal = await _coreClient
-              .from('profiles_portal')
-              .update(row)
-              .ilike('email', userEmail)
-              .select('id')
-              .maybeSingle();
-        }
-      } else {
-        rethrow;
-      }
+    final me = await fetchMyProfile();
+    final profileId = me?['id']?.toString().trim() ?? '';
+    if (profileId.isEmpty) {
+      throw AuthException('Tu cuenta no está vinculada a Portal (profiles_portal).');
     }
 
-    if (updatedPortal == null) {
-      throw AuthException(
-        'No se encontró profiles_portal para tu usuario (o políticas RLS). Ejecutá scripts/058 y 061 en Supabase.',
-      );
+    var accessToken = _authClient.auth.currentSession?.accessToken;
+    if (accessToken == null || accessToken.isEmpty) {
+      final refreshed = await _authClient.auth.refreshSession();
+      accessToken = refreshed.session?.accessToken;
+    }
+    if (accessToken == null || accessToken.isEmpty) {
+      throw AuthException('Tu sesión expiró. Vuelve a iniciar sesión e intenta de nuevo.');
+    }
+    accessToken = accessToken.replaceFirst(RegExp(r'^Bearer\\s+', caseSensitive: false), '');
+
+    final res = await _coreClient.functions.invoke(
+      'admin-upsert-store-profile',
+      body: {
+        'profile_id': profileId,
+        'shop_name': shopName.trim(),
+        'shop_description': shopDescription.trim(),
+        'shop_logo_url': shopLogoUrl,
+        'shop_banner_url': shopBannerUrl,
+      },
+      headers: {
+        'Authorization': 'Bearer $accessToken',
+        'x-admin-access-token': accessToken,
+      },
+    );
+    if (res.status != 200) {
+      final msg = _extractFunctionError(res.data) ?? 'No se pudo actualizar la tienda.';
+      throw AuthException(msg);
     }
   }
 
