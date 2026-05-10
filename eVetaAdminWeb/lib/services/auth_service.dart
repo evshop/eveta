@@ -363,41 +363,33 @@ class AuthService {
     if (!await isCurrentUserAdmin()) {
       throw AuthException('Sin permisos de administrador.');
     }
-    final row = {
-      'shop_name': shopName.trim(),
-      'shop_description': shopDescription.trim(),
-      'shop_logo_url': shopLogoUrl,
-      'shop_banner_url': shopBannerUrl,
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-      'is_seller': true,
-    };
+    var accessToken = _authClient.auth.currentSession?.accessToken;
+    if (accessToken == null || accessToken.isEmpty) {
+      final refreshed = await _authClient.auth.refreshSession();
+      accessToken = refreshed.session?.accessToken;
+    }
+    if (accessToken == null || accessToken.isEmpty) {
+      throw AuthException('Tu sesión expiró. Vuelve a iniciar sesión e intenta de nuevo.');
+    }
+    accessToken = accessToken.replaceFirst(RegExp(r'^Bearer\s+', caseSensitive: false), '');
 
-    try {
-      final updated = await _coreClient
-          .from('profiles_portal')
-          .update(row)
-          .eq('id', profileId)
-          .select('id');
-      if ((updated as List).isEmpty) {
-        throw AuthException(
-          'No se actualizó la tienda (0 filas). Revisa RLS/admin policy en profiles_portal (061).',
-        );
-      }
-    } catch (e) {
-      if (e is AuthException) rethrow;
-      if (e.toString().toLowerCase().contains('shop_banner_url')) {
-        row.remove('shop_banner_url');
-        final updated = await _coreClient.from('profiles_portal').update({
-          ...row,
-        }).eq('id', profileId).select('id');
-        if ((updated as List).isEmpty) {
-          throw AuthException(
-            'No se actualizó la tienda (0 filas). Revisa políticas RLS en profiles_portal.',
-          );
-        }
-        return;
-      }
-      rethrow;
+    final res = await _coreClient.functions.invoke(
+      'admin-upsert-store-profile',
+      body: {
+        'profile_id': profileId,
+        'shop_name': shopName.trim(),
+        'shop_description': shopDescription.trim(),
+        'shop_logo_url': shopLogoUrl,
+        'shop_banner_url': shopBannerUrl,
+      },
+      headers: {
+        'Authorization': 'Bearer $accessToken',
+        'x-admin-access-token': accessToken,
+      },
+    );
+    if (res.status != 200) {
+      final msg = _extractFunctionError(res.data) ?? 'No se pudo actualizar la tienda.';
+      throw AuthException(msg);
     }
   }
 

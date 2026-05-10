@@ -31,10 +31,19 @@ class _StoresHubScreenState extends State<StoresHubScreen> {
     try {
       final my = await AuthService.fetchMyProfile();
       final list = await AuthService.fetchVerifiedPartnerStores();
+      final myId = my?['id']?.toString().trim();
+      final myEmail = my?['email']?.toString().trim().toLowerCase();
+      final filtered = list.where((row) {
+        final id = row['id']?.toString().trim();
+        final email = row['email']?.toString().trim().toLowerCase();
+        if (myId != null && myId.isNotEmpty && id == myId) return false;
+        if (myEmail != null && myEmail.isNotEmpty && email == myEmail) return false;
+        return true;
+      }).toList();
       if (!mounted) return;
       setState(() {
         _myProfile = my;
-        _partners = list;
+        _partners = filtered;
         _loading = false;
       });
     } catch (e) {

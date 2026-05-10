@@ -1,10 +1,26 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'package:eveta/search/product_search_models.dart';
 
 class SupabaseService {
-  static final SupabaseClient client = Supabase.instance.client;
+  static SupabaseClient? _coreClient;
+
+  static SupabaseClient get client {
+    if (_coreClient != null) return _coreClient!;
+    final coreUrl = (dotenv.env['CORE_SUPABASE_URL'] ?? '').trim();
+    final coreAnon = (dotenv.env['CORE_SUPABASE_ANON_KEY'] ?? '').trim();
+    if (coreUrl.isNotEmpty && coreAnon.isNotEmpty) {
+      _coreClient = SupabaseClient(
+        coreUrl,
+        coreAnon,
+        authOptions: const AuthClientOptions(autoRefreshToken: false),
+      );
+      return _coreClient!;
+    }
+    return Supabase.instance.client;
+  }
 
   static List<Map<String, dynamic>> _excludeEventTicketMirrorProducts(
     List<Map<String, dynamic>> rows,

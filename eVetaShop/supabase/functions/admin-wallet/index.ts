@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import md5 from 'npm:md5@2.3.0';
 
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -92,35 +93,88 @@ Deno.serve(async (req) => {
   try {
     switch (action) {
       case 'list_webhook_tokens': {
-        const rows = await core.rpc('list_wallet_webhook_tokens');
-        return json({ ok: true, data: rows ?? [] });
+        const { data, error } = await core
+          .from('wallet_webhook_tokens')
+          .select('id, label, is_active, created_at, last_used_at')
+          .eq('is_active', true)
+          .order('created_at', { ascending: false });
+        if (error) return json({ error: error.message }, 400);
+        return json({ ok: true, data: data ?? [] });
       }
       case 'create_webhook_token': {
         const label = body?.label ?? null;
-        const rows = await core.rpc('create_wallet_webhook_token', { p_label: label });
-        const list = Array.isArray(rows) ? rows : [];
-        return json({ ok: true, data: list[0] ?? null });
+        const token = `tsk_${md5(`${crypto.randomUUID()}_${Date.now()}`)}`;
+        const { data, error } = await core
+          .from('wallet_webhook_tokens')
+          .insert({
+            label: label && String(label).trim() ? String(label).trim() : null,
+            token_hash: md5(token),
+            is_active: true,
+          })
+          .select('id, label, created_at')
+          .single();
+        if (error) return json({ error: error.message }, 400);
+        return json({
+          ok: true,
+          data: {
+            token_id: data.id,
+            label: data.label,
+            created_at: data.created_at,
+            token,
+          },
+        });
       }
       case 'revoke_webhook_token': {
         const id = (body?.token_id ?? '').toString().trim();
         if (!id) return json({ error: 'token_id inválido' }, 400);
-        await core.rpc('revoke_wallet_webhook_token', { p_token_id: id });
+        const { error } = await core
+          .from('wallet_webhook_tokens')
+          .update({ is_active: false })
+          .eq('id', id);
+        if (error) return json({ error: error.message }, 400);
         return json({ ok: true });
       }
       case 'list_qrgen_tokens': {
-        const rows = await core.rpc('list_wallet_qrgen_tokens');
-        return json({ ok: true, data: rows ?? [] });
+        const { data, error } = await core
+          .from('wallet_qrgen_tokens')
+          .select('id, label, is_active, created_at, last_used_at')
+          .eq('is_active', true)
+          .order('created_at', { ascending: false });
+        if (error) return json({ error: error.message }, 400);
+        return json({ ok: true, data: data ?? [] });
       }
       case 'create_qrgen_token': {
         const label = body?.label ?? null;
-        const rows = await core.rpc('create_wallet_qrgen_token', { p_label: label });
-        const list = Array.isArray(rows) ? rows : [];
-        return json({ ok: true, data: list[0] ?? null });
+        const token = `qrgen_${md5(`${crypto.randomUUID()}_${Date.now()}`)}`;
+        const { data, error } = await core
+          .from('wallet_qrgen_tokens')
+          .insert({
+            label: label && String(label).trim() ? String(label).trim() : null,
+            token,
+            token_hash: md5(token),
+            is_active: true,
+          })
+          .select('id, label, created_at')
+          .single();
+        if (error) return json({ error: error.message }, 400);
+        return json({
+          ok: true,
+          data: {
+            token_id: data.id,
+            label: data.label,
+            created_at: data.created_at,
+            token,
+          },
+        });
       }
       case 'revoke_qrgen_token': {
         const id = (body?.token_id ?? '').toString().trim();
         if (!id) return json({ error: 'token_id inválido' }, 400);
-        await core.rpc('revoke_wallet_qrgen_token', { p_token_id: id });
+        const { error } = await core
+          .from('wallet_qrgen_tokens')
+          .update({ is_active: false })
+          .eq('id', id);
+        if (error) return json({ error: error.message }, 400);
         return json({ ok: true });
       }
       case 'list_bank_events': {

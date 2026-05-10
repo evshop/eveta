@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:eveta/utils/cart_service.dart';
 import 'package:eveta/utils/favorites_service.dart';
+import 'package:eveta/utils/supabase_service.dart';
 
 /// Alinea carrito y favoritos locales con el catálogo en Supabase:
 /// quita productos inexistentes, inactivos o sin stock; en el carrito ajusta cantidad al stock.
@@ -34,7 +35,7 @@ class CatalogLocalSync {
 
     List<Map<String, dynamic>> rows;
     try {
-      final response = await Supabase.instance.client
+      final response = await SupabaseService.client
           .from('products')
           .select('id, is_active, stock')
           .inFilter('id', ids.toList());
