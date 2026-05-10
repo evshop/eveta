@@ -201,13 +201,27 @@ class ProductsService {
       'id, name, description, category_id, price, stock, images, images_layout, tags, is_active, is_featured, unit, categories(name, parent_id)';
 
   static Future<String?> _currentSellerPortalId() async {
-    final user = _client.auth.currentUser;
-    if (user == null) return null;
+    final authUser = SupabaseClients.auth.auth.currentUser;
+    if (authUser == null) return null;
+    final authEmail = authUser.email?.trim().toLowerCase();
     try {
       final row = await _client
           .from('profiles_portal')
           .select('id')
-          .eq('auth_user_id', user.id)
+          .eq('auth_user_id', authUser.id)
+          .eq('is_active', true)
+          .maybeSingle();
+      final id = row?['id']?.toString().trim();
+      if (id != null && id.isNotEmpty) return id;
+    } catch (_) {
+      // fallback por email abajo
+    }
+    if (authEmail == null || authEmail.isEmpty) return null;
+    try {
+      final row = await _client
+          .from('profiles_portal')
+          .select('id')
+          .ilike('email', authEmail)
           .eq('is_active', true)
           .maybeSingle();
       final id = row?['id']?.toString().trim();
@@ -216,6 +230,36 @@ class ProductsService {
     } catch (_) {
       return null;
     }
+  }
+
+  static Future<List<String>> _activeSellerPortalIdsByEmail(String email) async {
+    try {
+      final rows = await _client
+          .from('profiles_portal')
+          .select('id')
+          .ilike('email', email)
+          .eq('is_active', true);
+      return List<Map<String, dynamic>>.from(rows as List)
+          .map((r) => r['id']?.toString().trim() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static Future<String?> _resolveSellerIdForCreate(String? sellerIdOverride) async {
+    final o = sellerIdOverride?.trim();
+    if (o != null && o.isNotEmpty) return o;
+
+    final current = await _currentSellerPortalId();
+    if (current != null && current.isNotEmpty) return current;
+
+    final authEmail = SupabaseClients.auth.auth.currentUser?.email?.trim().toLowerCase();
+    if (authEmail == null || authEmail.isEmpty) return null;
+    final ids = await _activeSellerPortalIdsByEmail(authEmail);
+    if (ids.length == 1) return ids.first;
+    return null;
   }
 
   static Future<List<Map<String, dynamic>>> fetchMyProducts() async {
@@ -327,24 +371,11 @@ class ProductsService {
   /// [sellerIdOverride]: `profiles_portal.id` de la tienda destino.
   /// Solo administradores pueden crear para otra tienda.
   static Future<void> createProduct(ProductFormData form, {String? sellerIdOverride}) async {
-    String? sid;
-    final o = sellerIdOverride?.trim();
-    if (o != null && o.isNotEmpty) {
-      if (!await AuthService.isCurrentUserAdmin()) {
-        throw AuthException('Solo un administrador puede crear productos para otra tienda.');
-      }
-      sid = o;
-    } else {
-      // En Admin Web el login vive en `SupabaseClients.auth` (Portal Auth),
-      // no en el cliente Core (`Supabase.instance.client`), así que no hay `currentUser` en Core.
-      // Si no se pasa override, exigimos seleccionar tienda destino.
-      if (await AuthService.isCurrentUserAdmin()) {
-        throw AuthException('Selecciona una tienda (seller_id) para crear el producto.');
-      }
-      sid = await _currentSellerPortalId();
-    }
+    final sid = await _resolveSellerIdForCreate(sellerIdOverride);
     if (sid == null || sid.isEmpty) {
-      throw AuthException('No se pudo resolver tu tienda en Portal.');
+      throw AuthException(
+        'No se pudo resolver la tienda destino. Entra desde una tienda específica o selecciona una tienda en el panel.',
+      );
     }
     final adminJwt = SupabaseClients.auth.auth.currentSession?.accessToken;
     if (adminJwt == null || adminJwt.isEmpty) {
