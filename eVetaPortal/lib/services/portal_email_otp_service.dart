@@ -17,7 +17,9 @@ class PortalEmailOtpService {
       body: {
         'email': normalized,
         'purpose': 'password_reset',
-        'require_portal_access': true,
+        // En Portal Auth este reset afecta solo la contraseña de Portal.
+        // No forzamos validación extra en Core para evitar falsos 500 por esquema.
+        'app_name': 'eVeta Portal',
       },
     );
     if (response.status != 200) {

@@ -22,7 +22,13 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { email, purpose, require_portal_access: requirePortalAccess } = await req.json();
+    const {
+      email,
+      purpose,
+      require_portal_access: requirePortalAccess,
+      app_name: appNameRaw,
+    } = await req.json();
+    const appName = String(appNameRaw ?? '').trim() || 'eVeta';
     const normalizedEmail = normalizeEmail(email ?? '');
     if (!normalizedEmail || !normalizedEmail.includes('@')) {
       return json({ error: 'Correo inválido.' }, 400);
@@ -78,16 +84,16 @@ Deno.serve(async (req) => {
     await transporter.sendMail({
       from: `"eVeta Verificacion" <${GMAIL_USER}>`,
       to: normalizedEmail,
-      subject: 'Tu codigo de verificacion eVeta',
+      subject: `Tu codigo de verificacion ${appName}`,
       text:
           `Tu codigo de verificacion es: ${code}\n\n` +
           `Este codigo vence en 10 minutos.\n` +
-          `Usalo para ${purposeLabel(purpose)}.\n\n` +
+          `Usalo para ${purposeLabel(purpose)} en ${appName}.\n\n` +
           `Si no solicitaste este codigo, ignora este correo.`,
       html: `
         <div style="font-family:Arial,sans-serif;line-height:1.4;color:#111">
-          <h2>Codigo de verificacion eVeta</h2>
-          <p>Usa este codigo para <b>${purposeLabel(purpose)}</b>:</p>
+          <h2>Codigo de verificacion ${appName}</h2>
+          <p>Usa este codigo para <b>${purposeLabel(purpose)}</b> en <b>${appName}</b>:</p>
           <p style="font-size:30px;font-weight:700;letter-spacing:4px">${code}</p>
           <p>Este codigo vence en <b>10 minutos</b>.</p>
           <p>Si no solicitaste este codigo, ignora este correo.</p>

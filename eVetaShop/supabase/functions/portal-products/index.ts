@@ -89,12 +89,26 @@ Deno.serve(async (req) => {
   const action = String(body.action ?? 'list').trim().toLowerCase();
 
   if (action === 'list_categories') {
-    const { data, error } = await core
+    let { data, error } = await core
       .from('categories')
       .select('id, name, parent_id, spec_template_enabled, spec_field_labels, spec_group_title')
       .eq('is_active', true)
       .order('sort_order', { ascending: true })
       .order('name', { ascending: true });
+
+    // Compatibilidad con esquemas donde categories no tiene is_active/sort_order.
+    if (error) {
+      const message = error.message.toLowerCase();
+      if (message.includes('is_active') || message.includes('sort_order')) {
+        const fallback = await core
+          .from('categories')
+          .select('id, name, parent_id, spec_template_enabled, spec_field_labels, spec_group_title')
+          .order('name', { ascending: true });
+        data = fallback.data;
+        error = fallback.error;
+      }
+    }
+
     if (error) return json({ error: error.message }, 400);
     return json({ ok: true, data: data ?? [] });
   }
